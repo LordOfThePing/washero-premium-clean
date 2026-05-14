@@ -630,6 +630,7 @@ function HealthTab() {
   return (
     <div className="space-y-3">
       <MercadoPagoHealthCard />
+      <BotmakerHealthCard />
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
