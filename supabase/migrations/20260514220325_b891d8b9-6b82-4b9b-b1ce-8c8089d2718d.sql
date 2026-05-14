@@ -1,0 +1,1 @@
+delete from public.bookings where notes='SMOKE_TEST_DELETE_ME';
