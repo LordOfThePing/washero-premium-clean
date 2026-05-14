@@ -1,6 +1,11 @@
-import { createFileRoute, Outlet, useRouterState } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useRouterState, useNavigate, Link } from "@tanstack/react-router";
+import { Loader2, LogOut } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
+import { Button } from "@/components/ui/button";
+import { useAdminAuth } from "@/hooks/use-admin-auth";
+import { supabase } from "@/integrations/supabase/client";
+import { useEffect } from "react";
 
 export const Route = createFileRoute("/admin")({
   component: AdminLayout,
@@ -9,9 +14,34 @@ export const Route = createFileRoute("/admin")({
 function AdminLayout() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
-  // Login page renders standalone, no sidebar chrome.
+  // Login page renders standalone, no auth gate, no sidebar.
   if (pathname === "/admin/login") {
     return <Outlet />;
+  }
+
+  return <AdminGuarded />;
+}
+
+function AdminGuarded() {
+  const auth = useAdminAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (auth.status === "anonymous") {
+      navigate({ to: "/admin/login" });
+    }
+  }, [auth.status, navigate]);
+
+  if (auth.status === "loading" || auth.status === "anonymous") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (auth.status === "not_admin") {
+    return <UnauthorizedScreen />;
   }
 
   return (
@@ -19,9 +49,26 @@ function AdminLayout() {
       <div className="flex min-h-screen w-full bg-background">
         <AdminSidebar />
         <div className="flex flex-1 flex-col">
-          <header className="flex h-14 items-center gap-2 border-b border-border/60 bg-background px-3">
-            <SidebarTrigger />
-            <span className="text-sm font-medium text-muted-foreground">Panel Washero</span>
+          <header className="flex h-14 items-center justify-between gap-2 border-b border-border/60 bg-background px-3">
+            <div className="flex items-center gap-2">
+              <SidebarTrigger />
+              <span className="text-sm font-medium text-muted-foreground">Panel Washero</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="hidden text-xs text-muted-foreground sm:inline">
+                {auth.session.user.email}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  navigate({ to: "/admin/login" });
+                }}
+              >
+                <LogOut className="mr-1 h-4 w-4" /> Salir
+              </Button>
+            </div>
           </header>
           <main className="flex-1 p-6">
             <Outlet />
@@ -29,5 +76,32 @@ function AdminLayout() {
         </div>
       </div>
     </SidebarProvider>
+  );
+}
+
+function UnauthorizedScreen() {
+  const navigate = useNavigate();
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
+      <div className="w-full max-w-md rounded-lg border border-border/60 bg-card p-6 text-center shadow-sm">
+        <h1 className="text-xl font-semibold">Acceso no autorizado</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Tu usuario no tiene permisos para acceder al panel de Washero.
+        </p>
+        <div className="mt-6 flex flex-col gap-2">
+          <Button
+            onClick={async () => {
+              await supabase.auth.signOut();
+              navigate({ to: "/admin/login" });
+            }}
+          >
+            Cerrar sesión
+          </Button>
+          <Button asChild variant="ghost">
+            <Link to="/">Volver al inicio</Link>
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
