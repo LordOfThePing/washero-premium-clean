@@ -27,6 +27,7 @@ const items = [
   { title: "Calendario", to: "/admin/calendario" as const, icon: CalendarDays },
   { title: "Disponibilidad", to: "/admin/disponibilidad" as const, icon: CalendarClock },
   { title: "Clientes", to: "/admin/clientes" as const, icon: Users },
+  { title: "Mensajes", to: "/admin/mensajes" as const, icon: MessageSquare },
   { title: "Configuración", to: "/admin/configuracion" as const, icon: Settings },
 ];
 
