@@ -876,3 +876,101 @@ function StatusBadge({ status }: { status: ItemStatus }) {
     return <Badge variant="outline" className="gap-1 text-amber-700 dark:text-amber-300"><Clock className="h-3 w-3" /> Pendiente</Badge>;
   return <Badge variant="outline" className="gap-1 text-muted-foreground"><XCircle className="h-3 w-3" /> Próximamente</Badge>;
 }
+
+// ===========================================================================
+// BOTMAKER HEALTH
+// ===========================================================================
+
+const BOTMAKER_WEBHOOK_URL = `https://${PROJECT_REF}.supabase.co/functions/v1/botmaker-webhook`;
+
+function BotmakerHealthCard() {
+  const [running, setRunning] = useState<string | null>(null);
+  const [results, setResults] = useState<Record<string, any>>({});
+
+  const status = useQuery({
+    queryKey: ["admin", "botmaker-status"],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("botmaker-diagnostics?action=status", { method: "GET" } as any);
+      if (error) throw error;
+      return data as any;
+    },
+  });
+
+  async function runAction(action: string) {
+    setRunning(action);
+    try {
+      const { data, error } = await supabase.functions.invoke(`botmaker-diagnostics?action=${action}`, { method: "GET" } as any);
+      if (error) throw error;
+      setResults((p) => ({ ...p, [action]: data }));
+      status.refetch();
+    } catch (e: any) {
+      setResults((p) => ({ ...p, [action]: { error: e?.message ?? String(e) } }));
+    } finally {
+      setRunning(null);
+    }
+  }
+
+  const d = status.data;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Botmaker</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <div className="grid gap-2">
+          <Row label="Webhook URL" value={<code className="break-all font-mono text-[11px]">{BOTMAKER_WEBHOOK_URL}</code>} />
+          <Row label="Header esperado" value={<code className="font-mono text-xs">auth-bm-token</code>} />
+          <Row
+            label="BOTMAKER_WEBHOOK_SECRET"
+            value={
+              status.isLoading ? "…" : d?.secret_configured ? (
+                <Badge className="bg-green-100 text-green-900 dark:bg-green-500/15 dark:text-green-300">Configurado</Badge>
+              ) : (
+                <Badge variant="outline" className="text-amber-700 dark:text-amber-300">No configurado</Badge>
+              )
+            }
+          />
+          <Row label="Eventos totales" value={status.isLoading ? "…" : d?.counts?.events ?? 0} />
+          <Row label="Conversaciones" value={status.isLoading ? "…" : d?.counts?.conversations ?? 0} />
+          <Row label="Mensajes" value={status.isLoading ? "…" : d?.counts?.messages ?? 0} />
+          <Row label="Último evento válido" value={d?.last_valid_event ? new Date(d.last_valid_event).toLocaleString("es-AR") : "—"} />
+          <Row label="Último evento inválido" value={d?.last_invalid_event ? new Date(d.last_invalid_event).toLocaleString("es-AR") : "—"} />
+          <Row label="Última solicitud (booking_request)" value={d?.last_booking_request?.created_at ? new Date(d.last_booking_request.created_at).toLocaleString("es-AR") : "—"} />
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" disabled={running !== null} onClick={() => runAction("test_no_token")}>
+            {running === "test_no_token" && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
+            Probar webhook sin token (esperado 401)
+          </Button>
+          <Button size="sm" variant="outline" disabled={running !== null} onClick={() => runAction("test_message")}>
+            {running === "test_message" && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
+            Simular mensaje autenticado
+          </Button>
+          <Button size="sm" disabled={running !== null} onClick={() => runAction("test_booking")}>
+            {running === "test_booking" && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
+            Simular resumen + confirmación
+          </Button>
+        </div>
+
+        {Object.entries(results).map(([k, v]) => (
+          <pre key={k} className="overflow-x-auto rounded bg-muted p-2 text-[10px]">
+            {k}: {JSON.stringify(v, null, 2)}
+          </pre>
+        ))}
+
+        <div className="rounded-md border bg-muted/30 p-3 text-xs space-y-1">
+          <p className="font-medium">Configuración en Botmaker</p>
+          <p>URL: <code className="font-mono">{BOTMAKER_WEBHOOK_URL}</code></p>
+          <p>Header / Token: usar “Token de seguridad” igual a <code className="font-mono">BOTMAKER_WEBHOOK_SECRET</code>.</p>
+          <p>Tipo: Mensajes y estados de mensaje.</p>
+          <p>Habilitar: Mensajes del usuario, Mensajes del Bot, Mensajes de Agentes y Mensajes de eventos.</p>
+          <p className="text-amber-700 dark:text-amber-300">
+            Si “Mensajes del Bot” está deshabilitado, Washero no recibe el resumen y no puede crear booking_requests.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
