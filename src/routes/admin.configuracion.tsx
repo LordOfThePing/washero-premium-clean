@@ -899,7 +899,7 @@ function BotmakerHealthCard() {
   async function runAction(action: string) {
     setRunning(action);
     try {
-      const { data, error } = await supabase.functions.invoke(`botmaker-diagnostics?action=${action}`, { method: "GET" } as any);
+      const { data, error } = await supabase.functions.invoke("botmaker-diagnostics", { body: { action } });
       if (error) throw error;
       setResults((p) => ({ ...p, [action]: data }));
       status.refetch();
