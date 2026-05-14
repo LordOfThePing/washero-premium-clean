@@ -890,7 +890,7 @@ function BotmakerHealthCard() {
   const status = useQuery({
     queryKey: ["admin", "botmaker-status"],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("botmaker-diagnostics?action=status", { method: "GET" } as any);
+      const { data, error } = await supabase.functions.invoke("botmaker-diagnostics", { body: { action: "status" } });
       if (error) throw error;
       return data as any;
     },
