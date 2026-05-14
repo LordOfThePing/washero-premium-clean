@@ -56,9 +56,9 @@ type Slot = {
 
 const VEHICLE_TYPES = ["Auto", "SUV", "Pick-up", "Otro"] as const;
 const PAYMENT_METHODS = [
-  { value: "Pagar después", label: "Pagar después", available: true, hint: "Coordinás con el lavador en el momento." },
+  { value: "MercadoPago", label: "Mercado Pago", available: true, hint: "Pagás online con tarjeta, débito o saldo MP." },
   { value: "Transferencia", label: "Transferencia", available: true, hint: "Te enviamos los datos por WhatsApp." },
-  { value: "MercadoPago", label: "Mercado Pago", available: false, hint: "Próximamente." },
+  { value: "Pagar después", label: "Pagar después", available: true, hint: "Coordinás con el lavador en el momento." },
 ] as const;
 
 // ---------- Validation ----------
@@ -86,7 +86,7 @@ const stepSchemas = {
     scheduled_time: z.string().min(1, "Elegí un horario"),
   }),
   payment: z.object({
-    payment_method: z.enum(["Pagar después", "Transferencia"]),
+    payment_method: z.enum(["Pagar después", "Transferencia", "MercadoPago"]),
   }),
 };
 
@@ -100,7 +100,7 @@ type FormState = {
   service_id: string;
   scheduled_date: string;
   scheduled_time: string;
-  payment_method: "Pagar después" | "Transferencia";
+  payment_method: "Pagar después" | "Transferencia" | "MercadoPago";
   notes: string;
 };
 
