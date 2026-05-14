@@ -8,3 +8,9 @@ verify_jwt = false
 
 [functions.mp-diagnostics]
 verify_jwt = false
+
+[functions.botmaker-webhook]
+verify_jwt = false
+
+[functions.botmaker-diagnostics]
+verify_jwt = true
