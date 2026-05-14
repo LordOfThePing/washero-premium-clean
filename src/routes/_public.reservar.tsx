@@ -275,8 +275,6 @@ function ReservarPage() {
     }
     setSubmitting(true);
 
-    const booking_status: "pending" | "needs_review" = isUnsupportedArea ? "needs_review" : "pending";
-
     const payload = {
       customer_name: form.customer_name.trim(),
       customer_phone: normalizePhone(form.customer_phone),
@@ -285,25 +283,39 @@ function ReservarPage() {
       neighborhood: form.neighborhood.trim(),
       vehicle_type: form.vehicle_type as string,
       service_id: selectedService.id,
-      service_name: selectedService.name,
       scheduled_date: form.scheduled_date,
       scheduled_time: form.scheduled_time,
-      duration_minutes: selectedService.duration_minutes,
-      price: selectedService.base_price,
       payment_method: form.payment_method,
-      payment_status: "pending" as const,
-      booking_status,
-      booking_source: "website" as const,
       notes: form.notes.trim() || null,
     };
 
-    // IMPORTANT: anon cannot SELECT bookings — never chain .select()
-    const { error } = await supabase.from("bookings").insert(payload);
+    const { data, error } = await supabase.functions.invoke("create-website-booking", {
+      body: payload,
+    });
 
-    if (error) {
-      console.error("Booking insert failed", error);
+    type FnResponse = {
+      ok: boolean;
+      status?: string;
+      customer_message?: string;
+      booking_status?: "pending" | "needs_review";
+      summary?: {
+        service_name: string;
+        scheduled_date: string;
+        scheduled_time: string;
+        address: string;
+        neighborhood: string;
+        price: number;
+      };
+    };
+    const result = (data ?? null) as FnResponse | null;
+
+    if (error || !result?.ok) {
+      console.error("Booking creation failed", { error, result });
       setSubmitting(false);
-      toast.error("No pudimos crear la reserva en este momento. Probá de nuevo o escribinos por WhatsApp.", {
+      const msg =
+        result?.customer_message ||
+        "No pudimos crear la reserva en este momento. Probá de nuevo o escribinos por WhatsApp.";
+      toast.error(msg, {
         action: {
           label: "WhatsApp",
           onClick: () => window.open(WHATSAPP_URL, "_blank"),
@@ -316,14 +328,14 @@ function ReservarPage() {
       sessionStorage.setItem(
         "washero:last-booking",
         JSON.stringify({
-          service_name: payload.service_name,
-          scheduled_date: payload.scheduled_date,
-          scheduled_time: payload.scheduled_time,
-          address: payload.address,
-          neighborhood: payload.neighborhood,
-          price: payload.price,
+          service_name: result.summary?.service_name ?? selectedService.name,
+          scheduled_date: result.summary?.scheduled_date ?? payload.scheduled_date,
+          scheduled_time: result.summary?.scheduled_time ?? payload.scheduled_time,
+          address: result.summary?.address ?? payload.address,
+          neighborhood: result.summary?.neighborhood ?? payload.neighborhood,
+          price: result.summary?.price ?? selectedService.base_price,
           payment_method: payload.payment_method,
-          booking_status: payload.booking_status,
+          booking_status: result.booking_status ?? "pending",
         }),
       );
     } catch {
