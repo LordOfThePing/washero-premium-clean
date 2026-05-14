@@ -14,6 +14,7 @@ import { Route as PublicRouteImport } from './routes/_public'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as PublicIndexRouteImport } from './routes/_public.index'
 import { Route as AdminReservasRouteImport } from './routes/admin.reservas'
+import { Route as AdminMensajesRouteImport } from './routes/admin.mensajes'
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
 import { Route as AdminDisponibilidadRouteImport } from './routes/admin.disponibilidad'
 import { Route as AdminConfiguracionRouteImport } from './routes/admin.configuracion'
@@ -44,6 +45,11 @@ const PublicIndexRoute = PublicIndexRouteImport.update({
 const AdminReservasRoute = AdminReservasRouteImport.update({
   id: '/reservas',
   path: '/reservas',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminMensajesRoute = AdminMensajesRouteImport.update({
+  id: '/mensajes',
+  path: '/mensajes',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminLoginRoute = AdminLoginRouteImport.update({
@@ -92,6 +98,7 @@ export interface FileRoutesByFullPath {
   '/admin/configuracion': typeof AdminConfiguracionRoute
   '/admin/disponibilidad': typeof AdminDisponibilidadRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/mensajes': typeof AdminMensajesRoute
   '/admin/reservas': typeof AdminReservasRoute
   '/admin/': typeof AdminIndexRoute
 }
@@ -103,6 +110,7 @@ export interface FileRoutesByTo {
   '/admin/configuracion': typeof AdminConfiguracionRoute
   '/admin/disponibilidad': typeof AdminDisponibilidadRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/mensajes': typeof AdminMensajesRoute
   '/admin/reservas': typeof AdminReservasRoute
   '/': typeof PublicIndexRoute
   '/admin': typeof AdminIndexRoute
@@ -118,6 +126,7 @@ export interface FileRoutesById {
   '/admin/configuracion': typeof AdminConfiguracionRoute
   '/admin/disponibilidad': typeof AdminDisponibilidadRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/mensajes': typeof AdminMensajesRoute
   '/admin/reservas': typeof AdminReservasRoute
   '/_public/': typeof PublicIndexRoute
   '/admin/': typeof AdminIndexRoute
@@ -134,6 +143,7 @@ export interface FileRouteTypes {
     | '/admin/configuracion'
     | '/admin/disponibilidad'
     | '/admin/login'
+    | '/admin/mensajes'
     | '/admin/reservas'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
@@ -145,6 +155,7 @@ export interface FileRouteTypes {
     | '/admin/configuracion'
     | '/admin/disponibilidad'
     | '/admin/login'
+    | '/admin/mensajes'
     | '/admin/reservas'
     | '/'
     | '/admin'
@@ -159,6 +170,7 @@ export interface FileRouteTypes {
     | '/admin/configuracion'
     | '/admin/disponibilidad'
     | '/admin/login'
+    | '/admin/mensajes'
     | '/admin/reservas'
     | '/_public/'
     | '/admin/'
@@ -204,6 +216,13 @@ declare module '@tanstack/react-router' {
       path: '/reservas'
       fullPath: '/admin/reservas'
       preLoaderRoute: typeof AdminReservasRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/mensajes': {
+      id: '/admin/mensajes'
+      path: '/mensajes'
+      fullPath: '/admin/mensajes'
+      preLoaderRoute: typeof AdminMensajesRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/login': {
@@ -279,6 +298,7 @@ interface AdminRouteChildren {
   AdminConfiguracionRoute: typeof AdminConfiguracionRoute
   AdminDisponibilidadRoute: typeof AdminDisponibilidadRoute
   AdminLoginRoute: typeof AdminLoginRoute
+  AdminMensajesRoute: typeof AdminMensajesRoute
   AdminReservasRoute: typeof AdminReservasRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
@@ -289,6 +309,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminConfiguracionRoute: AdminConfiguracionRoute,
   AdminDisponibilidadRoute: AdminDisponibilidadRoute,
   AdminLoginRoute: AdminLoginRoute,
+  AdminMensajesRoute: AdminMensajesRoute,
   AdminReservasRoute: AdminReservasRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
