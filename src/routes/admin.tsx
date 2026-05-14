@@ -4,13 +4,13 @@ export const Route = createFileRoute("/admin")({
   component: AdminLayout,
 });
 
-const NAV = [
+const NAV: { to: string; label: string; exact?: boolean }[] = [
   { to: "/admin", label: "Dashboard", exact: true },
   { to: "/admin/bookings", label: "Reservas" },
   { to: "/admin/calendar", label: "Calendario" },
   { to: "/admin/availability", label: "Disponibilidad" },
   { to: "/admin/settings", label: "Precios y ajustes" },
-] as const;
+];
 
 function AdminLayout() {
   const { pathname } = useLocation();
