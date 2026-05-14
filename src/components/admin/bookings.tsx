@@ -233,6 +233,40 @@ export function useQuickBookingStatus(opts?: { onSuccess?: () => void }) {
 // Detail (used inside <Dialog>)
 // ===========================================================================
 
+type LatestPayment = {
+  id: string;
+  provider: string;
+  provider_payment_id: string | null;
+  status: string;
+  amount: number;
+  updated_at: string;
+  raw_payload: Record<string, unknown> | null;
+};
+
+function useLatestPayment(bookingId: string) {
+  return useQuery({
+    queryKey: ["admin", "booking-payment", bookingId],
+    enabled: !!bookingId,
+    queryFn: async (): Promise<LatestPayment | null> => {
+      const { data } = await supabase
+        .from("payments")
+        .select("id,provider,provider_payment_id,status,amount,updated_at,raw_payload")
+        .eq("booking_id", bookingId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return (data as LatestPayment | null) ?? null;
+    },
+  });
+}
+
+const MANUAL_PAYMENT_STATUSES = [
+  { value: "paid", label: "Marcar como pagado" },
+  { value: "pending", label: "Marcar como pendiente" },
+  { value: "failed", label: "Marcar como fallido" },
+  { value: "refunded", label: "Marcar como reembolsado" },
+] as const;
+
 export function BookingDetail({
   booking,
   onEdit,
@@ -246,6 +280,58 @@ export function BookingDetail({
   onQuickStatus: (s: string) => void;
   busy: boolean;
 }) {
+  const qc = useQueryClient();
+  const latestPayment = useLatestPayment(booking.id);
+  const [pendingManual, setPendingManual] = useState<string | null>(null);
+  const [showRaw, setShowRaw] = useState(false);
+
+  const manualPay = useMutation({
+    mutationFn: async (newStatus: string) => {
+      const previous = booking.payment_status;
+      const { error: updErr } = await supabase
+        .from("bookings")
+        .update({ payment_status: newStatus, updated_at: new Date().toISOString() })
+        .eq("id", booking.id);
+      if (updErr) throw updErr;
+      const { error: payErr } = await supabase.from("payments").insert({
+        booking_id: booking.id,
+        provider: "manual",
+        amount: booking.price,
+        status: newStatus,
+        raw_payload: {
+          reason: "manual_admin_update",
+          previous_payment_status: previous,
+          new_payment_status: newStatus,
+        },
+      });
+      if (payErr) throw payErr;
+      await supabase.from("communication_logs").insert({
+        booking_id: booking.id,
+        provider: "manual",
+        channel: "admin",
+        direction: "internal",
+        message_text: `Pago actualizado manualmente por admin: ${newStatus}`,
+      });
+    },
+    onSuccess: (_d, newStatus) => {
+      toast.success(`Pago marcado como ${paymentStatusLabels[newStatus] ?? newStatus}.`);
+      qc.invalidateQueries({ queryKey: ["admin", "bookings"] });
+      qc.invalidateQueries({ queryKey: ["admin", "calendar"] });
+      qc.invalidateQueries({ queryKey: ["admin", "metrics"] });
+      qc.invalidateQueries({ queryKey: ["admin", "booking-payment", booking.id] });
+      qc.invalidateQueries({ queryKey: ["admin", "mp-payment-counts"] });
+      qc.invalidateQueries({ queryKey: ["admin", "mp-latest-payment"] });
+      booking.payment_status = newStatus;
+    },
+    onError: () => toast.error("No pudimos actualizar el estado del pago."),
+  });
+
+  const lp = latestPayment.data;
+  const rawStatus =
+    lp?.raw_payload && typeof lp.raw_payload === "object"
+      ? ((lp.raw_payload as Record<string, unknown>).status as string | undefined) ?? null
+      : null;
+
   return (
     <>
       <DialogHeader>
@@ -311,6 +397,75 @@ export function BookingDetail({
       </div>
 
       <div className="space-y-2 border-t pt-3">
+        <p className="text-xs font-medium text-muted-foreground">Pago</p>
+        <div className="rounded-md border bg-muted/30 p-2 text-xs space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <PaymentStatusBadge value={booking.payment_status} />
+            <span className="text-muted-foreground">·</span>
+            <span>{booking.payment_method}</span>
+          </div>
+          {latestPayment.isLoading ? (
+            <p className="text-muted-foreground">Cargando último pago…</p>
+          ) : lp ? (
+            <>
+              <p>
+                <span className="text-muted-foreground">Proveedor:</span> {lp.provider}
+                {lp.provider_payment_id && (
+                  <>
+                    {" · "}
+                    <span className="text-muted-foreground">ID:</span>{" "}
+                    <code className="font-mono">{lp.provider_payment_id}</code>
+                  </>
+                )}
+              </p>
+              <p>
+                <span className="text-muted-foreground">Actualizado:</span>{" "}
+                {new Date(lp.updated_at).toLocaleString("es-AR")}
+              </p>
+              {rawStatus && (
+                <p>
+                  <span className="text-muted-foreground">Estado bruto:</span> {rawStatus}
+                </p>
+              )}
+              {lp.raw_payload && (
+                <button
+                  type="button"
+                  className="text-xs text-primary underline"
+                  onClick={() => setShowRaw((s) => !s)}
+                >
+                  {showRaw ? "Ocultar payload" : "Ver payload"}
+                </button>
+              )}
+              {showRaw && (
+                <pre className="max-h-40 overflow-auto rounded bg-background p-2 text-[10px]">
+                  {JSON.stringify(lp.raw_payload, null, 2)}
+                </pre>
+              )}
+            </>
+          ) : (
+            <p className="text-muted-foreground">Sin registros de pago todavía.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-2 border-t pt-3">
+        <p className="text-xs font-medium text-muted-foreground">Marcar pago manualmente</p>
+        <div className="flex flex-wrap gap-2">
+          {MANUAL_PAYMENT_STATUSES.map((m) => (
+            <Button
+              key={m.value}
+              size="sm"
+              variant="outline"
+              disabled={manualPay.isPending}
+              onClick={() => setPendingManual(m.value)}
+            >
+              {m.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-2 border-t pt-3">
         <p className="text-xs font-medium text-muted-foreground">Acciones rápidas</p>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" disabled={busy} onClick={() => onQuickStatus("confirmed")}>
@@ -336,9 +491,37 @@ export function BookingDetail({
           <Pencil className="mr-1 h-4 w-4" /> Editar reserva
         </Button>
       </DialogFooter>
+
+      <AlertDialog open={!!pendingManual} onOpenChange={(o) => !o && setPendingManual(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Confirmar cambio de pago?</AlertDialogTitle>
+            <AlertDialogDescription>
+              El estado del pago pasará de{" "}
+              <strong>{paymentStatusLabels[booking.payment_status] ?? booking.payment_status}</strong>{" "}
+              a <strong>{pendingManual ? paymentStatusLabels[pendingManual] ?? pendingManual : ""}</strong>.
+              Quedará registrado en pagos y comunicaciones.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Volver</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingManual) {
+                  manualPay.mutate(pendingManual);
+                  setPendingManual(null);
+                }
+              }}
+            >
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
+
 
 // ===========================================================================
 // Edit form (used inside <Dialog>)
