@@ -65,7 +65,13 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const url = new URL(req.url);
-  const action = url.searchParams.get("action") ?? "status";
+  let action = url.searchParams.get("action") ?? "status";
+  if (req.method === "POST") {
+    try {
+      const body = await req.json();
+      if (body?.action) action = body.action;
+    } catch { /* ignore */ }
+  }
   const authHeader = req.headers.get("authorization");
 
   if (!(await isAdmin(authHeader))) {
