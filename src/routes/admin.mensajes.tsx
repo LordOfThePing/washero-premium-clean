@@ -55,6 +55,7 @@ function formatWhen(ts: string | null) {
 
 function MensajesPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [hideTest, setHideTest] = useState(true);
   const qc = useQueryClient();
 
   const conversations = useQuery({
@@ -81,23 +82,38 @@ function MensajesPage() {
     },
   });
 
-  const list = conversations.data ?? [];
-  const selected = list.find((c) => c.id === selectedId) ?? null;
+  const allList = conversations.data ?? [];
+  const list = useMemo(
+    () => (hideTest ? allList.filter((c) => !isTestConvo(c)) : allList),
+    [allList, hideTest]
+  );
+  const testCount = allList.filter(isTestConvo).length;
+  const selected = list.find((c) => c.id === selectedId) ?? allList.find((c) => c.id === selectedId) ?? null;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold flex items-center gap-2">
             <MessageSquare className="h-6 w-6" /> Mensajes / Botmaker
           </h1>
           <p className="text-sm text-muted-foreground">Conversaciones y eventos recibidos desde Botmaker.</p>
         </div>
-        <Button size="sm" variant="outline" onClick={() => {
-          qc.invalidateQueries({ queryKey: ["botmaker"] });
-        }}>
-          <RefreshCw className="mr-2 h-4 w-4" /> Actualizar
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant={hideTest ? "default" : "outline"}
+            onClick={() => setHideTest((v) => !v)}
+            title="Ocultar conversaciones marcadas como prueba"
+          >
+            {hideTest ? "Mostrando reales" : "Mostrando todo"} ({testCount} test)
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => {
+            qc.invalidateQueries({ queryKey: ["botmaker"] });
+          }}>
+            <RefreshCw className="mr-2 h-4 w-4" /> Actualizar
+          </Button>
+        </div>
       </div>
 
       {(invalidEvents.data ?? 0) > 0 && (
