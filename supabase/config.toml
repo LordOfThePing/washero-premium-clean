@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.mercadopago-webhook]
 verify_jwt = false
+
+[functions.mp-diagnostics]
+verify_jwt = false
