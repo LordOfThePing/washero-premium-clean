@@ -220,7 +220,10 @@ function ConversationDetail({ conversation }: { conversation: Conversation }) {
         {bookingRequest.data && (
           <div className="rounded-md border border-border/60 bg-muted/30 p-3">
             <div className="flex items-center justify-between">
-              <div className="text-sm font-medium">Solicitud de reserva ({bookingRequest.data.status})</div>
+              <div className="text-sm font-medium flex items-center gap-2">
+                Solicitud de reserva ({bookingRequest.data.status})
+                {bookingRequest.data.is_test && <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-300">test</Badge>}
+              </div>
               {bookingRequest.data.status !== "converted" ? (
                 <Button size="sm" onClick={() => setApproveOpen(true)}>
                   Aprobar y crear reserva <ArrowRight className="ml-1 h-3 w-3" />
