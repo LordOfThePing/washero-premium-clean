@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { CheckCircle2, MessageCircle, Home } from "lucide-react";
+import { z } from "zod";
+import { CheckCircle2, MessageCircle, Home, Clock, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -17,6 +18,10 @@ type LastBooking = {
   payment_method: string;
   booking_status: "pending" | "needs_review";
 };
+
+const searchSchema = z.object({
+  payment: z.enum(["success", "pending", "failure"]).optional(),
+});
 
 function formatARS(value: number) {
   return new Intl.NumberFormat("es-AR", {
@@ -38,13 +43,51 @@ function formatDateLong(iso: string) {
 }
 
 export const Route = createFileRoute("/_public/gracias")({
+  validateSearch: (s) => searchSchema.parse(s),
   head: () => ({
     meta: [{ title: "Reserva recibida — Washero" }],
   }),
   component: GraciasPage,
 });
 
+type PaymentState = "success" | "pending" | "failure" | null;
+
+function paymentCopy(state: PaymentState) {
+  switch (state) {
+    case "success":
+      return {
+        icon: CheckCircle2,
+        tone: "success" as const,
+        title: "Reserva recibida y pago iniciado",
+        text: "Reserva recibida y pago iniciado correctamente. Te vamos a confirmar por WhatsApp.",
+      };
+    case "pending":
+      return {
+        icon: Clock,
+        tone: "pending" as const,
+        title: "Reserva recibida — pago pendiente",
+        text: "Reserva recibida. El pago está pendiente de confirmación.",
+      };
+    case "failure":
+      return {
+        icon: AlertTriangle,
+        tone: "failure" as const,
+        title: "Reserva recibida — pago no completado",
+        text: "Reserva recibida, pero el pago no se completó. Te vamos a contactar para coordinar.",
+      };
+    default:
+      return {
+        icon: CheckCircle2,
+        tone: "success" as const,
+        title: "Reserva recibida 🚗✨",
+        text:
+          "Gracias por reservar con Washero. Recibimos tu solicitud y vamos a confirmarte los detalles por WhatsApp.",
+      };
+  }
+}
+
 function GraciasPage() {
+  const { payment } = Route.useSearch();
   const [last, setLast] = useState<LastBooking | null>(null);
 
   useEffect(() => {
@@ -57,20 +100,27 @@ function GraciasPage() {
   }, []);
 
   const needsReview = last?.booking_status === "needs_review";
+  const copy = paymentCopy(payment ?? null);
+  const Icon = copy.icon;
+
+  const toneClasses =
+    copy.tone === "success"
+      ? "bg-primary/15 text-primary"
+      : copy.tone === "pending"
+      ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+      : "bg-destructive/15 text-destructive";
 
   return (
     <div className="mx-auto max-w-xl px-4 py-12 sm:py-20">
       <Card className="border-border/60">
         <CardContent className="flex flex-col items-center p-8 text-center sm:p-10">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/15 text-primary">
-            <CheckCircle2 className="h-7 w-7" />
+          <div className={`flex h-14 w-14 items-center justify-center rounded-full ${toneClasses}`}>
+            <Icon className="h-7 w-7" />
           </div>
           <h1 className="mt-4 text-2xl font-bold tracking-tight sm:text-3xl">
-            Reserva recibida 🚗✨
+            {copy.title}
           </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Gracias por reservar con Washero. Recibimos tu solicitud y vamos a confirmarte los detalles por WhatsApp.
-          </p>
+          <p className="mt-2 text-sm text-muted-foreground">{copy.text}</p>
 
           {last && (
             <div className="mt-6 w-full rounded-lg border bg-muted/30 p-4 text-left text-sm">

@@ -9,7 +9,11 @@ const corsHeaders = {
 };
 
 const VEHICLE_TYPES = ["Auto", "SUV", "Pick-up", "Otro"] as const;
-const PAYMENT_METHODS = ["Pagar después", "Transferencia"] as const;
+const PAYMENT_METHODS = ["Pagar después", "Transferencia", "MercadoPago"] as const;
+
+const PROJECT_REF = "domslcbxgqbylmciqrxt";
+const SITE_ORIGIN = Deno.env.get("PUBLIC_SITE_URL") ?? "https://washero-premium-clean.lovable.app";
+const WEBHOOK_URL = `https://${PROJECT_REF}.supabase.co/functions/v1/mercadopago-webhook`;
 
 type Payload = {
   customer_name?: string;
@@ -217,19 +221,122 @@ Deno.serve(async (req) => {
     return json({ ok: false, status: "server_error", customer_message: "No pudimos crear la reserva. Probá de nuevo." }, 500);
   }
 
-  return json({
+  const baseSummary = {
+    service_name: service.name,
+    scheduled_date,
+    scheduled_time,
+    address,
+    neighborhood,
+    price: service.base_price,
+  };
+  const baseResponse = {
     ok: true,
-    status: "booking_created",
     booking_id: created.id,
     booking_status: created.booking_status,
+    payment_status: "pending",
+    summary: baseSummary,
+  };
+
+  // Mercado Pago path: create preference and payment row
+  if (payment_method === "MercadoPago") {
+    const MP_TOKEN = Deno.env.get("MERCADOPAGO_ACCESS_TOKEN");
+    if (!MP_TOKEN) {
+      console.error("MercadoPago selected but MERCADOPAGO_ACCESS_TOKEN missing");
+      return json({
+        ...baseResponse,
+        status: "booking_created_payment_setup_failed",
+        customer_message:
+          "Recibimos tu reserva, pero no pudimos abrir Mercado Pago. Te vamos a contactar por WhatsApp para coordinar el pago.",
+      });
+    }
+
+    const preferenceBody = {
+      items: [
+        {
+          title: `Washero - ${service.name}`,
+          quantity: 1,
+          currency_id: "ARS",
+          unit_price: service.base_price,
+        },
+      ],
+      payer: {
+        name: customer_name,
+        email: customer_email ?? undefined,
+      },
+      external_reference: created.id,
+      metadata: {
+        booking_id: created.id,
+        customer_phone,
+        service_name: service.name,
+        scheduled_date,
+        scheduled_time,
+      },
+      back_urls: {
+        success: `${SITE_ORIGIN}/gracias?payment=success`,
+        pending: `${SITE_ORIGIN}/gracias?payment=pending`,
+        failure: `${SITE_ORIGIN}/gracias?payment=failure`,
+      },
+      auto_return: "approved",
+      notification_url: WEBHOOK_URL,
+      statement_descriptor: "WASHERO",
+    };
+
+    let preference: Record<string, unknown> | null = null;
+    try {
+      const res = await fetch("https://api.mercadopago.com/checkout/preferences", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${MP_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(preferenceBody),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        console.error("MP preference failed", res.status, txt);
+      } else {
+        preference = await res.json();
+      }
+    } catch (e) {
+      console.error("MP preference exception", e);
+    }
+
+    // Always insert a payment row (pending) so admins see it
+    await admin.from("payments").insert({
+      booking_id: created.id,
+      provider: "mercadopago",
+      provider_payment_id: (preference?.id as string | undefined) ?? null,
+      amount: service.base_price,
+      status: "pending",
+      raw_payload: preference ?? { error: "preference_creation_failed" },
+    });
+
+    if (!preference) {
+      return json({
+        ...baseResponse,
+        status: "booking_created_payment_setup_failed",
+        customer_message:
+          "Recibimos tu reserva, pero no pudimos abrir Mercado Pago. Te vamos a contactar por WhatsApp para coordinar el pago.",
+      });
+    }
+
+    const checkoutUrl =
+      (preference.init_point as string | undefined) ??
+      (preference.sandbox_init_point as string | undefined) ??
+      null;
+
+    return json({
+      ...baseResponse,
+      status: "booking_created_payment_pending",
+      checkout_url: checkoutUrl,
+      customer_message:
+        "Reserva recibida. Te redirigimos a Mercado Pago para completar el pago.",
+    });
+  }
+
+  return json({
+    ...baseResponse,
+    status: "booking_created",
     customer_message: "Reserva recibida 🚗✨ Te vamos a confirmar los detalles por WhatsApp.",
-    summary: {
-      service_name: service.name,
-      scheduled_date,
-      scheduled_time,
-      address,
-      neighborhood,
-      price: service.base_price,
-    },
   });
 });

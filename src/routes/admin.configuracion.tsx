@@ -695,7 +695,7 @@ function ChecklistTab() {
     { label: "Clientes CRM funcionando", status: "done" },
     { label: "Servicios configurados", status: "done" },
     { label: "Zonas de cobertura configuradas", status: "done" },
-    { label: "Mercado Pago", status: "pending" },
+    { label: "Mercado Pago integrado (booking + webhook)", status: "done" },
     { label: "Botmaker", status: "pending" },
     { label: "WhatsApp automation", status: "pending" },
     { label: "Google Ads conversion", status: "soon" },

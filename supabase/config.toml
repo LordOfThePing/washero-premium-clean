@@ -2,3 +2,6 @@ project_id = "domslcbxgqbylmciqrxt"
 
 [functions.create-website-booking]
 verify_jwt = false
+
+[functions.mercadopago-webhook]
+verify_jwt = false
