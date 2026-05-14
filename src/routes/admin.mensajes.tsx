@@ -385,7 +385,7 @@ function ApproveDialog({
         payment_status: "pending",
         booking_status: "confirmed",
         booking_source: "botmaker",
-        notes: form.notes || null,
+        notes: [bookingRequest.is_test ? "[TEST]" : null, form.notes || null].filter(Boolean).join(" ") || null,
       }).select("id").single();
       if (bErr) throw bErr;
 
