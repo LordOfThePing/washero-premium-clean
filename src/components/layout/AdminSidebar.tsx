@@ -6,6 +6,7 @@ import {
   ClipboardList,
   Users,
   Settings,
+  MessageSquare,
 } from "lucide-react";
 import {
   Sidebar,
