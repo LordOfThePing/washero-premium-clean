@@ -32,7 +32,12 @@ type Conversation = {
   linked_customer_id: string | null;
   linked_booking_request_id: string | null;
   linked_booking_id: string | null;
+  raw_payload: any;
 };
+
+function isTestConvo(c: Conversation) {
+  return c.raw_payload?.is_test === true;
+}
 
 type Message = {
   id: string;
