@@ -679,6 +679,146 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 // ===========================================================================
+// MERCADO PAGO HEALTH
+// ===========================================================================
+
+const MP_WEBHOOK_URL = `https://${PROJECT_REF}.supabase.co/functions/v1/mercadopago-webhook`;
+
+function MercadoPagoHealthCard() {
+  const diagnostics = useQuery({
+    queryKey: ["admin", "mp-diagnostics"],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("mp-diagnostics", { body: {} });
+      if (error) throw error;
+      return data as {
+        mercadopago_access_token_configured: boolean;
+        mercadopago_token_kind: string | null;
+        public_site_url_configured: boolean;
+        public_site_url: string | null;
+        webhook_url: string;
+      };
+    },
+  });
+
+  const counts = useQuery({
+    queryKey: ["admin", "mp-payment-counts"],
+    queryFn: async () => {
+      const all = await supabase.from("payments").select("id", { count: "exact", head: true });
+      const pend = await supabase.from("payments").select("id", { count: "exact", head: true }).eq("status", "pending");
+      const paid = await supabase.from("payments").select("id", { count: "exact", head: true }).eq("status", "paid");
+      const failed = await supabase.from("payments").select("id", { count: "exact", head: true }).eq("status", "failed");
+      return {
+        all: all.count ?? 0,
+        pending: pend.count ?? 0,
+        paid: paid.count ?? 0,
+        failed: failed.count ?? 0,
+      };
+    },
+  });
+
+  const latestPayment = useQuery({
+    queryKey: ["admin", "mp-latest-payment"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("payments")
+        .select("id,provider,status,amount,updated_at,provider_payment_id")
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data;
+    },
+  });
+
+  const latestLog = useQuery({
+    queryKey: ["admin", "mp-latest-webhook-log"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("communication_logs")
+        .select("id,created_at,channel,direction,message_text")
+        .eq("provider", "mercadopago")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data;
+    },
+  });
+
+  const d = diagnostics.data;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Mercado Pago</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <div className="grid gap-2">
+          <Row
+            label="MERCADOPAGO_ACCESS_TOKEN"
+            value={
+              diagnostics.isLoading ? "…" : d?.mercadopago_access_token_configured ? (
+                <Badge className="bg-green-100 text-green-900 dark:bg-green-500/15 dark:text-green-300">
+                  Configurado{d.mercadopago_token_kind ? ` (${d.mercadopago_token_kind})` : ""}
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-amber-700 dark:text-amber-300">No configurado</Badge>
+              )
+            }
+          />
+          <Row
+            label="PUBLIC_SITE_URL"
+            value={
+              diagnostics.isLoading ? "…" : d?.public_site_url_configured ? (
+                <code className="font-mono text-xs">{d.public_site_url}</code>
+              ) : (
+                <Badge variant="outline" className="text-amber-700 dark:text-amber-300">No configurado (usando fallback)</Badge>
+              )
+            }
+          />
+          <Row label="Webhook URL" value={<code className="break-all font-mono text-[11px]">{MP_WEBHOOK_URL}</code>} />
+          <Row label="Pagos totales" value={counts.isLoading ? "…" : counts.data?.all} />
+          <Row label="Pagos pendientes" value={counts.isLoading ? "…" : counts.data?.pending} />
+          <Row label="Pagos aprobados" value={counts.isLoading ? "…" : counts.data?.paid} />
+          <Row label="Pagos fallidos" value={counts.isLoading ? "…" : counts.data?.failed} />
+          <Row
+            label="Último pago actualizado"
+            value={
+              latestPayment.isLoading
+                ? "…"
+                : latestPayment.data
+                ? `${latestPayment.data.provider} · ${latestPayment.data.status} · ${new Date(latestPayment.data.updated_at).toLocaleString("es-AR")}`
+                : "—"
+            }
+          />
+          <Row
+            label="Último webhook MP"
+            value={
+              latestLog.isLoading
+                ? "…"
+                : latestLog.data
+                ? `${new Date(latestLog.data.created_at).toLocaleString("es-AR")} · ${latestLog.data.message_text ?? ""}`
+                : "Sin notificaciones recibidas todavía"
+            }
+          />
+        </div>
+        <div className="rounded-md border bg-muted/30 p-3 text-xs space-y-1">
+          <p className="font-medium">Recordatorios de configuración</p>
+          <p>
+            En el panel de Mercado Pago, configurar el webhook con esta URL y evento{" "}
+            <code className="font-mono">payment</code>:
+          </p>
+          <code className="block break-all font-mono">{MP_WEBHOOK_URL}</code>
+          <p className="pt-1">
+            Cuando publiques <code className="font-mono">washero.ar</code>, configurar el secret{" "}
+            <code className="font-mono">PUBLIC_SITE_URL=https://washero.ar</code> en las funciones de Supabase.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+
+// ===========================================================================
 // CHECKLIST
 // ===========================================================================
 
