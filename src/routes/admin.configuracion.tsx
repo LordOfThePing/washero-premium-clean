@@ -838,7 +838,7 @@ function ChecklistTab() {
     { label: "Servicios configurados", status: "done" },
     { label: "Zonas de cobertura configuradas", status: "done" },
     { label: "Mercado Pago integrado (booking + webhook)", status: "done" },
-    { label: "Botmaker", status: "pending" },
+    { label: "Botmaker (webhook + admin/mensajes)", status: "done" },
     { label: "WhatsApp automation", status: "pending" },
     { label: "Google Ads conversion", status: "soon" },
     { label: "Producción mobile responsive", status: "done" },
