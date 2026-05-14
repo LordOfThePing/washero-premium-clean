@@ -9,29 +9,26 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as BookingRouteImport } from './routes/booking'
 import { Route as AdminRouteImport } from './routes/admin'
-import { Route as IndexRouteImport } from './routes/index'
+import { Route as PublicRouteImport } from './routes/_public'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
-import { Route as AdminSettingsRouteImport } from './routes/admin.settings'
+import { Route as PublicIndexRouteImport } from './routes/_public.index'
+import { Route as AdminReservasRouteImport } from './routes/admin.reservas'
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
-import { Route as AdminCalendarRouteImport } from './routes/admin.calendar'
-import { Route as AdminBookingsRouteImport } from './routes/admin.bookings'
-import { Route as AdminAvailabilityRouteImport } from './routes/admin.availability'
+import { Route as AdminDisponibilidadRouteImport } from './routes/admin.disponibilidad'
+import { Route as AdminConfiguracionRouteImport } from './routes/admin.configuracion'
+import { Route as AdminClientesRouteImport } from './routes/admin.clientes'
+import { Route as AdminCalendarioRouteImport } from './routes/admin.calendario'
+import { Route as PublicReservarRouteImport } from './routes/_public.reservar'
+import { Route as PublicGraciasRouteImport } from './routes/_public.gracias'
 
-const BookingRoute = BookingRouteImport.update({
-  id: '/booking',
-  path: '/booking',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const PublicRoute = PublicRouteImport.update({
+  id: '/_public',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
@@ -39,9 +36,14 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRoute,
 } as any)
-const AdminSettingsRoute = AdminSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
+const PublicIndexRoute = PublicIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PublicRoute,
+} as any)
+const AdminReservasRoute = AdminReservasRouteImport.update({
+  id: '/reservas',
+  path: '/reservas',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminLoginRoute = AdminLoginRouteImport.update({
@@ -49,53 +51,75 @@ const AdminLoginRoute = AdminLoginRouteImport.update({
   path: '/login',
   getParentRoute: () => AdminRoute,
 } as any)
-const AdminCalendarRoute = AdminCalendarRouteImport.update({
-  id: '/calendar',
-  path: '/calendar',
+const AdminDisponibilidadRoute = AdminDisponibilidadRouteImport.update({
+  id: '/disponibilidad',
+  path: '/disponibilidad',
   getParentRoute: () => AdminRoute,
 } as any)
-const AdminBookingsRoute = AdminBookingsRouteImport.update({
-  id: '/bookings',
-  path: '/bookings',
+const AdminConfiguracionRoute = AdminConfiguracionRouteImport.update({
+  id: '/configuracion',
+  path: '/configuracion',
   getParentRoute: () => AdminRoute,
 } as any)
-const AdminAvailabilityRoute = AdminAvailabilityRouteImport.update({
-  id: '/availability',
-  path: '/availability',
+const AdminClientesRoute = AdminClientesRouteImport.update({
+  id: '/clientes',
+  path: '/clientes',
   getParentRoute: () => AdminRoute,
+} as any)
+const AdminCalendarioRoute = AdminCalendarioRouteImport.update({
+  id: '/calendario',
+  path: '/calendario',
+  getParentRoute: () => AdminRoute,
+} as any)
+const PublicReservarRoute = PublicReservarRouteImport.update({
+  id: '/reservar',
+  path: '/reservar',
+  getParentRoute: () => PublicRoute,
+} as any)
+const PublicGraciasRoute = PublicGraciasRouteImport.update({
+  id: '/gracias',
+  path: '/gracias',
+  getParentRoute: () => PublicRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
+  '/': typeof PublicIndexRoute
   '/admin': typeof AdminRouteWithChildren
-  '/booking': typeof BookingRoute
-  '/admin/availability': typeof AdminAvailabilityRoute
-  '/admin/bookings': typeof AdminBookingsRoute
-  '/admin/calendar': typeof AdminCalendarRoute
+  '/gracias': typeof PublicGraciasRoute
+  '/reservar': typeof PublicReservarRoute
+  '/admin/calendario': typeof AdminCalendarioRoute
+  '/admin/clientes': typeof AdminClientesRoute
+  '/admin/configuracion': typeof AdminConfiguracionRoute
+  '/admin/disponibilidad': typeof AdminDisponibilidadRoute
   '/admin/login': typeof AdminLoginRoute
-  '/admin/settings': typeof AdminSettingsRoute
+  '/admin/reservas': typeof AdminReservasRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/booking': typeof BookingRoute
-  '/admin/availability': typeof AdminAvailabilityRoute
-  '/admin/bookings': typeof AdminBookingsRoute
-  '/admin/calendar': typeof AdminCalendarRoute
+  '/gracias': typeof PublicGraciasRoute
+  '/reservar': typeof PublicReservarRoute
+  '/admin/calendario': typeof AdminCalendarioRoute
+  '/admin/clientes': typeof AdminClientesRoute
+  '/admin/configuracion': typeof AdminConfiguracionRoute
+  '/admin/disponibilidad': typeof AdminDisponibilidadRoute
   '/admin/login': typeof AdminLoginRoute
-  '/admin/settings': typeof AdminSettingsRoute
+  '/admin/reservas': typeof AdminReservasRoute
+  '/': typeof PublicIndexRoute
   '/admin': typeof AdminIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
+  '/_public': typeof PublicRouteWithChildren
   '/admin': typeof AdminRouteWithChildren
-  '/booking': typeof BookingRoute
-  '/admin/availability': typeof AdminAvailabilityRoute
-  '/admin/bookings': typeof AdminBookingsRoute
-  '/admin/calendar': typeof AdminCalendarRoute
+  '/_public/gracias': typeof PublicGraciasRoute
+  '/_public/reservar': typeof PublicReservarRoute
+  '/admin/calendario': typeof AdminCalendarioRoute
+  '/admin/clientes': typeof AdminClientesRoute
+  '/admin/configuracion': typeof AdminConfiguracionRoute
+  '/admin/disponibilidad': typeof AdminDisponibilidadRoute
   '/admin/login': typeof AdminLoginRoute
-  '/admin/settings': typeof AdminSettingsRoute
+  '/admin/reservas': typeof AdminReservasRoute
+  '/_public/': typeof PublicIndexRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRouteTypes {
@@ -103,51 +127,50 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
-    | '/booking'
-    | '/admin/availability'
-    | '/admin/bookings'
-    | '/admin/calendar'
+    | '/gracias'
+    | '/reservar'
+    | '/admin/calendario'
+    | '/admin/clientes'
+    | '/admin/configuracion'
+    | '/admin/disponibilidad'
     | '/admin/login'
-    | '/admin/settings'
+    | '/admin/reservas'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/'
-    | '/booking'
-    | '/admin/availability'
-    | '/admin/bookings'
-    | '/admin/calendar'
+    | '/gracias'
+    | '/reservar'
+    | '/admin/calendario'
+    | '/admin/clientes'
+    | '/admin/configuracion'
+    | '/admin/disponibilidad'
     | '/admin/login'
-    | '/admin/settings'
+    | '/admin/reservas'
+    | '/'
     | '/admin'
   id:
     | '__root__'
-    | '/'
+    | '/_public'
     | '/admin'
-    | '/booking'
-    | '/admin/availability'
-    | '/admin/bookings'
-    | '/admin/calendar'
+    | '/_public/gracias'
+    | '/_public/reservar'
+    | '/admin/calendario'
+    | '/admin/clientes'
+    | '/admin/configuracion'
+    | '/admin/disponibilidad'
     | '/admin/login'
-    | '/admin/settings'
+    | '/admin/reservas'
+    | '/_public/'
     | '/admin/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
+  PublicRoute: typeof PublicRouteWithChildren
   AdminRoute: typeof AdminRouteWithChildren
-  BookingRoute: typeof BookingRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/booking': {
-      id: '/booking'
-      path: '/booking'
-      fullPath: '/booking'
-      preLoaderRoute: typeof BookingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/admin': {
       id: '/admin'
       path: '/admin'
@@ -155,11 +178,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
+    '/_public': {
+      id: '/_public'
+      path: ''
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+      preLoaderRoute: typeof PublicRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/': {
@@ -169,11 +192,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
     }
-    '/admin/settings': {
-      id: '/admin/settings'
-      path: '/settings'
-      fullPath: '/admin/settings'
-      preLoaderRoute: typeof AdminSettingsRouteImport
+    '/_public/': {
+      id: '/_public/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof PublicIndexRouteImport
+      parentRoute: typeof PublicRoute
+    }
+    '/admin/reservas': {
+      id: '/admin/reservas'
+      path: '/reservas'
+      fullPath: '/admin/reservas'
+      preLoaderRoute: typeof AdminReservasRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/login': {
@@ -183,54 +213,91 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminLoginRouteImport
       parentRoute: typeof AdminRoute
     }
-    '/admin/calendar': {
-      id: '/admin/calendar'
-      path: '/calendar'
-      fullPath: '/admin/calendar'
-      preLoaderRoute: typeof AdminCalendarRouteImport
+    '/admin/disponibilidad': {
+      id: '/admin/disponibilidad'
+      path: '/disponibilidad'
+      fullPath: '/admin/disponibilidad'
+      preLoaderRoute: typeof AdminDisponibilidadRouteImport
       parentRoute: typeof AdminRoute
     }
-    '/admin/bookings': {
-      id: '/admin/bookings'
-      path: '/bookings'
-      fullPath: '/admin/bookings'
-      preLoaderRoute: typeof AdminBookingsRouteImport
+    '/admin/configuracion': {
+      id: '/admin/configuracion'
+      path: '/configuracion'
+      fullPath: '/admin/configuracion'
+      preLoaderRoute: typeof AdminConfiguracionRouteImport
       parentRoute: typeof AdminRoute
     }
-    '/admin/availability': {
-      id: '/admin/availability'
-      path: '/availability'
-      fullPath: '/admin/availability'
-      preLoaderRoute: typeof AdminAvailabilityRouteImport
+    '/admin/clientes': {
+      id: '/admin/clientes'
+      path: '/clientes'
+      fullPath: '/admin/clientes'
+      preLoaderRoute: typeof AdminClientesRouteImport
       parentRoute: typeof AdminRoute
+    }
+    '/admin/calendario': {
+      id: '/admin/calendario'
+      path: '/calendario'
+      fullPath: '/admin/calendario'
+      preLoaderRoute: typeof AdminCalendarioRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/_public/reservar': {
+      id: '/_public/reservar'
+      path: '/reservar'
+      fullPath: '/reservar'
+      preLoaderRoute: typeof PublicReservarRouteImport
+      parentRoute: typeof PublicRoute
+    }
+    '/_public/gracias': {
+      id: '/_public/gracias'
+      path: '/gracias'
+      fullPath: '/gracias'
+      preLoaderRoute: typeof PublicGraciasRouteImport
+      parentRoute: typeof PublicRoute
     }
   }
 }
 
+interface PublicRouteChildren {
+  PublicGraciasRoute: typeof PublicGraciasRoute
+  PublicReservarRoute: typeof PublicReservarRoute
+  PublicIndexRoute: typeof PublicIndexRoute
+}
+
+const PublicRouteChildren: PublicRouteChildren = {
+  PublicGraciasRoute: PublicGraciasRoute,
+  PublicReservarRoute: PublicReservarRoute,
+  PublicIndexRoute: PublicIndexRoute,
+}
+
+const PublicRouteWithChildren =
+  PublicRoute._addFileChildren(PublicRouteChildren)
+
 interface AdminRouteChildren {
-  AdminAvailabilityRoute: typeof AdminAvailabilityRoute
-  AdminBookingsRoute: typeof AdminBookingsRoute
-  AdminCalendarRoute: typeof AdminCalendarRoute
+  AdminCalendarioRoute: typeof AdminCalendarioRoute
+  AdminClientesRoute: typeof AdminClientesRoute
+  AdminConfiguracionRoute: typeof AdminConfiguracionRoute
+  AdminDisponibilidadRoute: typeof AdminDisponibilidadRoute
   AdminLoginRoute: typeof AdminLoginRoute
-  AdminSettingsRoute: typeof AdminSettingsRoute
+  AdminReservasRoute: typeof AdminReservasRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
-  AdminAvailabilityRoute: AdminAvailabilityRoute,
-  AdminBookingsRoute: AdminBookingsRoute,
-  AdminCalendarRoute: AdminCalendarRoute,
+  AdminCalendarioRoute: AdminCalendarioRoute,
+  AdminClientesRoute: AdminClientesRoute,
+  AdminConfiguracionRoute: AdminConfiguracionRoute,
+  AdminDisponibilidadRoute: AdminDisponibilidadRoute,
   AdminLoginRoute: AdminLoginRoute,
-  AdminSettingsRoute: AdminSettingsRoute,
+  AdminReservasRoute: AdminReservasRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
+  PublicRoute: PublicRouteWithChildren,
   AdminRoute: AdminRouteWithChildren,
-  BookingRoute: BookingRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
