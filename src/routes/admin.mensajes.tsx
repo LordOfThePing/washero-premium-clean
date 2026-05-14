@@ -152,6 +152,7 @@ function MensajesPage() {
                       </div>
                       <div className="text-xs text-muted-foreground truncate mt-0.5">{c.last_message || "—"}</div>
                       <div className="flex gap-1 mt-1 flex-wrap">
+                        {isTestConvo(c) && <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-300">test</Badge>}
                         {c.linked_booking_request_id && <Badge variant="secondary" className="text-[10px]">solicitud</Badge>}
                         {c.linked_booking_id && <Badge className="text-[10px]">reserva</Badge>}
                       </div>
