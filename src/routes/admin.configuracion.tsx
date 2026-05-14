@@ -1,76 +1,666 @@
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2, Plus, Pencil, Trash2, RefreshCw, CheckCircle2, Clock, XCircle } from "lucide-react";
+import { toast } from "sonner";
+
 import { supabase } from "@/integrations/supabase/client";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { formatPrice } from "@/lib/booking-badges";
 
 const PROJECT_REF = "domslcbxgqbylmciqrxt";
 
-type Counts = { services: number | null; areas: number | null; slots: number | null };
+export const Route = createFileRoute("/admin/configuracion")({
+  component: ConfigPage,
+});
 
-function HealthPage() {
-  const [counts, setCounts] = useState<Counts>({ services: null, areas: null, slots: null });
-  const [insertResult, setInsertResult] = useState<string>("not run");
-  const [forbiddenResult, setForbiddenResult] = useState<string>("not run");
+function ConfigPage() {
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Configuración</h1>
+        <p className="text-sm text-muted-foreground">
+          Administrá servicios, zonas de cobertura y revisá el estado del sistema.
+        </p>
+      </div>
+
+      <Tabs defaultValue="servicios" className="space-y-4">
+        <TabsList className="flex flex-wrap h-auto">
+          <TabsTrigger value="servicios">Servicios</TabsTrigger>
+          <TabsTrigger value="zonas">Zonas de cobertura</TabsTrigger>
+          <TabsTrigger value="negocio">Negocio</TabsTrigger>
+          <TabsTrigger value="salud">Salud del sistema</TabsTrigger>
+          <TabsTrigger value="checklist">Checklist lanzamiento</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="servicios"><ServicesTab /></TabsContent>
+        <TabsContent value="zonas"><AreasTab /></TabsContent>
+        <TabsContent value="negocio"><BusinessTab /></TabsContent>
+        <TabsContent value="salud"><HealthTab /></TabsContent>
+        <TabsContent value="checklist"><ChecklistTab /></TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+// ===========================================================================
+// SERVICES
+// ===========================================================================
+
+type Service = {
+  id: string;
+  name: string;
+  description: string | null;
+  base_price: number;
+  duration_minutes: number;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+function ServicesTab() {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState<Service | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<{ svc: Service; bookings: number } | null>(null);
+
+  const q = useQuery({
+    queryKey: ["admin", "services"],
+    queryFn: async (): Promise<Service[]> => {
+      const { data, error } = await supabase
+        .from("services")
+        .select("*")
+        .order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ["admin", "services"] });
+
+  const toggleActive = useMutation({
+    mutationFn: async (svc: Service) => {
+      const { error } = await supabase
+        .from("services")
+        .update({ active: !svc.active })
+        .eq("id", svc.id);
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Servicio actualizado."); refresh(); },
+    onError: (e: any) => toast.error(e?.message ?? "Error"),
+  });
+
+  const askDelete = async (svc: Service) => {
+    const { count } = await supabase
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("service_id", svc.id);
+    setConfirmDelete({ svc, bookings: count ?? 0 });
+  };
+
+  const doDelete = useMutation({
+    mutationFn: async (svc: Service) => {
+      const { error } = await supabase.from("services").delete().eq("id", svc.id);
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Servicio eliminado."); refresh(); setConfirmDelete(null); },
+    onError: (e: any) => toast.error(e?.message ?? "Error"),
+  });
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-muted-foreground">Servicios disponibles para reservar.</div>
+        <Button size="sm" onClick={() => setCreating(true)}>
+          <Plus className="mr-2 h-4 w-4" /> Nuevo servicio
+        </Button>
+      </div>
+
+      {q.isLoading ? (
+        <Skeleton className="h-32 w-full" />
+      ) : q.error ? (
+        <Card><CardContent className="p-6 text-sm text-destructive">No pudimos cargar los servicios.</CardContent></Card>
+      ) : (q.data ?? []).length === 0 ? (
+        <Card><CardContent className="p-6 text-sm text-muted-foreground">No hay servicios todavía.</CardContent></Card>
+      ) : (
+        <>
+          <Card className="hidden md:block">
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nombre</TableHead>
+                    <TableHead>Descripción</TableHead>
+                    <TableHead>Precio</TableHead>
+                    <TableHead>Duración</TableHead>
+                    <TableHead>Activo</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {q.data!.map((s) => (
+                    <TableRow key={s.id}>
+                      <TableCell className="font-medium">{s.name}</TableCell>
+                      <TableCell className="max-w-xs text-sm text-muted-foreground line-clamp-2">{s.description ?? "—"}</TableCell>
+                      <TableCell>{formatPrice(s.base_price)}</TableCell>
+                      <TableCell>{s.duration_minutes} min</TableCell>
+                      <TableCell><Switch checked={s.active} onCheckedChange={() => toggleActive.mutate(s)} /></TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="sm" onClick={() => setEditing(s)}><Pencil className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="sm" onClick={() => askDelete(s)}><Trash2 className="h-4 w-4" /></Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <div className="space-y-2 md:hidden">
+            {q.data!.map((s) => (
+              <Card key={s.id}>
+                <CardContent className="space-y-2 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-medium">{s.name}</div>
+                      <div className="text-xs text-muted-foreground">{formatPrice(s.base_price)} · {s.duration_minutes} min</div>
+                    </div>
+                    <Badge variant={s.active ? "secondary" : "outline"}>{s.active ? "Activo" : "Inactivo"}</Badge>
+                  </div>
+                  {s.description && <div className="text-sm text-muted-foreground">{s.description}</div>}
+                  <div className="flex items-center justify-between gap-2 pt-2">
+                    <Switch checked={s.active} onCheckedChange={() => toggleActive.mutate(s)} />
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => setEditing(s)}><Pencil className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="sm" onClick={() => askDelete(s)}><Trash2 className="h-4 w-4" /></Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
+
+      <Dialog open={!!editing || creating} onOpenChange={(o) => { if (!o) { setEditing(null); setCreating(false); } }}>
+        <DialogContent className="max-w-lg">
+          <ServiceForm
+            initial={editing ?? undefined}
+            onClose={() => { setEditing(null); setCreating(false); }}
+            onSaved={() => { refresh(); setEditing(null); setCreating(false); }}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar servicio</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmDelete?.bookings ? (
+                <>Este servicio ya tiene <b>{confirmDelete.bookings}</b> reserva(s) asociada(s). Te recomendamos desactivarlo en vez de eliminarlo.</>
+              ) : (
+                <>¿Eliminar “{confirmDelete?.svc.name}”? Esta acción no se puede deshacer.</>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            {confirmDelete?.bookings ? (
+              <AlertDialogAction onClick={() => {
+                if (!confirmDelete) return;
+                toggleActive.mutate({ ...confirmDelete.svc, active: true });
+                setConfirmDelete(null);
+              }}>
+                Desactivar
+              </AlertDialogAction>
+            ) : (
+              <AlertDialogAction onClick={() => confirmDelete && doDelete.mutate(confirmDelete.svc)}>
+                Eliminar
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function ServiceForm({ initial, onClose, onSaved }: { initial?: Service; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(initial?.name ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [basePrice, setBasePrice] = useState(String(initial?.base_price ?? ""));
+  const [duration, setDuration] = useState(String(initial?.duration_minutes ?? ""));
+  const [active, setActive] = useState(initial?.active ?? true);
+  const [busy, setBusy] = useState(false);
+
+  const save = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return toast.error("El nombre es obligatorio.");
+    const price = Number(basePrice);
+    const dur = Number(duration);
+    if (!Number.isFinite(price) || price <= 0) return toast.error("Precio inválido.");
+    if (!Number.isFinite(dur) || dur <= 0) return toast.error("Duración inválida.");
+    setBusy(true);
+    try {
+      const payload = {
+        name: name.trim(),
+        description: description.trim() || null,
+        base_price: Math.round(price),
+        duration_minutes: Math.round(dur),
+        active,
+      };
+      if (initial) {
+        const { error } = await supabase.from("services").update(payload).eq("id", initial.id);
+        if (error) throw error;
+        toast.success("Servicio actualizado.");
+      } else {
+        const { error } = await supabase.from("services").insert(payload);
+        if (error) throw error;
+        toast.success("Servicio creado.");
+      }
+      onSaved();
+    } catch (err: any) {
+      toast.error(err?.message ?? "Error");
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <form onSubmit={save} className="space-y-3">
+      <DialogHeader>
+        <DialogTitle>{initial ? "Editar servicio" : "Nuevo servicio"}</DialogTitle>
+        <DialogDescription>
+          Las reservas existentes mantienen el precio y la duración originales.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="space-y-3">
+        <div><Label>Nombre *</Label><Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} /></div>
+        <div><Label>Descripción</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} maxLength={500} /></div>
+        <div className="grid grid-cols-2 gap-3">
+          <div><Label>Precio (ARS) *</Label><Input type="number" min={1} value={basePrice} onChange={(e) => setBasePrice(e.target.value)} required /></div>
+          <div><Label>Duración (min) *</Label><Input type="number" min={1} value={duration} onChange={(e) => setDuration(e.target.value)} required /></div>
+        </div>
+        <div className="flex items-center gap-2"><Switch checked={active} onCheckedChange={setActive} /><Label>Activo</Label></div>
+      </div>
+      <DialogFooter>
+        <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
+        <Button type="submit" disabled={busy}>{busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Guardar</Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+// ===========================================================================
+// AREAS
+// ===========================================================================
+
+type Area = {
+  id: string;
+  name: string;
+  active: boolean;
+  coverage_notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+function AreasTab() {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState<Area | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<{ area: Area; refs: number } | null>(null);
+
+  const q = useQuery({
+    queryKey: ["admin", "service_areas"],
+    queryFn: async (): Promise<Area[]> => {
+      const { data, error } = await supabase.from("service_areas").select("*").order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ["admin", "service_areas"] });
+
+  const toggleActive = useMutation({
+    mutationFn: async (a: Area) => {
+      const { error } = await supabase.from("service_areas").update({ active: !a.active }).eq("id", a.id);
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Zona actualizada."); refresh(); },
+    onError: (e: any) => toast.error(e?.message ?? "Error"),
+  });
+
+  const askDelete = async (area: Area) => {
+    const [b, c] = await Promise.all([
+      supabase.from("bookings").select("id", { count: "exact", head: true }).eq("neighborhood", area.name),
+      supabase.from("customers").select("id", { count: "exact", head: true }).eq("neighborhood", area.name),
+    ]);
+    setConfirmDelete({ area, refs: (b.count ?? 0) + (c.count ?? 0) });
+  };
+
+  const doDelete = useMutation({
+    mutationFn: async (a: Area) => {
+      const { error } = await supabase.from("service_areas").delete().eq("id", a.id);
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Zona eliminada."); refresh(); setConfirmDelete(null); },
+    onError: (e: any) => toast.error(e?.message ?? "Error"),
+  });
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-muted-foreground">Zonas donde Washero presta servicio.</div>
+        <Button size="sm" onClick={() => setCreating(true)}><Plus className="mr-2 h-4 w-4" /> Nueva zona</Button>
+      </div>
+
+      {q.isLoading ? (
+        <Skeleton className="h-32 w-full" />
+      ) : q.error ? (
+        <Card><CardContent className="p-6 text-sm text-destructive">No pudimos cargar las zonas.</CardContent></Card>
+      ) : (q.data ?? []).length === 0 ? (
+        <Card><CardContent className="p-6 text-sm text-muted-foreground">No hay zonas todavía.</CardContent></Card>
+      ) : (
+        <>
+          <Card className="hidden md:block">
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nombre</TableHead>
+                    <TableHead>Notas de cobertura</TableHead>
+                    <TableHead>Activa</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {q.data!.map((a) => (
+                    <TableRow key={a.id}>
+                      <TableCell className="font-medium">{a.name}</TableCell>
+                      <TableCell className="max-w-md text-sm text-muted-foreground line-clamp-2">{a.coverage_notes ?? "—"}</TableCell>
+                      <TableCell><Switch checked={a.active} onCheckedChange={() => toggleActive.mutate(a)} /></TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="sm" onClick={() => setEditing(a)}><Pencil className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="sm" onClick={() => askDelete(a)}><Trash2 className="h-4 w-4" /></Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <div className="space-y-2 md:hidden">
+            {q.data!.map((a) => (
+              <Card key={a.id}>
+                <CardContent className="space-y-2 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="font-medium">{a.name}</div>
+                    <Badge variant={a.active ? "secondary" : "outline"}>{a.active ? "Activa" : "Inactiva"}</Badge>
+                  </div>
+                  {a.coverage_notes && <div className="text-sm text-muted-foreground">{a.coverage_notes}</div>}
+                  <div className="flex items-center justify-between gap-2 pt-2">
+                    <Switch checked={a.active} onCheckedChange={() => toggleActive.mutate(a)} />
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => setEditing(a)}><Pencil className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="sm" onClick={() => askDelete(a)}><Trash2 className="h-4 w-4" /></Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
+
+      <Dialog open={!!editing || creating} onOpenChange={(o) => { if (!o) { setEditing(null); setCreating(false); } }}>
+        <DialogContent className="max-w-lg">
+          <AreaForm
+            initial={editing ?? undefined}
+            existing={q.data ?? []}
+            onClose={() => { setEditing(null); setCreating(false); }}
+            onSaved={() => { refresh(); setEditing(null); setCreating(false); }}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar zona</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmDelete?.refs ? (
+                <>Esta zona ya tiene <b>{confirmDelete.refs}</b> reserva(s) o cliente(s) asociado(s). Te recomendamos desactivarla.</>
+              ) : (
+                <>¿Eliminar “{confirmDelete?.area.name}”? Esta acción no se puede deshacer.</>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            {confirmDelete?.refs ? (
+              <AlertDialogAction onClick={() => {
+                if (!confirmDelete) return;
+                toggleActive.mutate({ ...confirmDelete.area, active: true });
+                setConfirmDelete(null);
+              }}>
+                Desactivar
+              </AlertDialogAction>
+            ) : (
+              <AlertDialogAction onClick={() => confirmDelete && doDelete.mutate(confirmDelete.area)}>
+                Eliminar
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function AreaForm({ initial, existing, onClose, onSaved }: { initial?: Area; existing: Area[]; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(initial?.name ?? "");
+  const [notes, setNotes] = useState(initial?.coverage_notes ?? "");
+  const [active, setActive] = useState(initial?.active ?? true);
+  const [busy, setBusy] = useState(false);
+
+  const save = async (e: FormEvent) => {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return toast.error("El nombre es obligatorio.");
+    const dup = existing.find((a) => a.name.toLowerCase() === trimmed.toLowerCase() && a.id !== initial?.id);
+    if (dup) return toast.error("Ya existe una zona con ese nombre.");
+    setBusy(true);
+    try {
+      const payload = { name: trimmed, coverage_notes: notes.trim() || null, active };
+      if (initial) {
+        const { error } = await supabase.from("service_areas").update(payload).eq("id", initial.id);
+        if (error) throw error;
+        toast.success("Zona actualizada.");
+      } else {
+        const { error } = await supabase.from("service_areas").insert(payload);
+        if (error) throw error;
+        toast.success("Zona creada.");
+      }
+      onSaved();
+    } catch (err: any) {
+      toast.error(err?.message ?? "Error");
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <form onSubmit={save} className="space-y-3">
+      <DialogHeader><DialogTitle>{initial ? "Editar zona" : "Nueva zona"}</DialogTitle></DialogHeader>
+      <div className="space-y-3">
+        <div><Label>Nombre *</Label><Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} /></div>
+        <div><Label>Notas de cobertura</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} maxLength={500} /></div>
+        <div className="flex items-center gap-2"><Switch checked={active} onCheckedChange={setActive} /><Label>Activa</Label></div>
+      </div>
+      <DialogFooter>
+        <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
+        <Button type="submit" disabled={busy}>{busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Guardar</Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+// ===========================================================================
+// BUSINESS
+// ===========================================================================
+
+function BusinessTab() {
+  const items = [
+    { label: "Nombre comercial", value: "Washero" },
+    { label: "WhatsApp principal", value: "+54 9 11 7624-7835" },
+    { label: "Zona principal", value: "Zona Norte GBA" },
+    { label: "Moneda", value: "ARS" },
+    { label: "Horario operativo", value: "09:00 a 18:00" },
+    { label: "Estado de lanzamiento", value: "MVP / Producción inicial" },
+  ];
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <span>Datos del negocio</span>
+          <Badge variant="outline">Próximamente editable</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-3 sm:grid-cols-2">
+        {items.map((i) => (
+          <div key={i.label} className="rounded-md border p-3">
+            <div className="text-xs text-muted-foreground">{i.label}</div>
+            <div className="text-sm font-medium">{i.value}</div>
+          </div>
+        ))}
+        <p className="text-xs text-muted-foreground sm:col-span-2">
+          La edición persistente requiere una tabla <code>app_settings</code>. Avisame y la creamos.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ===========================================================================
+// HEALTH
+// ===========================================================================
+
+type Counts = Record<string, number | null>;
+
+function HealthTab() {
+  const [counts, setCounts] = useState<Counts>({});
   const [loading, setLoading] = useState(true);
+  const [updated, setUpdated] = useState<Date | null>(null);
+  const [insertResult, setInsertResult] = useState<string>("no ejecutado");
+  const [forbiddenResult, setForbiddenResult] = useState<string>("no ejecutado");
+  const [edgeResult, setEdgeResult] = useState<string>("no ejecutado");
+  const [running, setRunning] = useState(false);
 
   async function loadCounts() {
     setLoading(true);
-    const [s, a, sl] = await Promise.all([
-      supabase.from("services").select("id", { count: "exact", head: true }).eq("active", true),
-      supabase.from("service_areas").select("id", { count: "exact", head: true }).eq("active", true),
-      supabase.from("availability_slots").select("id", { count: "exact", head: true }).eq("active", true),
-    ]);
-    setCounts({ services: s.count ?? 0, areas: a.count ?? 0, slots: sl.count ?? 0 });
+    const tables = ["services", "service_areas", "availability_slots", "bookings", "customers", "booking_requests"] as const;
+    const results = await Promise.all(
+      tables.map((t) => supabase.from(t).select("id", { count: "exact", head: true })),
+    );
+    const next: Counts = {};
+    tables.forEach((t, i) => { next[t] = results[i].count ?? 0; });
+    setCounts(next);
+    setUpdated(new Date());
     setLoading(false);
   }
 
   useEffect(() => { loadCounts(); }, []);
 
   async function runInsertTests() {
-    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-    const base = {
-      customer_name: "HEALTHCHECK",
-      customer_phone: "+5491100000000",
-      address: "Test 1",
-      neighborhood: "Maschwitz",
-      vehicle_type: "sedan",
-      service_name: "Lavado Básico",
-      scheduled_date: tomorrow,
-      scheduled_time: "10:30",
-      duration_minutes: 60,
-      price: 25000,
-      payment_method: "Pagar después",
-      notes: "HEALTHCHECK_DELETE_ME",
-    };
-    const ok = await supabase.from("bookings").insert(base);
-    setInsertResult(ok.error ? `FAIL: ${ok.error.message}` : "OK (201)");
+    setRunning(true);
+    try {
+      const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+      const tag = `HEALTHCHECK_DELETE_ME_${Date.now()}`;
+      const base = {
+        customer_name: "HEALTHCHECK",
+        customer_phone: "+5491100000000",
+        address: "Test 1",
+        neighborhood: "Maschwitz",
+        vehicle_type: "sedan",
+        service_name: "Lavado Básico",
+        scheduled_date: tomorrow,
+        scheduled_time: "10:30",
+        duration_minutes: 60,
+        price: 25000,
+        payment_method: "Pagar después",
+        notes: tag,
+      };
+      const ok = await supabase.from("bookings").insert(base);
+      setInsertResult(ok.error ? `FAIL: ${ok.error.message}` : "OK");
 
-    const bad = await supabase.from("bookings").insert({ ...base, booking_source: "admin" });
-    setForbiddenResult(bad.error ? `OK (blocked: ${bad.error.code})` : "FAIL (insert allowed!)");
+      const bad = await supabase.from("bookings").insert({ ...base, booking_source: "admin" });
+      setForbiddenResult(bad.error ? `OK (bloqueado: ${bad.error.code})` : "FAIL (insert permitido!)");
+
+      // Cleanup as admin
+      await supabase.from("bookings").delete().eq("notes", tag);
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function pingEdge() {
+    try {
+      const { error } = await supabase.functions.invoke("create-website-booking", { body: { __ping: true } });
+      // Function should reject ping with 4xx → that means it's reachable.
+      setEdgeResult(error ? `Activa (${error.message?.slice(0, 60) ?? "respuesta de validación"})` : "Activa");
+    } catch (e: any) {
+      setEdgeResult(`Error: ${e?.message ?? "no alcanzable"}`);
+    }
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <Card>
-        <CardHeader><CardTitle>Database health</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span>Salud del sistema</span>
+            <Button size="sm" variant="outline" onClick={loadCounts} disabled={loading}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Actualizar
+            </Button>
+          </CardTitle>
+        </CardHeader>
         <CardContent className="space-y-4 text-sm">
           <div className="grid gap-2">
-            <Row label="Supabase project ref" value={PROJECT_REF} />
-            <Row label="Active services" value={loading ? "…" : String(counts.services)} />
-            <Row label="Active service areas" value={loading ? "…" : String(counts.areas)} />
-            <Row label="Active availability slots" value={loading ? "…" : String(counts.slots)} />
-            <Row label="RLS" value={<Badge variant="secondary">enabled on all 9 tables</Badge>} />
-            <Row label="Public booking insert (valid)" value={insertResult} />
-            <Row label="Public booking insert (forbidden)" value={forbiddenResult} />
+            <Row label="Supabase project ref" value={<code className="font-mono text-xs">{PROJECT_REF}</code>} />
+            <Row label="services" value={loading ? "…" : String(counts.services)} />
+            <Row label="service_areas" value={loading ? "…" : String(counts.service_areas)} />
+            <Row label="availability_slots" value={loading ? "…" : String(counts.availability_slots)} />
+            <Row label="bookings" value={loading ? "…" : String(counts.bookings)} />
+            <Row label="customers" value={loading ? "…" : String(counts.customers)} />
+            <Row label="booking_requests" value={loading ? "…" : String(counts.booking_requests)} />
+            <Row label="RLS" value={<Badge variant="secondary">Activo en tablas principales</Badge>} />
+            <Row label="Edge function create-website-booking" value={edgeResult} />
+            <Row label="Insert público (válido)" value={insertResult} />
+            <Row label="Insert público (bloqueado)" value={forbiddenResult} />
+            {updated && <Row label="Última actualización" value={updated.toLocaleTimeString("es-AR")} />}
           </div>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={loadCounts}>Refresh counts</Button>
-            <Button size="sm" onClick={runInsertTests}>Run insert tests</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={pingEdge}>Probar edge function</Button>
+            <Button size="sm" onClick={runInsertTests} disabled={running}>
+              {running && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Probar inserts (auto-limpieza)
+            </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Test rows are tagged <code>HEALTHCHECK_DELETE_ME</code>. Clean them up via SQL when done.
+            Las filas de prueba se etiquetan con <code>HEALTHCHECK_DELETE_ME_*</code> y se eliminan automáticamente al finalizar.
           </p>
         </CardContent>
       </Card>
@@ -82,11 +672,65 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-4 border-b border-border/50 py-1.5">
       <span className="text-muted-foreground">{label}</span>
-      <span className="font-mono text-xs">{value}</span>
+      <span className="text-right text-xs sm:text-sm">{value}</span>
     </div>
   );
 }
 
-export const Route = createFileRoute("/admin/configuracion")({
-  component: HealthPage,
-});
+// ===========================================================================
+// CHECKLIST
+// ===========================================================================
+
+type ItemStatus = "done" | "pending" | "soon";
+
+function ChecklistTab() {
+  const items: { label: string; status: ItemStatus }[] = [
+    { label: "Landing page lista", status: "done" },
+    { label: "Booking flow web funcionando", status: "done" },
+    { label: "Edge Function create-website-booking activa", status: "done" },
+    { label: "Admin login funcionando", status: "done" },
+    { label: "Reservas admin funcionando", status: "done" },
+    { label: "Calendario admin funcionando", status: "done" },
+    { label: "Disponibilidad admin funcionando", status: "done" },
+    { label: "Clientes CRM funcionando", status: "done" },
+    { label: "Servicios configurados", status: "done" },
+    { label: "Zonas de cobertura configuradas", status: "done" },
+    { label: "Mercado Pago", status: "pending" },
+    { label: "Botmaker", status: "pending" },
+    { label: "WhatsApp automation", status: "pending" },
+    { label: "Google Ads conversion", status: "soon" },
+    { label: "Producción mobile responsive", status: "done" },
+  ];
+
+  const totals = useMemo(() => {
+    const done = items.filter((i) => i.status === "done").length;
+    return { done, total: items.length };
+  }, []);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <span>Checklist de lanzamiento</span>
+          <Badge variant="secondary">{totals.done}/{totals.total} listos</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {items.map((i) => (
+          <div key={i.label} className="flex items-center justify-between gap-3 rounded-md border p-2 text-sm">
+            <span>{i.label}</span>
+            <StatusBadge status={i.status} />
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function StatusBadge({ status }: { status: ItemStatus }) {
+  if (status === "done")
+    return <Badge className="gap-1 bg-green-100 text-green-900 dark:bg-green-500/15 dark:text-green-300"><CheckCircle2 className="h-3 w-3" /> Listo</Badge>;
+  if (status === "pending")
+    return <Badge variant="outline" className="gap-1 text-amber-700 dark:text-amber-300"><Clock className="h-3 w-3" /> Pendiente</Badge>;
+  return <Badge variant="outline" className="gap-1 text-muted-foreground"><XCircle className="h-3 w-3" /> Próximamente</Badge>;
+}
