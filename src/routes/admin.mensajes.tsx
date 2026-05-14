@@ -32,7 +32,12 @@ type Conversation = {
   linked_customer_id: string | null;
   linked_booking_request_id: string | null;
   linked_booking_id: string | null;
+  raw_payload: any;
 };
+
+function isTestConvo(c: Conversation) {
+  return c.raw_payload?.is_test === true;
+}
 
 type Message = {
   id: string;
@@ -50,6 +55,7 @@ function formatWhen(ts: string | null) {
 
 function MensajesPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [hideTest, setHideTest] = useState(true);
   const qc = useQueryClient();
 
   const conversations = useQuery({
@@ -76,23 +82,38 @@ function MensajesPage() {
     },
   });
 
-  const list = conversations.data ?? [];
-  const selected = list.find((c) => c.id === selectedId) ?? null;
+  const allList = conversations.data ?? [];
+  const list = useMemo(
+    () => (hideTest ? allList.filter((c) => !isTestConvo(c)) : allList),
+    [allList, hideTest]
+  );
+  const testCount = allList.filter(isTestConvo).length;
+  const selected = list.find((c) => c.id === selectedId) ?? allList.find((c) => c.id === selectedId) ?? null;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold flex items-center gap-2">
             <MessageSquare className="h-6 w-6" /> Mensajes / Botmaker
           </h1>
           <p className="text-sm text-muted-foreground">Conversaciones y eventos recibidos desde Botmaker.</p>
         </div>
-        <Button size="sm" variant="outline" onClick={() => {
-          qc.invalidateQueries({ queryKey: ["botmaker"] });
-        }}>
-          <RefreshCw className="mr-2 h-4 w-4" /> Actualizar
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant={hideTest ? "default" : "outline"}
+            onClick={() => setHideTest((v) => !v)}
+            title="Ocultar conversaciones marcadas como prueba"
+          >
+            {hideTest ? "Mostrando reales" : "Mostrando todo"} ({testCount} test)
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => {
+            qc.invalidateQueries({ queryKey: ["botmaker"] });
+          }}>
+            <RefreshCw className="mr-2 h-4 w-4" /> Actualizar
+          </Button>
+        </div>
       </div>
 
       {(invalidEvents.data ?? 0) > 0 && (
@@ -131,6 +152,7 @@ function MensajesPage() {
                       </div>
                       <div className="text-xs text-muted-foreground truncate mt-0.5">{c.last_message || "—"}</div>
                       <div className="flex gap-1 mt-1 flex-wrap">
+                        {isTestConvo(c) && <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-300">test</Badge>}
                         {c.linked_booking_request_id && <Badge variant="secondary" className="text-[10px]">solicitud</Badge>}
                         {c.linked_booking_id && <Badge className="text-[10px]">reserva</Badge>}
                       </div>
@@ -198,7 +220,10 @@ function ConversationDetail({ conversation }: { conversation: Conversation }) {
         {bookingRequest.data && (
           <div className="rounded-md border border-border/60 bg-muted/30 p-3">
             <div className="flex items-center justify-between">
-              <div className="text-sm font-medium">Solicitud de reserva ({bookingRequest.data.status})</div>
+              <div className="text-sm font-medium flex items-center gap-2">
+                Solicitud de reserva ({bookingRequest.data.status})
+                {bookingRequest.data.is_test && <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-300">test</Badge>}
+              </div>
               {bookingRequest.data.status !== "converted" ? (
                 <Button size="sm" onClick={() => setApproveOpen(true)}>
                   Aprobar y crear reserva <ArrowRight className="ml-1 h-3 w-3" />
@@ -360,7 +385,7 @@ function ApproveDialog({
         payment_status: "pending",
         booking_status: "confirmed",
         booking_source: "botmaker",
-        notes: form.notes || null,
+        notes: [bookingRequest.is_test ? "[TEST]" : null, form.notes || null].filter(Boolean).join(" ") || null,
       }).select("id").single();
       if (bErr) throw bErr;
 
