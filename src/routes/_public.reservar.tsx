@@ -298,6 +298,8 @@ function ReservarPage() {
       status?: string;
       customer_message?: string;
       booking_status?: "pending" | "needs_review";
+      payment_status?: string;
+      checkout_url?: string | null;
       summary?: {
         service_name: string;
         scheduled_date: string;
@@ -340,6 +342,18 @@ function ReservarPage() {
       );
     } catch {
       // ignore storage failures
+    }
+
+    // MercadoPago: redirect to checkout if we got a URL
+    if (payload.payment_method === "MercadoPago" && result.checkout_url) {
+      window.location.assign(result.checkout_url);
+      return;
+    }
+
+    // MP path with no checkout url → friendly pending message on /gracias
+    if (payload.payment_method === "MercadoPago") {
+      navigate({ to: "/gracias", search: { payment: "pending" } });
+      return;
     }
 
     navigate({ to: "/gracias" });
