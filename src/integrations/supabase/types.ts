@@ -238,6 +238,174 @@ export type Database = {
           },
         ]
       }
+      botmaker_conversations: {
+        Row: {
+          botmaker_conversation_id: string | null
+          channel: string | null
+          created_at: string
+          customer_name: string | null
+          customer_phone: string | null
+          id: string
+          last_message: string | null
+          last_message_at: string | null
+          last_sender_type: string | null
+          linked_booking_id: string | null
+          linked_booking_request_id: string | null
+          linked_customer_id: string | null
+          raw_payload: Json | null
+          updated_at: string
+        }
+        Insert: {
+          botmaker_conversation_id?: string | null
+          channel?: string | null
+          created_at?: string
+          customer_name?: string | null
+          customer_phone?: string | null
+          id?: string
+          last_message?: string | null
+          last_message_at?: string | null
+          last_sender_type?: string | null
+          linked_booking_id?: string | null
+          linked_booking_request_id?: string | null
+          linked_customer_id?: string | null
+          raw_payload?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          botmaker_conversation_id?: string | null
+          channel?: string | null
+          created_at?: string
+          customer_name?: string | null
+          customer_phone?: string | null
+          id?: string
+          last_message?: string | null
+          last_message_at?: string | null
+          last_sender_type?: string | null
+          linked_booking_id?: string | null
+          linked_booking_request_id?: string | null
+          linked_customer_id?: string | null
+          raw_payload?: Json | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "botmaker_conversations_linked_booking_id_fkey"
+            columns: ["linked_booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "botmaker_conversations_linked_booking_request_id_fkey"
+            columns: ["linked_booking_request_id"]
+            isOneToOne: false
+            referencedRelation: "booking_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "botmaker_conversations_linked_customer_id_fkey"
+            columns: ["linked_customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      botmaker_events: {
+        Row: {
+          auth_valid: boolean
+          channel: string | null
+          conversation_id: string | null
+          created_at: string
+          customer_name: string | null
+          customer_phone: string | null
+          event_type: string | null
+          id: string
+          message_text: string | null
+          raw_payload: Json | null
+          sender_type: string | null
+        }
+        Insert: {
+          auth_valid?: boolean
+          channel?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          customer_name?: string | null
+          customer_phone?: string | null
+          event_type?: string | null
+          id?: string
+          message_text?: string | null
+          raw_payload?: Json | null
+          sender_type?: string | null
+        }
+        Update: {
+          auth_valid?: boolean
+          channel?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          customer_name?: string | null
+          customer_phone?: string | null
+          event_type?: string | null
+          id?: string
+          message_text?: string | null
+          raw_payload?: Json | null
+          sender_type?: string | null
+        }
+        Relationships: []
+      }
+      botmaker_messages: {
+        Row: {
+          botmaker_message_id: string | null
+          channel: string | null
+          conversation_id: string | null
+          created_at: string
+          customer_name: string | null
+          customer_phone: string | null
+          direction: string | null
+          id: string
+          message_text: string | null
+          message_type: string | null
+          raw_payload: Json | null
+          sender_type: string | null
+        }
+        Insert: {
+          botmaker_message_id?: string | null
+          channel?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          customer_name?: string | null
+          customer_phone?: string | null
+          direction?: string | null
+          id?: string
+          message_text?: string | null
+          message_type?: string | null
+          raw_payload?: Json | null
+          sender_type?: string | null
+        }
+        Update: {
+          botmaker_message_id?: string | null
+          channel?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          customer_name?: string | null
+          customer_phone?: string | null
+          direction?: string | null
+          id?: string
+          message_text?: string | null
+          message_type?: string | null
+          raw_payload?: Json | null
+          sender_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "botmaker_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "botmaker_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       communication_logs: {
         Row: {
           booking_id: string | null
