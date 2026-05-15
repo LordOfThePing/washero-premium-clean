@@ -912,30 +912,51 @@ function BulkGenerateDialog({
               <Input type="time" value={dayEnd} onChange={(e) => setDayEnd(e.target.value)} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Intervalo (min)</Label>
-              <Select value={String(interval)} onValueChange={(v) => setInterval(Number(v))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="60">60</SelectItem>
-                  <SelectItem value="90">90</SelectItem>
-                  <SelectItem value="120">120</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Duración (min)</Label>
-              <Select value={String(duration)} onValueChange={(v) => setDuration(Number(v))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="60">60</SelectItem>
-                  <SelectItem value="90">90</SelectItem>
-                  <SelectItem value="120">120</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div>
+            <Label>Duración del turno (min)</Label>
+            <Select value={String(duration)} onValueChange={(v) => setDuration(Number(v))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="60">60</SelectItem>
+                <SelectItem value="90">90</SelectItem>
+                <SelectItem value="120">120</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Por defecto los inicios se separan por la misma duración (sin solapamientos).
+            </p>
           </div>
+          <div className="flex items-center justify-between rounded border p-3">
+            <div>
+              <div className="text-sm font-medium">Permitir horarios solapados</div>
+              <div className="text-xs text-muted-foreground">
+                Inicios cada X minutos menores a la duración. Avanzado.
+              </div>
+            </div>
+            <Switch checked={allowOverlap} onCheckedChange={setAllowOverlap} />
+          </div>
+          {allowOverlap && (
+            <>
+              <div>
+                <Label>Intervalo entre inicios (min)</Label>
+                <Select value={String(interval)} onValueChange={(v) => setInterval(Number(v))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="30">30</SelectItem>
+                    <SelectItem value="60">60</SelectItem>
+                    <SelectItem value="90">90</SelectItem>
+                    <SelectItem value="120">120</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-start gap-2 rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+                <AlertTriangle className="mt-0.5 h-4 w-4" />
+                <div>
+                  Esto puede generar horarios solapados. El backend igual evita sobreventa según capacidad y duración del servicio.
+                </div>
+              </div>
+            </>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Capacidad</Label>
