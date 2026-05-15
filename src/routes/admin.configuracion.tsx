@@ -951,6 +951,8 @@ function BotmakerHealthCard() {
             }
           />
           <Row label="Eventos totales" value={status.isLoading ? "…" : d?.counts?.events ?? 0} />
+          <Row label="Eventos válidos" value={status.isLoading ? "…" : d?.counts?.valid_events ?? 0} />
+          <Row label="Eventos inválidos" value={status.isLoading ? "…" : d?.counts?.invalid_events ?? 0} />
           <Row label="Conversaciones" value={status.isLoading ? "…" : d?.counts?.conversations ?? 0} />
           <Row label="Mensajes" value={status.isLoading ? "…" : d?.counts?.messages ?? 0} />
           <Row label="Último evento válido" value={d?.last_valid_event ? new Date(d.last_valid_event).toLocaleString("es-AR") : "—"} />
@@ -964,8 +966,9 @@ function BotmakerHealthCard() {
           <Row label="Último envío a revisión" value={autoStats.data?.last_review_at ? new Date(autoStats.data.last_review_at).toLocaleString("es-AR") : "—"} />
           <Row label="Último motivo de fallback" value={autoStats.data?.last_fallback_reason ?? "—"} />
         </div>
-        <div className="rounded-md border bg-muted/30 p-3 text-xs">
-          Botmaker intenta crear reservas automáticamente si hay disponibilidad. Si el horario no está disponible o faltan datos, crea una solicitud para revisión manual.
+        <div className="rounded-md border bg-muted/30 p-3 text-xs space-y-1">
+          <p>Botmaker intenta crear reservas automáticamente si hay disponibilidad. Si el horario no está disponible o faltan datos, crea una solicitud para revisión manual.</p>
+          <p>El token de seguridad de Botmaker debe enviarse en <code className="font-mono">auth-bm-token</code> y coincidir exactamente con <code className="font-mono">BOTMAKER_WEBHOOK_SECRET</code> en Supabase.</p>
         </div>
 
 
