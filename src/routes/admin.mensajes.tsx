@@ -390,7 +390,25 @@ function ConversationDetail({ conversation }: { conversation: Conversation }) {
             <Field label="parsed preferred_time" v={(parserDebug.raw.parsed ?? parserDebug.parsedLocal.parsed)?.preferred_time} />
             <Field label="parsed payment_method" v={(parserDebug.raw.parsed ?? parserDebug.parsedLocal.parsed)?.payment_method} />
             <Field label="missing_fields" v={(parserDebug.raw.missing_fields ?? parserDebug.parsedLocal.missing)?.join?.(", ") ?? "—"} />
+            <Field label="phone source" v={parserDebug.raw.phone_source} />
+            <Field label="phone resuelto" v={parserDebug.raw.phone_resolved} />
+            <Field label="required complete" v={(parserDebug.raw.missing_fields?.length ?? 0) === 0 ? "sí" : "no"} />
           </div>
+          {parserDebug.raw.availability_debug && (
+            <div className="mt-3 rounded border bg-background p-2 space-y-1">
+              <p className="font-medium">Availability check</p>
+              <div className="grid gap-1 md:grid-cols-2">
+                <Field label="fecha" v={parserDebug.raw.availability_debug.requested_date} />
+                <Field label="hora" v={parserDebug.raw.availability_debug.requested_time} />
+                <Field label="slot existe" v={parserDebug.raw.availability_debug.slot_exists ? "sí" : "no"} />
+                <Field label="slot activo" v={parserDebug.raw.availability_debug.slot_active ? "sí" : "no"} />
+                <Field label="capacidad" v={parserDebug.raw.availability_debug.capacity} />
+                <Field label="reservas existentes" v={parserDebug.raw.availability_debug.existing_bookings} />
+                <Field label="cupo restante" v={parserDebug.raw.availability_debug.remaining} />
+                <Field label="resultado" v={parserDebug.raw.availability_debug.result} />
+              </div>
+            </div>
+          )}
           <div className="mt-3 space-y-1">
             <p className="text-muted-foreground">Resumen preview</p>
             <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-background p-2 text-[10px]">{parserDebug.summary?.message_text ?? "—"}</pre>
