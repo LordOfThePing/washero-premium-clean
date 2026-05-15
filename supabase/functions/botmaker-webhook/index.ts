@@ -156,123 +156,31 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Booking request detection
-    if (convoRow && messageText) {
-      if (senderType === "bot" && isSummary(messageText)) {
-        // Just a summary; nothing to do — confirmation comes later
-      } else if (senderType === "user" && isConfirmation(messageText)) {
-        // Find latest bot summary in last 30 min in same conversation
-        const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-        const { data: msgs } = await supabase
-          .from("botmaker_messages")
-          .select("*")
-          .eq("conversation_id", convoRow.id)
-          .eq("sender_type", "bot")
-          .gte("created_at", cutoff)
-          .order("created_at", { ascending: false })
-          .limit(10);
-        const summary = (msgs ?? []).find((m: any) => m.message_text && isSummary(m.message_text));
-        if (summary) {
-          // Dedup: skip if there is a botmaker booking_request for same conversation in last 10 min
-          const dedupCutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-          const { data: recent } = await supabase
-            .from("booking_requests")
-            .select("id, created_at, raw_payload")
-            .eq("source", "botmaker")
-            .gte("created_at", dedupCutoff)
-            .order("created_at", { ascending: false })
-            .limit(20);
-          const dup = (recent ?? []).find((r: any) =>
-            r.raw_payload?.conversation_id === convoRow.botmaker_conversation_id &&
-            r.raw_payload?.summary_text === summary.message_text
-          );
-          if (!dup) {
-            const parsed = parseSummary(summary.message_text);
-            const phoneFinal = phone ?? convoRow.customer_phone ?? "";
-            const isTest = !!payload?.is_test;
-
-            // Try auto-booking
-            let autoBooking: { id: string } | null = null;
-            let fallbackReason: string | null = null;
-
-            if (parsed.missing.length > 0) {
-              fallbackReason = "missing_fields";
-            } else {
-              const attempt = await tryCreateBooking(supabase, {
-                customer_name: parsed.fields.customer_name ?? "",
-                customer_phone: phoneFinal,
-                address: parsed.fields.address ?? "",
-                neighborhood: parsed.fields.neighborhood ?? "",
-                vehicle_type: parsed.fields.vehicle_type ?? "",
-                service_name: parsed.fields.service_type ?? "",
-                scheduled_date: parsed.fields.preferred_date ?? "",
-                scheduled_time: parsed.fields.preferred_time ?? "",
-                payment_method: parsed.fields.payment_method ?? "Pagar después",
-                notes: `Reserva creada automáticamente desde Botmaker. Conversación: ${convoRow.botmaker_conversation_id ?? "-"}`,
-                source: "botmaker",
-                is_test: isTest,
-              });
-              if (attempt.ok) {
-                autoBooking = { id: attempt.booking.id };
-              } else {
-                fallbackReason = attempt.reason;
-              }
-            }
-
-            const brStatus = autoBooking ? "converted" : "needs_review";
-            const { data: br } = await supabase.from("booking_requests").insert({
-              source: "botmaker",
-              status: brStatus,
-              customer_name: parsed.fields.customer_name,
-              customer_phone: phoneFinal,
-              address: parsed.fields.address,
-              neighborhood: parsed.fields.neighborhood,
-              vehicle_type: parsed.fields.vehicle_type,
-              service_type: parsed.fields.service_type,
-              preferred_date: parsed.fields.preferred_date,
-              preferred_time: parsed.fields.preferred_time,
-              payment_method: parsed.fields.payment_method,
-              missing_fields: parsed.missing,
-              is_test: isTest,
-              linked_booking_id: autoBooking?.id ?? null,
-              raw_payload: {
-                conversation_id: convoRow.botmaker_conversation_id,
-                summary_text: summary.message_text,
-                confirmation_text: messageText,
-                parsed: parsed.fields,
-                missing_fields: parsed.missing,
-                bot_payload: summary.raw_payload,
-                user_payload: payload,
-                is_test: isTest,
-                auto_booked: !!autoBooking,
-                auto_booking_id: autoBooking?.id ?? null,
-                fallback_reason: fallbackReason,
-              },
-            }).select("id").maybeSingle();
-
-            if (br?.id) {
-              const updates: any = { linked_booking_request_id: br.id };
-              if (autoBooking) updates.linked_booking_id = autoBooking.id;
-              await supabase.from("botmaker_conversations").update(updates).eq("id", convoRow.id);
-
-              await supabase.from("communication_logs").insert({
-                channel: "whatsapp",
-                provider: "botmaker",
-                direction: "system",
-                message_text: autoBooking
-                  ? `Reserva creada automáticamente desde Botmaker (booking ${autoBooking.id})`
-                  : `booking_request creado desde Botmaker (revisión: ${fallbackReason ?? "n/a"})`,
-                booking_request_id: br.id,
-                booking_id: autoBooking?.id ?? null,
-                raw_payload: {
-                  conversation_id: convoRow.botmaker_conversation_id,
-                  auto_booked: !!autoBooking,
-                  fallback_reason: fallbackReason,
-                },
-              });
-            }
-          }
-        }
+    // Booking impact detection: any sender can contain the summary; any valid confirmation triggers auto-book/fallback.
+    if (convoRow && messageText && isConfirmation(messageText)) {
+      const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+      const { data: msgs } = await supabase
+        .from("botmaker_messages")
+        .select("*")
+        .eq("conversation_id", convoRow.id)
+        .gte("created_at", cutoff)
+        .order("created_at", { ascending: true })
+        .limit(100);
+      const summary = findLatestSummary(msgs ?? []);
+      if (summary) {
+        await processBotmakerBookingImpact(supabase, {
+          conversation: convoRow,
+          summary,
+          confirmation: {
+            sender_type: senderType,
+            message_text: messageText,
+            created_at: new Date().toISOString(),
+            raw_payload: payload,
+          },
+          phone,
+          isTest: !!payload?.is_test,
+          currentPayload: payload,
+        });
       }
     }
 
