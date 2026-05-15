@@ -283,7 +283,13 @@ function ConversationDetail({ conversation }: { conversation: Conversation }) {
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <span className="text-base">{conversation.customer_name || conversation.customer_phone || "Conversación"}</span>
-          <span className="text-xs text-muted-foreground">{conversation.channel || ""}</span>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => reprocess.mutate()} disabled={reprocess.isPending}>
+              {reprocess.isPending && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
+              Reprocesar reserva
+            </Button>
+            <span className="text-xs text-muted-foreground">{conversation.channel || ""}</span>
+          </div>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
