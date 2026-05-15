@@ -16,8 +16,9 @@ export type AdminAuthState =
   | { status: "admin"; session: Session; isAdmin: true; profile: AdminProfile; rpcError: null };
 
 export async function fetchMyAdminProfile(): Promise<{ profile: AdminProfile | null; error: string | null }> {
-  // @ts-expect-error - RPC not in generated types yet
-  const { data, error } = await supabase.rpc("get_my_admin_profile");
+  const { data, error } = await (supabase as unknown as {
+    rpc: (fn: string) => Promise<{ data: AdminProfile[] | AdminProfile | null; error: { message: string } | null }>;
+  }).rpc("get_my_admin_profile");
   if (error) return { profile: null, error: error.message };
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) return { profile: null, error: null };
