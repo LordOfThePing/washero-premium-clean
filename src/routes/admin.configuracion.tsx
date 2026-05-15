@@ -896,7 +896,24 @@ function BotmakerHealthCard() {
     },
   });
 
-  async function runAction(action: string) {
+  const autoStats = useQuery({
+    queryKey: ["admin", "botmaker-auto-stats"],
+    queryFn: async () => {
+      const [convertedAll, needsReviewAll, lastConverted, lastReview] = await Promise.all([
+        supabase.from("booking_requests").select("id", { count: "exact", head: true }).eq("source", "botmaker").eq("status", "converted"),
+        supabase.from("booking_requests").select("id", { count: "exact", head: true }).eq("source", "botmaker").eq("status", "needs_review"),
+        supabase.from("booking_requests").select("created_at,linked_booking_id,raw_payload").eq("source", "botmaker").eq("status", "converted").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("booking_requests").select("created_at,raw_payload").eq("source", "botmaker").eq("status", "needs_review").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      ]);
+      return {
+        converted: convertedAll.count ?? 0,
+        needs_review: needsReviewAll.count ?? 0,
+        last_converted_at: (lastConverted.data as any)?.created_at ?? null,
+        last_review_at: (lastReview.data as any)?.created_at ?? null,
+        last_fallback_reason: (lastReview.data as any)?.raw_payload?.fallback_reason ?? null,
+      };
+    },
+  });
     setRunning(action);
     try {
       const { data, error } = await supabase.functions.invoke("botmaker-diagnostics", { body: { action } });
