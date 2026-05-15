@@ -612,6 +612,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_my_admin_profile: {
+        Args: never
+        Returns: {
+          active: boolean
+          email: string
+          role: string
+          user_id: string
+        }[]
+      }
       is_admin: { Args: never; Returns: boolean }
     }
     Enums: {

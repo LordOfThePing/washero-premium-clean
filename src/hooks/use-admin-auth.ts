@@ -2,17 +2,36 @@ import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
+export type AdminProfile = {
+  user_id: string;
+  email: string;
+  role: string;
+  active: boolean;
+};
+
 export type AdminAuthState =
-  | { status: "loading"; session: null; isAdmin: false }
-  | { status: "anonymous"; session: null; isAdmin: false }
-  | { status: "not_admin"; session: Session; isAdmin: false }
-  | { status: "admin"; session: Session; isAdmin: true };
+  | { status: "loading"; session: null; isAdmin: false; profile: null; rpcError: null }
+  | { status: "anonymous"; session: null; isAdmin: false; profile: null; rpcError: null }
+  | { status: "not_admin"; session: Session; isAdmin: false; profile: null; rpcError: string | null }
+  | { status: "admin"; session: Session; isAdmin: true; profile: AdminProfile; rpcError: null };
+
+export async function fetchMyAdminProfile(): Promise<{ profile: AdminProfile | null; error: string | null }> {
+  const { data, error } = await (supabase as unknown as {
+    rpc: (fn: string) => Promise<{ data: AdminProfile[] | AdminProfile | null; error: { message: string } | null }>;
+  }).rpc("get_my_admin_profile");
+  if (error) return { profile: null, error: error.message };
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return { profile: null, error: null };
+  return { profile: row as AdminProfile, error: null };
+}
 
 export function useAdminAuth(): AdminAuthState {
   const [state, setState] = useState<AdminAuthState>({
     status: "loading",
     session: null,
     isAdmin: false,
+    profile: null,
+    rpcError: null,
   });
 
   useEffect(() => {
@@ -20,27 +39,19 @@ export function useAdminAuth(): AdminAuthState {
 
     async function checkAdmin(session: Session | null) {
       if (!session) {
-        if (active) setState({ status: "anonymous", session: null, isAdmin: false });
+        if (active) setState({ status: "anonymous", session: null, isAdmin: false, profile: null, rpcError: null });
         return;
       }
-      const { data, error } = await supabase
-        .from("admin_users")
-        .select("id")
-        .eq("user_id", session.user.id)
-        .eq("active", true)
-        .limit(1)
-        .maybeSingle();
+      const { profile, error } = await fetchMyAdminProfile();
       if (!active) return;
-      if (error || !data) {
-        setState({ status: "not_admin", session, isAdmin: false });
+      if (profile && profile.active) {
+        setState({ status: "admin", session, isAdmin: true, profile, rpcError: null });
       } else {
-        setState({ status: "admin", session, isAdmin: true });
+        setState({ status: "not_admin", session, isAdmin: false, profile: null, rpcError: error });
       }
     }
 
-    // Set listener BEFORE getSession
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      // Defer DB call to avoid deadlocking the auth callback
       setTimeout(() => checkAdmin(session), 0);
     });
 
