@@ -936,6 +936,8 @@ function BotmakerHealthCard() {
           <Row label="Mensajes" value={status.isLoading ? "…" : d?.counts?.messages ?? 0} />
           <Row label="Último evento válido" value={d?.last_valid_event ? new Date(d.last_valid_event).toLocaleString("es-AR") : "—"} />
           <Row label="Último evento inválido" value={d?.last_invalid_event ? new Date(d.last_invalid_event).toLocaleString("es-AR") : "—"} />
+          <Row label="Última conversación" value={d?.last_conversation?.created_at ? `${new Date(d.last_conversation.created_at).toLocaleString("es-AR")}${d.last_conversation.customer_phone ? ` · ${d.last_conversation.customer_phone}` : ""}` : "—"} />
+          <Row label="Último mensaje" value={d?.last_message?.created_at ? `${new Date(d.last_message.created_at).toLocaleString("es-AR")} · ${d.last_message.sender_type ?? ""}` : "—"} />
           <Row label="Última solicitud (booking_request)" value={d?.last_booking_request?.created_at ? new Date(d.last_booking_request.created_at).toLocaleString("es-AR") : "—"} />
         </div>
 
