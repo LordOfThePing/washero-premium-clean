@@ -49,31 +49,45 @@ Deno.serve(async (req) => {
 
   const { data: bookings, error: bkErr } = await admin
     .from("bookings")
-    .select("scheduled_date,scheduled_time,booking_status")
+    .select("scheduled_date,scheduled_time,duration_minutes,booking_status")
     .gte("scheduled_date", from)
     .lte("scheduled_date", to)
     .neq("booking_status", "cancelled")
     .limit(5000);
   if (bkErr) return json({ ok: false, error: "server_error" }, 500);
 
-  const counts = new Map<string, number>();
+  const toMin = (t: string) => {
+    const [h, m] = String(t).slice(0, 5).split(":").map(Number);
+    return h * 60 + m;
+  };
+
+  // group bookings by date for fast overlap lookup
+  const byDate = new Map<string, { start: number; end: number }[]>();
   for (const b of bookings ?? []) {
-    const key = `${b.scheduled_date}|${String(b.scheduled_time).slice(0,8)}`;
-    counts.set(key, (counts.get(key) ?? 0) + 1);
+    const start = toMin(b.scheduled_time as string);
+    const end = start + ((b.duration_minutes as number) ?? 0);
+    const arr = byDate.get(b.scheduled_date as string) ?? [];
+    arr.push({ start, end });
+    byDate.set(b.scheduled_date as string, arr);
   }
 
   const out = (slots ?? []).map((s: any) => {
-    const key = `${s.date}|${String(s.start_time).slice(0,8)}`;
-    const taken = counts.get(key) ?? 0;
+    const sStart = toMin(s.start_time);
+    const sEnd = toMin(s.end_time);
+    const list = byDate.get(s.date) ?? [];
+    let taken = 0;
+    for (const b of list) if (b.start < sEnd && b.end > sStart) taken++;
     const remaining = Math.max(0, (s.capacity ?? 0) - taken);
     return {
       id: s.id,
       date: s.date,
-      start_time: String(s.start_time).slice(0,5),
-      end_time: String(s.end_time).slice(0,5),
+      start_time: String(s.start_time).slice(0, 5),
+      end_time: String(s.end_time).slice(0, 5),
       capacity: s.capacity,
       taken,
       remaining,
+      remaining_capacity: remaining,
+      active: true,
     };
   });
 
