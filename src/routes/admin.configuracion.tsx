@@ -967,8 +967,7 @@ function BotmakerHealthCard() {
         <div className="rounded-md border bg-muted/30 p-3 text-xs">
           Botmaker intenta crear reservas automáticamente si hay disponibilidad. Si el horario no está disponible o faltan datos, crea una solicitud para revisión manual.
         </div>
-        <div className="grid gap-2">
-        </div>
+
 
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" disabled={running !== null} onClick={() => runAction("test_no_token")}>
