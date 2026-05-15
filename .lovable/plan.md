@@ -1,82 +1,87 @@
-# Washero Admin Upgrade — Implementation Plan
+# Production Upgrade Plan — Maps + Pricing + Invoices + Demand Map
 
-Large multi-part scope. I'll execute in this order, with one DB migration upfront covering all new tables.
+This is a large, multi-area upgrade. I'll execute it in 4 phases. Before starting I need 2 confirmations from you because they have material consequences and need user-side action.
 
-## Part A — Database migration (single migration)
+---
 
-New tables (all RLS-enabled, admin-only via `is_admin()`):
+## Required from you before I start
 
-- `early_access_leads` — id, full_name, phone, email, neighborhood, source, notes, status ('new'|'contacted'|'converted'|'discarded'), timestamps
-- `kipper_leads` — id, customer_id, booking_id, full_name, phone, email, status ('pending'|'contacted'|'converted'|'discarded'), notes, timestamps
-- `invoices` — id, booking_id, invoice_number, status ('pending'|'issued'|'cancelled'), issued_at, notes, timestamps
-- `weekly_availability_rules` — id, day_of_week (0-6), day_name, is_open, start_time, end_time, slot_duration_minutes, interval_minutes, capacity, allow_overlaps, timestamps. Seed 7 rows (Mon–Sat open 09–18 / 90 / 90 / 1; Sun closed).
-- `availability_exceptions` — id, date (unique), is_closed, note, timestamps
+1. **Google Maps API keys** (two separate keys recommended):
+   - `VITE_GOOGLE_MAPS_PUBLIC_KEY` — browser key, restricted by HTTP referrer in Google Cloud (your `*.lovable.app` domain + your custom domain). Needs: Maps JavaScript API + Places API (New).
+   - `GOOGLE_MAPS_SERVER_KEY` — server-side key, restricted by IP or unrestricted. Needs: Places API + Geocoding API.
+   
+   I'll prompt you with the secrets tool once you approve this plan. **Note**: alternatively, this project already has a Lovable-managed Google Maps connector available — I can use that gateway for server-side calls (no key needed) and only ask you for the browser key. Tell me which you prefer.
 
-Updated_at triggers using existing `update_updated_at_column()`.
+2. **"Strict coverage" confirmation**: Part A removes the "Otra zona" option from the public booking form and hard-blocks bookings outside the 7 zones. Confirm this is what you want for launch (Botmaker still degrades gracefully to `needs_review`).
 
-## Part B — Admin navigation (`AdminSidebar`)
+---
 
-Restructure sidebar with primary items + "Más" group:
-- Primary: Dashboard, Reservas, Calendario, Mensajes, Disponibilidad, Clientes, Suscripciones
-- CRM & Ventas: Contactos (→ /admin/clientes), Early Access, Leads Kipper
-- Operación: Mapa Demanda
-- Finanzas: Finanzas, Facturas
-- Configuración: Precios, Notificaciones, WhatsApp Config, Botmaker, App Config
+## Phase 1 — Database migration (single migration)
 
-## Part C — New admin routes (MVP pages)
+New tables:
+- `coverage_zones` (name, aliases[], center_lat/lng, radius_km, polygon_geojson, display_order, active) — seed 7 zones
+- `pricing_items` (type: vehicle_surcharge|extra, code, name, description, amount, active, display_order, unique(type,code)) — seed 3 surcharges + 5 extras
 
-All routes use existing `is_admin` RLS. Built with shadcn cards/tables, real data from existing tables when possible.
+Column additions:
+- `bookings`: place_id, formatted_address, address_lat, address_lng, coverage_zone_id, coverage_zone_name, location_validation_status, location_validation_payload, vehicle_surcharge, selected_extras (jsonb), extras_total, price_breakdown (jsonb)
+- `customers`: place_id, formatted_address, address_lat, address_lng, coverage_zone_id, coverage_zone_name
+- `invoices`: customer_name, customer_phone, customer_email, customer_address, service_name, vehicle_type, scheduled_date, scheduled_time, subtotal, vehicle_surcharge, extras_total, total, payment_method, payment_status, invoice_status, line_items (jsonb)
 
-- `admin.suscripciones.tsx` — coming-soon + repeat customers (group bookings by phone, count ≥2)
-- `admin.early-access.tsx` — full CRUD on `early_access_leads`
-- `admin.leads-kipper.tsx` — list bookings with notes containing "kipper" (case-insensitive) + manual `kipper_leads` table
-- `admin.finanzas.tsx` — aggregations from bookings/payments
-- `admin.facturas.tsx` — list completed/paid bookings + invoices table
-- `admin.precios.tsx` — services CRUD + read-only surcharges/extras display with backend warning
-- `admin.notificaciones.tsx` — communication_logs + future settings note
-- `admin.whatsapp-config.tsx` — Botmaker info + link to diagnostics
-- `admin.botmaker.tsx` — webhook URL, recent events, recent booking_requests, parser debug
-- `admin.app-config.tsx` — read-only business settings (Washero, currency, etc.)
-- `admin.mapa-demanda.tsx` — bookings/revenue grouped by neighborhood
+Helper: `next_invoice_number()` SQL function returning `WASH-YYYY-NNNNNN`.
 
-## Part D — `/admin/disponibilidad` overhaul
+RLS: public SELECT on active rows of new public tables; admin full CRUD via `is_admin()`.
 
-Tabs: Calendario | Generador | Reglas semanales | Bloqueos | Diagnóstico
+## Phase 2 — Part A: Maps + Coverage
 
-**Slot list with bulk actions** (Calendario tab):
-- Checkbox per slot, select-all-day, select-all-visible
-- Sticky bottom bar when selection > 0 showing counts (total / con reservas / sin reservas)
-- Bulk actions: Activar, Desactivar, Eliminar (only 0-booking by default with confirm), Cambiar capacidad
-- Day-group actions: Seleccionar día, Activar/Desactivar día, Eliminar sin reservas, Regenerar día
+- New edge function `validate-address-location` — uses `GOOGLE_MAPS_SERVER_KEY` (or Lovable connector gateway). Returns `inside_coverage`, zone, lat/lng, formatted_address. Match order: polygon → alias → radius.
+- Shared helper `_shared/coverage.ts` reused by website + botmaker code paths.
+- `_reservar` modal: replace address `<Input>` with Places Autocomplete component (loaded async with callback). Block submit until a suggestion is chosen + validated.
+- `create-website-booking`: accept place_id/lat/lng + re-validate server-side; reject with `outside_coverage` status.
+- `botmaker-webhook` / `_shared/botmaker-booking.ts`: validate parsed neighborhood against `coverage_zones.aliases`; mark `needs_review` with `outside_coverage_or_unverified` when no match.
 
-**Reglas semanales tab**:
-- Row per day with toggles + inputs
-- "Generar próximos 14 días" button → uses rules, skips dates with existing slots+bookings
+## Phase 3 — Part B: Editable pricing
 
-**Bloqueos tab**:
-- Date picker, range support, note
-- Block: insert exception + set slots inactive for date
-- Unblock: delete exception + reactivate slots
-- Warn if bookings exist on date
+- Update `_shared/booking-core.ts`: load surcharge + extras from `pricing_items` instead of constants. Persist `vehicle_surcharge`, `extras_total`, `selected_extras`, `price_breakdown` on booking insert.
+- Update `/reservar` to fetch active services + pricing_items and render dynamic vehicle cards + extras.
+- Rebuild `/admin/precios` with 3 sections (Servicios | Recargos | Extras) — full CRUD using existing supabase client + admin RLS.
 
-**Diagnóstico tab**:
-- Existing overlap detector + actions (select both, delete/disable no-booking one)
+## Phase 4 — Part C: Invoices + Part D: Demand Map
 
-**Mobile UX**: card layout < md, sticky action bar, large tap targets.
+Invoices:
+- Helper `generateInvoiceForBooking(bookingId)` (server function) — idempotent (one invoice per booking), uses `next_invoice_number()`, copies `price_breakdown` into `line_items`.
+- Hooked into:
+  - `/admin/reservas` "marcar como pagada" action
+  - `/admin/calendario` shared booking detail
+  - `mercadopago-webhook` on approved
+- Rebuild `/admin/facturas`: list + filters (date range, status, search) + metrics + actions.
+- New route `/admin/facturas/$invoiceId`: print-friendly invoice with `window.print()`.
 
-## Part E — Verify no regressions
+Demand Map (`/admin/mapa-demanda`):
+- Filter bar: Today / Week / Month / 30d / Custom + status + service + payment + source.
+- Metrics row: total / completed / pending / revenue / avg ticket / top zone / empty zones.
+- Map: Google Maps JS (using browser key) — polygons or circles per zone, color intensity by count, booking markers. Fallback to charts/table when key missing.
+- Side panel: per-zone breakdown; click filters booking list below.
 
-- `/reservar` calendar-first flow untouched
-- `create-website-booking` and `botmaker-webhook` untouched
-- `get-public-availability` untouched
-- Mercado Pago untouched
+Coverage zones admin editor added to `/admin/app-config` (active/aliases/center/radius/polygon/order).
 
-## Technical notes
+## Files / functions touched (summary)
 
-- New routes only consume existing edge functions or direct supabase client queries with admin RLS
-- No service role key in frontend
-- Existing `services` and `customers` data reused
-- Counts of bookings per slot computed client-side from `bookings` joined by date+time overlap (same logic as availability)
-- Weekly rules generation done client-side (admin) inserting into `availability_slots` directly (admin RLS allows it)
+**Migrations**: 1 new (~250 lines).
+**Edge functions**: new `validate-address-location/`; updated `create-website-booking/`, `botmaker-webhook/`, `mercadopago-webhook/`, `_shared/booking-core.ts`, new `_shared/coverage.ts`, new `_shared/invoices.ts`.
+**Frontend**: `src/routes/_public.reservar.tsx`, `src/routes/admin.precios.tsx`, `src/routes/admin.facturas.tsx`, `src/routes/admin.facturas.$invoiceId.tsx` (new), `src/routes/admin.mapa-demanda.tsx`, `src/routes/admin.app-config.tsx`, `src/routes/admin.reservas.tsx`, `src/routes/admin.calendario.tsx`. New `src/components/PlacesAutocomplete.tsx`, `src/components/InvoicePrintable.tsx`, `src/components/DemandMap.tsx`.
 
-Acceptance: all 17 criteria covered. Reports given at end.
+## Risks / things I won't break
+
+- Existing bookings keep their stored `price` and old fields (new columns are additive, defaults safe).
+- Botmaker stays functional even when address can't be matched (falls into `needs_review`).
+- MP webhook keeps existing payment recording; invoice generation is added after the existing logic.
+- No Lovable Cloud, no other Supabase ref — only `domslcbxgqbylmciqrxt`.
+
+---
+
+**Reply with:**
+1. Maps key approach: **own keys** (I'll request both via secrets) **or** **Lovable Maps connector for server + your own browser key**.
+2. **Confirm strict coverage** (block "Otra zona" on website).
+3. Anything you want to defer (e.g. skip polygon editor for now).
+
+Once you confirm, I'll execute Phases 1→4 in order.
