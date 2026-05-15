@@ -993,6 +993,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      generate_invoice_for_booking: {
+        Args: { _booking_id: string }
+        Returns: string
+      }
       get_my_admin_profile: {
         Args: never
         Returns: {

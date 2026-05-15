@@ -26,6 +26,10 @@ type Payload = {
   payment_method?: string;
   notes?: string | null;
   selected_extras?: string[];
+  place_id?: string | null;
+  formatted_address?: string | null;
+  address_lat?: number | null;
+  address_lng?: number | null;
 };
 
 function json(body: unknown, status = 200) {
@@ -64,6 +68,11 @@ Deno.serve(async (req) => {
     payment_method: body.payment_method ?? "",
     notes: body.notes ?? null,
     selected_extras: body.selected_extras ?? [],
+    place_id: body.place_id ?? null,
+    formatted_address: body.formatted_address ?? null,
+    address_lat: typeof body.address_lat === "number" ? body.address_lat : null,
+    address_lng: typeof body.address_lng === "number" ? body.address_lng : null,
+    enforce_coverage: true, // strict coverage on website
     source: "website",
   });
 
@@ -82,6 +91,7 @@ Deno.serve(async (req) => {
       service_does_not_fit_slot: "Ese horario ya no está disponible para el servicio elegido. Elegí otro horario o escribinos por WhatsApp.",
       slot_full: "Ese horario ya se completó. Elegí otro día u horario.",
       duplicate: "Ya tenemos una reserva registrada para ese teléfono en ese día y horario.",
+      outside_coverage: "Esa dirección está fuera de nuestra zona de cobertura. Escribinos por WhatsApp y vemos cómo ayudarte.",
       server_error: "No pudimos crear la reserva. Probá de nuevo.",
     };
     return json({

@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.botmaker-reprocess-conversation]
 verify_jwt = true
+
+[functions.validate-address-location]
+verify_jwt = false

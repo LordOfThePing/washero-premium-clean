@@ -240,6 +240,7 @@ function mapFallbackReason(reason: string | null): string {
     invalid_vehicle: "missing_required_fields",
     invalid_payment: "missing_required_fields",
     invalid_extra: "missing_required_fields",
+    outside_coverage: "outside_coverage_or_unverified",
   };
   if (!reason) return "unknown_error";
   return map[reason] ?? reason;

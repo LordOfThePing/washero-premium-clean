@@ -3,24 +3,10 @@
 
 // deno-lint-ignore-file no-explicit-any
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import { loadActiveZones, matchZone } from "./coverage.ts";
 
 export const VEHICLE_TYPES = ["Auto", "SUV", "Pick-up", "Otro"] as const;
 export const PAYMENT_METHODS = ["Pagar después", "Transferencia", "MercadoPago"] as const;
-
-export const VEHICLE_SURCHARGES: Record<string, number> = {
-  "Auto": 0,
-  "SUV": 5000,
-  "Pick-up": 8000,
-  "Otro": 0,
-};
-
-export const ALLOWED_EXTRAS: Record<string, { label: string; price: number }> = {
-  encerado_rapido:            { label: "Encerado rápido",             price: 8000 },
-  detallado_interior_profundo:{ label: "Detallado interior profundo",  price: 9000 },
-  eliminacion_olores:         { label: "Eliminación de olores",        price: 12000 },
-  barro_auto_muy_sucio:       { label: "Barro / Auto muy sucio",       price: 7000 },
-  pelo_mascotas:              { label: "Pelo de mascotas",             price: 10000 },
-};
 
 export type CoreBookingInput = {
   customer_name: string;
@@ -28,16 +14,23 @@ export type CoreBookingInput = {
   customer_email?: string | null;
   address: string;
   neighborhood: string;
-  vehicle_type: string;       // must be in VEHICLE_TYPES
-  service_id?: string | null; // optional if service_name provided
-  service_name?: string | null; // botmaker fallback
-  scheduled_date: string;     // YYYY-MM-DD
-  scheduled_time: string;     // HH:MM or HH:MM:SS
-  payment_method: string;     // must be in PAYMENT_METHODS
+  vehicle_type: string;
+  service_id?: string | null;
+  service_name?: string | null;
+  scheduled_date: string;
+  scheduled_time: string;
+  payment_method: string;
   notes?: string | null;
-  selected_extras?: string[]; // ids from ALLOWED_EXTRAS
+  selected_extras?: string[];
   source: "website" | "botmaker";
   is_test?: boolean;
+  // Optional location fields (Google Places)
+  place_id?: string | null;
+  formatted_address?: string | null;
+  address_lat?: number | null;
+  address_lng?: number | null;
+  // Coverage policy
+  enforce_coverage?: boolean; // website=true, botmaker=false
 };
 
 export type CoreResult =
@@ -64,6 +57,8 @@ export type CoreResult =
       surcharge: number;
       extras_total: number;
       area_match: boolean;
+      coverage_zone_id: string | null;
+      coverage_zone_name: string | null;
     }
   | {
       ok: false;
@@ -81,6 +76,7 @@ export type CoreResult =
         | "service_does_not_fit_slot"
         | "slot_full"
         | "duplicate"
+        | "outside_coverage"
         | "server_error";
       missing?: string[];
       message: string;
@@ -90,6 +86,37 @@ export type CoreResult =
 function isDate(v: string) { return /^\d{4}-\d{2}-\d{2}$/.test(v); }
 function isTime(v: string) { return /^\d{2}:\d{2}(:\d{2})?$/.test(v); }
 function normTime(v: string) { return v.length === 5 ? `${v}:00` : v; }
+
+async function loadVehicleSurcharge(admin: SupabaseClient, vehicle_type: string): Promise<number> {
+  const { data } = await admin.from("pricing_items")
+    .select("amount,code,name").eq("type", "vehicle_surcharge").eq("active", true);
+  const fold = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const v = fold(vehicle_type);
+  for (const row of (data ?? []) as any[]) {
+    if (fold(row.code) === v || fold(row.name).includes(v) || v.includes(fold(row.code))) {
+      return Number(row.amount) || 0;
+    }
+  }
+  return 0;
+}
+
+async function loadExtras(admin: SupabaseClient, codes: string[]): Promise<{ ok: true; total: number; lines: string[] } | { ok: false; missing: string[] }> {
+  if (!codes.length) return { ok: true, total: 0, lines: [] };
+  const { data } = await admin.from("pricing_items")
+    .select("code,name,amount,active").eq("type", "extra").in("code", codes);
+  const map = new Map<string, { name: string; amount: number; active: boolean }>();
+  for (const r of (data ?? []) as any[]) map.set(r.code, { name: r.name, amount: Number(r.amount) || 0, active: !!r.active });
+  const missing = codes.filter((c) => !map.get(c) || !map.get(c)!.active);
+  if (missing.length) return { ok: false, missing };
+  const lines: string[] = [];
+  let total = 0;
+  for (const c of codes) {
+    const e = map.get(c)!;
+    total += e.amount;
+    lines.push(`${e.name} (+$${e.amount})`);
+  }
+  return { ok: true, total, lines };
+}
 
 export async function tryCreateBooking(
   admin: SupabaseClient,
@@ -108,6 +135,7 @@ export async function tryCreateBooking(
   const payment_method = (input.payment_method ?? "").trim();
   const notes_in = input.notes ? String(input.notes).trim() : "";
   const selected_extras = Array.isArray(input.selected_extras) ? input.selected_extras : [];
+  const enforce_coverage = !!input.enforce_coverage;
 
   const missing: string[] = [];
   if (!customer_name) missing.push("customer_name");
@@ -133,12 +161,6 @@ export async function tryCreateBooking(
 
   const scheduled_time = normTime(scheduled_time_raw);
 
-  // Validate extras (allowlist)
-  const unknown_extras = selected_extras.filter((e) => !ALLOWED_EXTRAS[e]);
-  if (unknown_extras.length) {
-    return { ok: false, reason: "invalid_extra", message: "Hay un extra inválido. Actualizá la página e intentá nuevamente.", http_status: 400 };
-  }
-
   // Service lookup
   let service: { id: string; name: string; base_price: number; duration_minutes: number; active: boolean } | null = null;
   if (service_id) {
@@ -155,7 +177,19 @@ export async function tryCreateBooking(
   if (!service || !service.active)
     return { ok: false, reason: "invalid_service", message: "El servicio no está disponible.", http_status: 400 };
 
-  // Area match
+  // Coverage zone match (polygon → alias → radius)
+  const zones = await loadActiveZones(admin);
+  const cov = matchZone(zones, {
+    lat: input.address_lat ?? null,
+    lng: input.address_lng ?? null,
+    neighborhood,
+  });
+  const inside_coverage = !!cov.zone;
+  if (enforce_coverage && !inside_coverage) {
+    return { ok: false, reason: "outside_coverage", message: "Esa dirección está fuera de nuestra zona de cobertura.", http_status: 422 };
+  }
+
+  // service_areas legacy area_match (informational)
   const { data: areaRows } = await admin.from("service_areas").select("name").eq("active", true);
   const area_match = (areaRows ?? []).some((a: any) => a.name.trim().toLowerCase() === neighborhood.toLowerCase());
 
@@ -168,7 +202,6 @@ export async function tryCreateBooking(
     .maybeSingle();
   if (!slot) return { ok: false, reason: "slot_not_found", message: "Ese horario ya no está disponible.", http_status: 409 };
 
-  // Compute requested time window using service duration
   const toMin = (t: string) => {
     const [h, m] = String(t).slice(0, 5).split(":").map(Number);
     return h * 60 + m;
@@ -180,7 +213,6 @@ export async function tryCreateBooking(
     return { ok: false, reason: "service_does_not_fit_slot", message: "El servicio elegido no entra en el horario seleccionado.", http_status: 409 };
   }
 
-  // Overlap-based capacity check on the same date
   const { data: sameDay } = await admin.from("bookings")
     .select("scheduled_time,duration_minutes,booking_status")
     .eq("scheduled_date", scheduled_date)
@@ -202,20 +234,36 @@ export async function tryCreateBooking(
     .neq("booking_status", "cancelled").limit(1);
   if (dup && dup.length) return { ok: false, reason: "duplicate", message: "Ya existe una reserva en ese horario para este teléfono.", http_status: 409 };
 
-  // Pricing
-  const surcharge = VEHICLE_SURCHARGES[vehicle_type] ?? 0;
-  let extras_total = 0;
-  const extras_lines: string[] = [];
-  for (const id of selected_extras) {
-    const e = ALLOWED_EXTRAS[id];
-    extras_total += e.price;
-    extras_lines.push(`${e.label} (+$${e.price})`);
-  }
+  // Pricing from DB
+  const surcharge = await loadVehicleSurcharge(admin, vehicle_type);
+  const extras = await loadExtras(admin, selected_extras);
+  if (!extras.ok) return { ok: false, reason: "invalid_extra", message: "Hay un extra inválido. Actualizá la página e intentá nuevamente.", http_status: 400 };
+  const extras_total = extras.total;
   const total_price = service.base_price + surcharge + extras_total;
+
+  const price_breakdown = {
+    base: { label: service.name, amount: service.base_price },
+    vehicle: { type: vehicle_type, amount: surcharge },
+    extras: extras.lines,
+    extras_total,
+    total: total_price,
+    lines: [
+      { label: service.name, amount: service.base_price },
+      ...(surcharge > 0 ? [{ label: `Recargo vehículo (${vehicle_type})`, amount: surcharge }] : []),
+      ...extras.lines.map((l) => ({ label: l, amount: 0 })),
+    ],
+  };
 
   // Customer sync
   const { data: existing } = await admin.from("customers").select("id").eq("phone", customer_phone).limit(1).maybeSingle();
   let customer_id: string | null = null;
+  const customerLoc: any = {};
+  if (input.place_id) customerLoc.place_id = input.place_id;
+  if (input.formatted_address) customerLoc.formatted_address = input.formatted_address;
+  if (typeof input.address_lat === "number") customerLoc.address_lat = input.address_lat;
+  if (typeof input.address_lng === "number") customerLoc.address_lng = input.address_lng;
+  if (cov.zone) { customerLoc.coverage_zone_id = cov.zone.id; customerLoc.coverage_zone_name = cov.zone.name; }
+
   if (existing?.id) {
     customer_id = existing.id;
     await admin.from("customers").update({
@@ -223,27 +271,31 @@ export async function tryCreateBooking(
       email: customer_email,
       address,
       neighborhood,
+      ...customerLoc,
       updated_at: new Date().toISOString(),
     }).eq("id", existing.id);
   } else {
     const { data: ins } = await admin.from("customers").insert({
-      full_name: customer_name, phone: customer_phone, email: customer_email, address, neighborhood,
+      full_name: customer_name, phone: customer_phone, email: customer_email, address, neighborhood, ...customerLoc,
     }).select("id").maybeSingle();
     customer_id = ins?.id ?? null;
   }
 
-  // Build notes
   const notes_parts: string[] = [];
   if (notes_in) notes_parts.push(notes_in);
   if (vehicle_type && surcharge > 0) notes_parts.push(`Vehículo: ${vehicle_type} (+$${surcharge})`);
-  if (extras_lines.length) notes_parts.push(`Extras: ${extras_lines.join(", ")}`);
+  if (extras.lines.length) notes_parts.push(`Extras: ${extras.lines.join(", ")}`);
   if (input.is_test) notes_parts.push("[TEST]");
   const notes = notes_parts.length ? notes_parts.join(" | ") : null;
 
-  // Booking status
   let booking_status: "pending" | "confirmed" | "needs_review" =
-    input.source === "botmaker" ? "confirmed" : (area_match ? "pending" : "needs_review");
+    input.source === "botmaker" ? "confirmed" : (inside_coverage ? "pending" : "needs_review");
   if (vehicle_type === "Otro") booking_status = "needs_review";
+  if (input.source === "botmaker" && !inside_coverage) booking_status = "needs_review";
+
+  const location_validation_status = inside_coverage
+    ? `validated_${cov.match_type}`
+    : "outside_coverage_or_unverified";
 
   const { data: created, error: insErr } = await admin.from("bookings").insert({
     customer_id,
@@ -258,6 +310,18 @@ export async function tryCreateBooking(
     booking_status,
     booking_source: input.source,
     notes,
+    place_id: input.place_id ?? null,
+    formatted_address: input.formatted_address ?? null,
+    address_lat: typeof input.address_lat === "number" ? input.address_lat : null,
+    address_lng: typeof input.address_lng === "number" ? input.address_lng : null,
+    coverage_zone_id: cov.zone?.id ?? null,
+    coverage_zone_name: cov.zone?.name ?? null,
+    location_validation_status,
+    location_validation_payload: { match_type: cov.match_type, distance_km: cov.distance_km, neighborhood },
+    vehicle_surcharge: surcharge,
+    selected_extras,
+    extras_total,
+    price_breakdown,
   }).select("id,booking_status,price").maybeSingle();
 
   if (insErr || !created) {
@@ -288,5 +352,7 @@ export async function tryCreateBooking(
     surcharge,
     extras_total,
     area_match,
+    coverage_zone_id: cov.zone?.id ?? null,
+    coverage_zone_name: cov.zone?.name ?? null,
   };
 }
