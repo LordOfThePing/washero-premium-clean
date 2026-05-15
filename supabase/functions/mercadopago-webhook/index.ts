@@ -162,5 +162,15 @@ Deno.serve(async (req) => {
     console.error("mercadopago-webhook: booking update failed", updErr);
   }
 
+  // On approved, generate invoice (idempotent)
+  if (newPaymentStatus === "paid") {
+    try {
+      const { error: invErr } = await admin.rpc("generate_invoice_for_booking", { _booking_id: externalRef });
+      if (invErr) console.error("mercadopago-webhook: invoice generation failed", invErr);
+    } catch (e) {
+      console.error("mercadopago-webhook: invoice exception", e);
+    }
+  }
+
   return ok({ ok: true, payment_status: newPaymentStatus, booking_id: externalRef });
 });
