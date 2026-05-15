@@ -181,74 +181,117 @@ export type Database = {
       bookings: {
         Row: {
           address: string
+          address_lat: number | null
+          address_lng: number | null
           booking_source: string
           booking_status: string
+          coverage_zone_id: string | null
+          coverage_zone_name: string | null
           created_at: string
           customer_email: string | null
           customer_id: string | null
           customer_name: string
           customer_phone: string
           duration_minutes: number
+          extras_total: number
+          formatted_address: string | null
           id: string
+          location_validation_payload: Json | null
+          location_validation_status: string | null
           neighborhood: string
           notes: string | null
           payment_method: string
           payment_status: string
+          place_id: string | null
           price: number
+          price_breakdown: Json
           scheduled_date: string
           scheduled_time: string
+          selected_extras: Json
           service_id: string | null
           service_name: string
           updated_at: string
+          vehicle_surcharge: number
           vehicle_type: string
         }
         Insert: {
           address: string
+          address_lat?: number | null
+          address_lng?: number | null
           booking_source?: string
           booking_status?: string
+          coverage_zone_id?: string | null
+          coverage_zone_name?: string | null
           created_at?: string
           customer_email?: string | null
           customer_id?: string | null
           customer_name: string
           customer_phone: string
           duration_minutes: number
+          extras_total?: number
+          formatted_address?: string | null
           id?: string
+          location_validation_payload?: Json | null
+          location_validation_status?: string | null
           neighborhood: string
           notes?: string | null
           payment_method?: string
           payment_status?: string
+          place_id?: string | null
           price: number
+          price_breakdown?: Json
           scheduled_date: string
           scheduled_time: string
+          selected_extras?: Json
           service_id?: string | null
           service_name: string
           updated_at?: string
+          vehicle_surcharge?: number
           vehicle_type: string
         }
         Update: {
           address?: string
+          address_lat?: number | null
+          address_lng?: number | null
           booking_source?: string
           booking_status?: string
+          coverage_zone_id?: string | null
+          coverage_zone_name?: string | null
           created_at?: string
           customer_email?: string | null
           customer_id?: string | null
           customer_name?: string
           customer_phone?: string
           duration_minutes?: number
+          extras_total?: number
+          formatted_address?: string | null
           id?: string
+          location_validation_payload?: Json | null
+          location_validation_status?: string | null
           neighborhood?: string
           notes?: string | null
           payment_method?: string
           payment_status?: string
+          place_id?: string | null
           price?: number
+          price_breakdown?: Json
           scheduled_date?: string
           scheduled_time?: string
+          selected_extras?: Json
           service_id?: string | null
           service_name?: string
           updated_at?: string
+          vehicle_surcharge?: number
           vehicle_type?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "bookings_coverage_zone_id_fkey"
+            columns: ["coverage_zone_id"]
+            isOneToOne: false
+            referencedRelation: "coverage_zones"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "bookings_customer_id_fkey"
             columns: ["customer_id"]
@@ -494,41 +537,109 @@ export type Database = {
           },
         ]
       }
+      coverage_zones: {
+        Row: {
+          active: boolean
+          aliases: string[]
+          center_lat: number | null
+          center_lng: number | null
+          created_at: string
+          display_order: number
+          id: string
+          name: string
+          polygon_geojson: Json | null
+          radius_km: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          aliases?: string[]
+          center_lat?: number | null
+          center_lng?: number | null
+          created_at?: string
+          display_order?: number
+          id?: string
+          name: string
+          polygon_geojson?: Json | null
+          radius_km?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          aliases?: string[]
+          center_lat?: number | null
+          center_lng?: number | null
+          created_at?: string
+          display_order?: number
+          id?: string
+          name?: string
+          polygon_geojson?: Json | null
+          radius_km?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       customers: {
         Row: {
           address: string | null
+          address_lat: number | null
+          address_lng: number | null
+          coverage_zone_id: string | null
+          coverage_zone_name: string | null
           created_at: string
           email: string | null
+          formatted_address: string | null
           full_name: string
           id: string
           neighborhood: string | null
           notes: string | null
           phone: string
+          place_id: string | null
           updated_at: string
         }
         Insert: {
           address?: string | null
+          address_lat?: number | null
+          address_lng?: number | null
+          coverage_zone_id?: string | null
+          coverage_zone_name?: string | null
           created_at?: string
           email?: string | null
+          formatted_address?: string | null
           full_name: string
           id?: string
           neighborhood?: string | null
           notes?: string | null
           phone: string
+          place_id?: string | null
           updated_at?: string
         }
         Update: {
           address?: string | null
+          address_lat?: number | null
+          address_lng?: number | null
+          coverage_zone_id?: string | null
+          coverage_zone_name?: string | null
           created_at?: string
           email?: string | null
+          formatted_address?: string | null
           full_name?: string
           id?: string
           neighborhood?: string | null
           notes?: string | null
           phone?: string
+          place_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "customers_coverage_zone_id_fkey"
+            columns: ["coverage_zone_id"]
+            isOneToOne: false
+            referencedRelation: "coverage_zones"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       early_access_leads: {
         Row: {
@@ -573,32 +684,80 @@ export type Database = {
         Row: {
           booking_id: string | null
           created_at: string
+          customer_address: string | null
+          customer_email: string | null
+          customer_name: string | null
+          customer_phone: string | null
+          extras_total: number | null
           id: string
           invoice_number: string | null
+          invoice_status: string
           issued_at: string | null
+          line_items: Json
           notes: string | null
+          payment_method: string | null
+          payment_status: string | null
+          scheduled_date: string | null
+          scheduled_time: string | null
+          service_name: string | null
           status: string
+          subtotal: number | null
+          total: number | null
           updated_at: string
+          vehicle_surcharge: number | null
+          vehicle_type: string | null
         }
         Insert: {
           booking_id?: string | null
           created_at?: string
+          customer_address?: string | null
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          extras_total?: number | null
           id?: string
           invoice_number?: string | null
+          invoice_status?: string
           issued_at?: string | null
+          line_items?: Json
           notes?: string | null
+          payment_method?: string | null
+          payment_status?: string | null
+          scheduled_date?: string | null
+          scheduled_time?: string | null
+          service_name?: string | null
           status?: string
+          subtotal?: number | null
+          total?: number | null
           updated_at?: string
+          vehicle_surcharge?: number | null
+          vehicle_type?: string | null
         }
         Update: {
           booking_id?: string | null
           created_at?: string
+          customer_address?: string | null
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          extras_total?: number | null
           id?: string
           invoice_number?: string | null
+          invoice_status?: string
           issued_at?: string | null
+          line_items?: Json
           notes?: string | null
+          payment_method?: string | null
+          payment_status?: string | null
+          scheduled_date?: string | null
+          scheduled_time?: string | null
+          service_name?: string | null
           status?: string
+          subtotal?: number | null
+          total?: number | null
           updated_at?: string
+          vehicle_surcharge?: number | null
+          vehicle_type?: string | null
         }
         Relationships: []
       }
@@ -684,6 +843,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      pricing_items: {
+        Row: {
+          active: boolean
+          amount: number
+          code: string
+          created_at: string
+          description: string | null
+          display_order: number
+          id: string
+          name: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          amount?: number
+          code: string
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          id?: string
+          name: string
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          amount?: number
+          code?: string
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          id?: string
+          name?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       service_areas: {
         Row: {
@@ -805,6 +1003,7 @@ export type Database = {
         }[]
       }
       is_admin: { Args: never; Returns: boolean }
+      next_invoice_number: { Args: never; Returns: string }
     }
     Enums: {
       [_ in never]: never
