@@ -250,15 +250,6 @@ export async function processBotmakerBookingImpact(admin: SupabaseClient, args: 
   isTest?: boolean;
   currentPayload?: any;
   force?: boolean;
-}) {
-export async function processBotmakerBookingImpact(admin: SupabaseClient, args: {
-  conversation: any;
-  summary: BotmakerMessageRow;
-  confirmation: BotmakerMessageRow;
-  phone?: string | null;
-  isTest?: boolean;
-  currentPayload?: any;
-  force?: boolean;
   messages?: BotmakerMessageRow[];
 }) {
   const summaryText = args.summary.message_text ?? "";
