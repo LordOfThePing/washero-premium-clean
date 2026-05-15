@@ -354,6 +354,9 @@ function DisponibilidadPage() {
         </CardContent>
       </Card>
 
+      {/* Overlap diagnostic */}
+      <OverlapDiagnostic slots={slotsQuery.data ?? []} bookingsMap={bookingsMap} />
+
       {/* List */}
       {loading ? (
         <div className="flex items-center justify-center p-10 text-muted-foreground">
