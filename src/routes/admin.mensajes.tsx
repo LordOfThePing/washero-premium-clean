@@ -48,6 +48,34 @@ type Message = {
   raw_payload: any;
 };
 
+function foldText(v: string) {
+  return v.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+const SUMMARY_LABELS = [/nombre\s+completo\s*:/i, /(^|\n|\r)\s*nombre\s*:/i, /direcci[oó]n\s*:/i, /zona\s*:/i, /veh[ií]culo\s*:/i, /servicio\s*:/i, /d[ií]a\s*:/i, /horario\s*:/i, /pago\s*:/i, /confirm[aá]s\s+que\s+est[aá]\s+todo\s+bien/i];
+function isSummaryText(text: string) { return SUMMARY_LABELS.filter((re) => re.test(text)).length >= 5; }
+function isConfirmText(text: string) {
+  const t = foldText(text).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  const words = ["si", "sisi", "si si", "confirmo", "confirmado", "correcto", "ok", "okay", "dale", "joya", "perfecto", "esta bien", "todo bien", "va", "de una"];
+  return !!t && t.length <= 80 && words.some((w) => t === w || t.startsWith(`${w} `) || t.endsWith(` ${w}`));
+}
+function fieldFrom(text: string, label: string) {
+  return text.match(new RegExp(`${label}\\s*:\\s*([^\\n\\r]+)`, "i"))?.[1]?.trim() ?? null;
+}
+function parseSummaryDebug(text: string) {
+  const parsed = {
+    customer_name: fieldFrom(text, "Nombre completo") ?? fieldFrom(text, "Nombre"),
+    address: fieldFrom(text, "Dirección") ?? fieldFrom(text, "Direccion"),
+    neighborhood: fieldFrom(text, "Zona"),
+    vehicle_type: fieldFrom(text, "Vehículo") ?? fieldFrom(text, "Vehiculo"),
+    service_type: fieldFrom(text, "Servicio"),
+    preferred_date: fieldFrom(text, "Día") ?? fieldFrom(text, "Dia"),
+    preferred_time: fieldFrom(text, "Horario"),
+    payment_method: fieldFrom(text, "Pago"),
+  };
+  return { parsed, missing: Object.entries(parsed).filter(([, v]) => !v).map(([k]) => k) };
+}
+
 function formatWhen(ts: string | null) {
   if (!ts) return "—";
   return new Date(ts).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
@@ -71,14 +99,21 @@ function MensajesPage() {
     },
   });
 
-  const invalidEvents = useQuery({
-    queryKey: ["botmaker", "invalid-count"],
+  const eventStats = useQuery({
+    queryKey: ["botmaker", "event-stats"],
     queryFn: async () => {
-      const { count } = await supabase
-        .from("botmaker_events")
-        .select("id", { count: "exact", head: true })
-        .eq("auth_valid", false);
-      return count ?? 0;
+      const [valid, invalid, lastValid, lastInvalid] = await Promise.all([
+        supabase.from("botmaker_events").select("id", { count: "exact", head: true }).eq("auth_valid", true),
+        supabase.from("botmaker_events").select("id", { count: "exact", head: true }).eq("auth_valid", false),
+        supabase.from("botmaker_events").select("created_at").eq("auth_valid", true).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("botmaker_events").select("created_at").eq("auth_valid", false).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      ]);
+      return {
+        valid_count: valid.count ?? 0,
+        invalid_count: invalid.count ?? 0,
+        last_valid_event: lastValid.data?.created_at ?? null,
+        last_invalid_event: lastInvalid.data?.created_at ?? null,
+      };
     },
   });
 
@@ -116,10 +151,14 @@ function MensajesPage() {
         </div>
       </div>
 
-      {(invalidEvents.data ?? 0) > 0 && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 text-destructive" />
-          Hay {invalidEvents.data} eventos rechazados por token inválido. Revisá BOTMAKER_WEBHOOK_SECRET.
+      {(eventStats.data?.invalid_count ?? 0) > 0 && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm flex items-start gap-2">
+          <AlertTriangle className="h-4 w-4 text-destructive mt-0.5" />
+          <div className="space-y-1">
+            <p>Hay {eventStats.data?.invalid_count} eventos rechazados por token inválido.</p>
+            <p className="text-xs text-muted-foreground">Header esperado: <code className="font-mono">auth-bm-token</code>. El token de seguridad de Botmaker debe coincidir exactamente con <code className="font-mono">BOTMAKER_WEBHOOK_SECRET</code> en Supabase.</p>
+            <p className="text-xs text-muted-foreground">Último inválido: {formatWhen(eventStats.data?.last_invalid_event ?? null)} · Válidos: {eventStats.data?.valid_count ?? 0} · Último válido: {formatWhen(eventStats.data?.last_valid_event ?? null)}</p>
+          </div>
         </div>
       )}
 
@@ -179,6 +218,7 @@ function MensajesPage() {
 function ConversationDetail({ conversation }: { conversation: Conversation }) {
   const [showRaw, setShowRaw] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
+  const qc = useQueryClient();
 
   const messages = useQuery({
     queryKey: ["botmaker", "messages", conversation.id],
@@ -208,12 +248,48 @@ function ConversationDetail({ conversation }: { conversation: Conversation }) {
     },
   });
 
+  const parserDebug = useMemo(() => {
+    const list = messages.data ?? [];
+    const summary = [...list].reverse().find((m) => m.message_text && isSummaryText(m.message_text));
+    const summaryAt = summary?.created_at ? Date.parse(summary.created_at) : 0;
+    const confirmation = summary
+      ? [...list].reverse().find((m) => m.message_text && isConfirmText(m.message_text) && (!summaryAt || Date.parse(m.created_at) >= summaryAt))
+      : null;
+    const parsedLocal = summary?.message_text ? parseSummaryDebug(summary.message_text) : { parsed: {}, missing: [] as string[] };
+    const raw = (bookingRequest.data as any)?.raw_payload ?? {};
+    return { summary, confirmation, parsedLocal, raw };
+  }, [messages.data, bookingRequest.data]);
+
+  const reprocess = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("botmaker-reprocess-conversation", {
+        body: { conversation_id: conversation.id },
+      });
+      if (error) throw error;
+      if (data?.ok === false) throw new Error(data.error ?? "No se pudo reprocesar");
+      return data;
+    },
+    onSuccess: (data) => {
+      if (data?.auto_booking_success) toast.success("Reserva creada automáticamente");
+      else if (data?.processed) toast.success("Solicitud creada para revisión");
+      else toast.warning(data?.fallback_reason ?? "No se detectó resumen + confirmación");
+      qc.invalidateQueries({ queryKey: ["botmaker"] });
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Error al reprocesar"),
+  });
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <span className="text-base">{conversation.customer_name || conversation.customer_phone || "Conversación"}</span>
-          <span className="text-xs text-muted-foreground">{conversation.channel || ""}</span>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => reprocess.mutate()} disabled={reprocess.isPending}>
+              {reprocess.isPending && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
+              Reprocesar reserva
+            </Button>
+            <span className="text-xs text-muted-foreground">{conversation.channel || ""}</span>
+          </div>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -295,6 +371,31 @@ function ConversationDetail({ conversation }: { conversation: Conversation }) {
           ))}
           {messages.data?.length === 0 && <p className="text-sm text-muted-foreground">Sin mensajes.</p>}
         </div>
+
+        <details className="rounded-md border bg-muted/20 p-3 text-xs">
+          <summary className="cursor-pointer font-medium">Debug parser</summary>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            <Field label="Último resumen detectado" v={parserDebug.summary ? "sí" : "no"} />
+            <Field label="Confirmación detectada" v={parserDebug.confirmation ? "sí" : "no"} />
+            <Field label="Confirmación" v={parserDebug.confirmation?.message_text} />
+            <Field label="auto_booking_attempted" v={parserDebug.raw.auto_booking_attempted === undefined ? "—" : parserDebug.raw.auto_booking_attempted ? "sí" : "no"} />
+            <Field label="auto_booking_result" v={parserDebug.raw.auto_booking_result ?? (parserDebug.raw.auto_booking_success ? "booking_created" : "—")} />
+            <Field label="fallback_reason" v={parserDebug.raw.fallback_reason} />
+            <Field label="parsed customer_name" v={(parserDebug.raw.parsed ?? parserDebug.parsedLocal.parsed)?.customer_name} />
+            <Field label="parsed address" v={(parserDebug.raw.parsed ?? parserDebug.parsedLocal.parsed)?.address} />
+            <Field label="parsed neighborhood" v={(parserDebug.raw.parsed ?? parserDebug.parsedLocal.parsed)?.neighborhood} />
+            <Field label="parsed vehicle_type" v={(parserDebug.raw.parsed ?? parserDebug.parsedLocal.parsed)?.vehicle_type} />
+            <Field label="parsed service_type" v={(parserDebug.raw.parsed ?? parserDebug.parsedLocal.parsed)?.service_type} />
+            <Field label="parsed preferred_date" v={(parserDebug.raw.parsed ?? parserDebug.parsedLocal.parsed)?.preferred_date} />
+            <Field label="parsed preferred_time" v={(parserDebug.raw.parsed ?? parserDebug.parsedLocal.parsed)?.preferred_time} />
+            <Field label="parsed payment_method" v={(parserDebug.raw.parsed ?? parserDebug.parsedLocal.parsed)?.payment_method} />
+            <Field label="missing_fields" v={(parserDebug.raw.missing_fields ?? parserDebug.parsedLocal.missing)?.join?.(", ") ?? "—"} />
+          </div>
+          <div className="mt-3 space-y-1">
+            <p className="text-muted-foreground">Resumen preview</p>
+            <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-background p-2 text-[10px]">{parserDebug.summary?.message_text ?? "—"}</pre>
+          </div>
+        </details>
 
         <div>
           <Button variant="ghost" size="sm" onClick={() => setShowRaw((v) => !v)}>
