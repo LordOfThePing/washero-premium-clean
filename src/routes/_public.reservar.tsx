@@ -3,131 +3,116 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import { toast } from "sonner";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Car,
-  CheckCircle2,
-  Clock,
-  Loader2,
-  MapPin,
-  MessageCircle,
-  Sparkles,
-  User,
-} from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Loader2, MessageCircle } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 const WHATSAPP_NUMBER = "5491176247835";
 const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUMBER}`;
 
-// ---------- Types ----------
-type Service = {
-  id: string;
-  name: string;
-  description: string | null;
-  base_price: number;
-  duration_minutes: number;
-};
-type ServiceArea = { id: string; name: string };
-type Slot = {
-  id: string;
-  date: string;
-  start_time: string;
-  end_time: string;
-  capacity: number;
-};
-
-const VEHICLE_TYPES = ["Auto", "SUV", "Pick-up", "Otro"] as const;
-const PAYMENT_METHODS = [
-  { value: "MercadoPago", label: "Mercado Pago", available: true, hint: "Pagás online con tarjeta, débito o saldo MP." },
-  { value: "Transferencia", label: "Transferencia", available: true, hint: "Te enviamos los datos por WhatsApp." },
-  { value: "Pagar después", label: "Pagar después", available: true, hint: "Coordinás con el lavador en el momento." },
+// ----- Constants (mirror server allowlist) -----
+const VEHICLE_OPTIONS = [
+  { value: "Auto", label: "Auto chico", surcharge: 0, hint: "Sin cargo" },
+  { value: "SUV", label: "SUV / Crossover", surcharge: 5000, hint: "+ $5.000" },
+  { value: "Pick-up", label: "Pick Up / Van", surcharge: 8000, hint: "+ $8.000" },
 ] as const;
 
-// ---------- Validation ----------
-const stepSchemas = {
-  customer: z.object({
-    customer_name: z.string().trim().min(2, "Ingresá tu nombre completo").max(120),
-    customer_phone: z
-      .string()
-      .trim()
-      .min(6, "Ingresá un teléfono válido")
-      .max(30)
-      .regex(/^[+\d\s\-()]+$/, "Sólo números, espacios y +"),
-    customer_email: z.union([z.literal(""), z.string().trim().email("Email inválido").max(255)]),
-  }),
-  location: z.object({
-    address: z.string().trim().min(4, "Ingresá una dirección").max(200),
-    neighborhood: z.string().trim().min(2, "Elegí o escribí tu barrio").max(80),
-  }),
-  vehicle: z.object({
-    vehicle_type: z.enum(VEHICLE_TYPES),
-    service_id: z.string().uuid("Elegí un servicio"),
-  }),
-  schedule: z.object({
-    scheduled_date: z.string().min(1, "Elegí una fecha"),
-    scheduled_time: z.string().min(1, "Elegí un horario"),
-  }),
-  payment: z.object({
-    payment_method: z.enum(["Pagar después", "Transferencia", "MercadoPago"]),
-  }),
-};
+const EXTRAS = [
+  { key: "encerado_rapido", label: "Encerado rápido", price: 8000 },
+  { key: "detallado_interior_profundo", label: "Detallado interior profundo", price: 9000 },
+  { key: "eliminacion_olores", label: "Eliminación de olores", price: 12000 },
+  { key: "barro_auto_muy_sucio", label: "Barro / Auto muy sucio", price: 7000 },
+  { key: "pelo_mascotas", label: "Pelo de mascotas", price: 10000 },
+] as const;
+
+const PAYMENTS = [
+  { value: "MercadoPago", label: "Mercado Pago", hint: "Online seguro" },
+  { value: "Transferencia", label: "Transferencia", hint: "Te enviamos los datos" },
+  { value: "Pagar después", label: "Pagar después", hint: "En el lugar" },
+] as const;
+
+const OTHER_AREA = "__other__";
+
+// ----- Types -----
+type Service = { id: string; name: string; description: string | null; base_price: number; duration_minutes: number };
+type ServiceArea = { id: string; name: string };
+type PublicSlot = { id: string; date: string; start_time: string; end_time: string; capacity: number; taken: number; remaining: number };
 
 type FormState = {
+  service_id: string;
+  vehicle_type: "Auto" | "SUV" | "Pick-up" | "";
+  extras: string[];
+  address: string;
+  neighborhood_choice: string; // dropdown value (area name or OTHER_AREA)
+  neighborhood_other: string;
   customer_name: string;
   customer_phone: string;
   customer_email: string;
-  address: string;
-  neighborhood: string;
-  vehicle_type: (typeof VEHICLE_TYPES)[number] | "";
-  service_id: string;
-  scheduled_date: string;
-  scheduled_time: string;
-  payment_method: "Pagar después" | "Transferencia" | "MercadoPago";
   notes: string;
+  whatsapp_reminders: boolean;
+  kipper_quote: boolean;
+  payment_method: "MercadoPago" | "Transferencia" | "Pagar después";
 };
 
 const INITIAL: FormState = {
+  service_id: "",
+  vehicle_type: "",
+  extras: [],
+  address: "",
+  neighborhood_choice: "",
+  neighborhood_other: "",
   customer_name: "",
   customer_phone: "",
   customer_email: "",
-  address: "",
-  neighborhood: "",
-  vehicle_type: "",
-  service_id: "",
-  scheduled_date: "",
-  scheduled_time: "",
-  payment_method: "Pagar después",
   notes: "",
+  whatsapp_reminders: false,
+  kipper_quote: false,
+  payment_method: "MercadoPago",
 };
 
-const STEPS = [
-  { id: "customer", label: "Datos", icon: User },
-  { id: "location", label: "Ubicación", icon: MapPin },
-  { id: "vehicle", label: "Vehículo", icon: Car },
-  { id: "schedule", label: "Fecha", icon: Clock },
-  { id: "payment", label: "Pago", icon: Sparkles },
-  { id: "review", label: "Confirmar", icon: CheckCircle2 },
-] as const;
+const formSchema = z.object({
+  service_id: z.string().uuid("Elegí un servicio"),
+  vehicle_type: z.enum(["Auto", "SUV", "Pick-up"]),
+  address: z.string().trim().min(4, "Ingresá una dirección"),
+  neighborhood: z.string().trim().min(2, "Elegí o escribí tu zona"),
+  customer_name: z.string().trim().min(2, "Ingresá tu nombre"),
+  customer_phone: z.string().trim().min(6, "Teléfono inválido").regex(/^[+\d\s\-()]+$/, "Sólo números, espacios y +"),
+  customer_email: z.union([z.literal(""), z.string().trim().email("Email inválido")]),
+});
 
-// ---------- Data fetching ----------
+// ----- Helpers -----
+const MONTHS_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+const WEEKDAYS_ES = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+const WEEKDAYS_LONG = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+
+function formatARS(v: number) {
+  return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(v);
+}
+function isoFromDate(d: Date) {
+  const y = d.getFullYear(); const m = String(d.getMonth()+1).padStart(2,"0"); const day = String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
+function dateFromIso(iso: string) {
+  const [y,m,d] = iso.split("-").map(Number);
+  return new Date(y, m-1, d);
+}
+function formatDayLong(iso: string) {
+  const d = dateFromIso(iso);
+  return `${WEEKDAYS_LONG[d.getDay()]} ${d.getDate()} de ${MONTHS_ES[d.getMonth()].toLowerCase()}`;
+}
+
+// ----- Data fetching -----
 async function fetchServices(): Promise<Service[]> {
   const { data, error } = await supabase
     .from("services")
@@ -146,793 +131,632 @@ async function fetchAreas(): Promise<ServiceArea[]> {
   if (error) throw error;
   return data ?? [];
 }
-async function fetchSlots(): Promise<Slot[]> {
-  const today = new Date();
-  const isoToday = today.toISOString().slice(0, 10);
-  const { data, error } = await supabase
-    .from("availability_slots")
-    .select("id,date,start_time,end_time,capacity")
-    .eq("active", true)
-    .gte("date", isoToday)
-    .order("date")
-    .order("start_time")
-    .limit(500);
+async function fetchAvailability(): Promise<PublicSlot[]> {
+  const { data, error } = await supabase.functions.invoke("get-public-availability");
   if (error) throw error;
-  return data ?? [];
+  const body = data as { ok: boolean; slots?: PublicSlot[] } | null;
+  if (!body?.ok) throw new Error("availability_failed");
+  return body.slots ?? [];
 }
 
-// ---------- Route ----------
+// ----- Route -----
 export const Route = createFileRoute("/_public/reservar")({
   head: () => ({
     meta: [
       { title: "Reservar lavado — Washero" },
-      {
-        name: "description",
-        content:
-          "Reservá tu lavado de auto a domicilio en Zona Norte en pocos pasos. Vamos a tu casa, barrio o empresa.",
-      },
+      { name: "description", content: "Reservá tu lavado de auto a domicilio en Zona Norte. Elegí día y horario en pocos toques." },
     ],
   }),
   component: ReservarPage,
 });
 
-// ---------- Helpers ----------
-function formatARS(value: number) {
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-function formatDateLong(iso: string) {
-  if (!iso) return "";
-  const [y, m, d] = iso.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  return new Intl.DateTimeFormat("es-AR", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    timeZone: "America/Argentina/Buenos_Aires",
-  }).format(dt);
-}
-function formatTime(t: string) {
-  return t?.slice(0, 5) ?? "";
-}
-function normalizePhone(p: string) {
-  return p.replace(/\s+/g, " ").trim();
-}
-
-// ---------- Page ----------
+// ============ Page ============
 function ReservarPage() {
   const navigate = useNavigate();
-  const [stepIdx, setStepIdx] = useState(0);
-  const [form, setForm] = useState<FormState>(INITIAL);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [submitting, setSubmitting] = useState(false);
 
   const services = useQuery({ queryKey: ["services"], queryFn: fetchServices, staleTime: 60_000 });
   const areas = useQuery({ queryKey: ["service_areas"], queryFn: fetchAreas, staleTime: 60_000 });
-  const slots = useQuery({ queryKey: ["availability_slots"], queryFn: fetchSlots, staleTime: 30_000 });
+  const availability = useQuery({ queryKey: ["public_availability"], queryFn: fetchAvailability, staleTime: 30_000, retry: 1 });
 
-  const activeAreaNames = useMemo(
-    () => new Set((areas.data ?? []).map((a) => a.name.toLowerCase())),
-    [areas.data],
-  );
-
+  // Group slots by date
   const slotsByDate = useMemo(() => {
-    const map = new Map<string, Slot[]>();
-    (slots.data ?? []).forEach((s) => {
+    const map = new Map<string, PublicSlot[]>();
+    for (const s of availability.data ?? []) {
       if (!map.has(s.date)) map.set(s.date, []);
       map.get(s.date)!.push(s);
-    });
+    }
     return map;
-  }, [slots.data]);
+  }, [availability.data]);
 
-  const availableDates = useMemo(() => Array.from(slotsByDate.keys()), [slotsByDate]);
-  const slotsForChosenDate = form.scheduled_date ? slotsByDate.get(form.scheduled_date) ?? [] : [];
-
-  const selectedService = (services.data ?? []).find((s) => s.id === form.service_id);
-  const isUnsupportedArea =
-    form.neighborhood.trim().length > 0 && !activeAreaNames.has(form.neighborhood.trim().toLowerCase());
-
-  const update = <K extends keyof FormState>(key: K, value: FormState[K]) => {
-    setForm((f) => ({ ...f, [key]: value }));
-    setErrors((e) => {
-      if (!e[key]) return e;
-      const { [key]: _, ...rest } = e;
-      return rest;
-    });
-  };
-
-  const validateStep = (id: (typeof STEPS)[number]["id"]) => {
-    if (id === "review") return true;
-    const schema = stepSchemas[id as keyof typeof stepSchemas];
-    const result = schema.safeParse(form);
-    if (result.success) {
-      setErrors({});
-      return true;
+  const datesWithAvailability = useMemo(() => {
+    const out = new Set<string>();
+    for (const [date, list] of slotsByDate.entries()) {
+      if (list.some((s) => s.remaining > 0)) out.add(date);
     }
-    const errs: Record<string, string> = {};
-    result.error.issues.forEach((i) => {
-      if (i.path[0]) errs[i.path[0] as string] = i.message;
-    });
-    setErrors(errs);
-    return false;
-  };
+    return out;
+  }, [slotsByDate]);
 
-  const goNext = () => {
-    const stepId = STEPS[stepIdx].id;
-    if (!validateStep(stepId)) return;
-    setStepIdx((i) => Math.min(i + 1, STEPS.length - 1));
-  };
-  const goBack = () => setStepIdx((i) => Math.max(i - 1, 0));
+  // Calendar month state
+  const today = useMemo(() => {
+    const t = new Date(); t.setHours(0,0,0,0); return t;
+  }, []);
+  const [viewMonth, setViewMonth] = useState<Date>(() => {
+    const t = new Date(); return new Date(t.getFullYear(), t.getMonth(), 1);
+  });
 
-  async function handleSubmit() {
-    if (!selectedService) {
-      toast.error("Elegí un servicio");
-      setStepIdx(2);
-      return;
-    }
-    setSubmitting(true);
+  // Selected date / time
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [timeSheetOpen, setTimeSheetOpen] = useState(false);
+  const [bookingOpen, setBookingOpen] = useState(false);
 
-    const payload = {
-      customer_name: form.customer_name.trim(),
-      customer_phone: normalizePhone(form.customer_phone),
-      customer_email: form.customer_email.trim() || null,
-      address: form.address.trim(),
-      neighborhood: form.neighborhood.trim(),
-      vehicle_type: form.vehicle_type as string,
-      service_id: selectedService.id,
-      scheduled_date: form.scheduled_date,
-      scheduled_time: form.scheduled_time,
-      payment_method: form.payment_method,
-      notes: form.notes.trim() || null,
-    };
+  const slotsForSelected = selectedDate ? (slotsByDate.get(selectedDate) ?? []) : [];
 
-    const { data, error } = await supabase.functions.invoke("create-website-booking", {
-      body: payload,
-    });
-
-    type FnResponse = {
-      ok: boolean;
-      status?: string;
-      customer_message?: string;
-      booking_status?: "pending" | "needs_review";
-      payment_status?: string;
-      checkout_url?: string | null;
-      summary?: {
-        service_name: string;
-        scheduled_date: string;
-        scheduled_time: string;
-        address: string;
-        neighborhood: string;
-        price: number;
-      };
-    };
-    const result = (data ?? null) as FnResponse | null;
-
-    if (error || !result?.ok) {
-      console.error("Booking creation failed", { error, result });
-      setSubmitting(false);
-      const msg =
-        result?.customer_message ||
-        "No pudimos crear la reserva en este momento. Probá de nuevo o escribinos por WhatsApp.";
-      toast.error(msg, {
-        action: {
-          label: "WhatsApp",
-          onClick: () => window.open(WHATSAPP_URL, "_blank"),
-        },
-      });
-      return;
-    }
-
-    try {
-      sessionStorage.setItem(
-        "washero:last-booking",
-        JSON.stringify({
-          service_name: result.summary?.service_name ?? selectedService.name,
-          scheduled_date: result.summary?.scheduled_date ?? payload.scheduled_date,
-          scheduled_time: result.summary?.scheduled_time ?? payload.scheduled_time,
-          address: result.summary?.address ?? payload.address,
-          neighborhood: result.summary?.neighborhood ?? payload.neighborhood,
-          price: result.summary?.price ?? selectedService.base_price,
-          payment_method: payload.payment_method,
-          booking_status: result.booking_status ?? "pending",
-        }),
-      );
-    } catch {
-      // ignore storage failures
-    }
-
-    // MercadoPago: redirect to checkout if we got a URL
-    if (payload.payment_method === "MercadoPago" && result.checkout_url) {
-      window.location.assign(result.checkout_url);
-      return;
-    }
-
-    // MP path with no checkout url → friendly pending message on /gracias
-    if (payload.payment_method === "MercadoPago") {
-      navigate({ to: "/gracias", search: { payment: "pending" } });
-      return;
-    }
-
-    navigate({ to: "/gracias" });
+  function openDay(iso: string) {
+    setSelectedDate(iso);
+    setSelectedTime(null);
+    setTimeSheetOpen(true);
+  }
+  function pickTime(time: string) {
+    setSelectedTime(time);
+    setTimeSheetOpen(false);
+    setBookingOpen(true);
+  }
+  function backToTimes() {
+    setBookingOpen(false);
+    setTimeSheetOpen(true);
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8 sm:py-12">
-      <header className="mb-6 sm:mb-8">
+    <div className="mx-auto max-w-xl px-4 py-8 sm:py-12">
+      <header className="mb-6 sm:mb-8 text-center sm:text-left">
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Reservá tu lavado</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          En pocos pasos coordinamos un lavado a domicilio en Zona Norte.
+          Elegí día y horario. Después completás los datos de tu auto y ubicación.
         </p>
       </header>
 
-      <Stepper currentIdx={stepIdx} />
-
-      <Card className="mt-6 border-border/60">
-        <CardHeader>
-          <CardTitle className="text-lg">{STEPS[stepIdx].label}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          {STEPS[stepIdx].id === "customer" && (
-            <CustomerStep form={form} errors={errors} update={update} />
-          )}
-          {STEPS[stepIdx].id === "location" && (
-            <LocationStep
-              form={form}
-              errors={errors}
-              update={update}
-              areas={areas.data ?? []}
-              areasLoading={areas.isLoading}
-              areasError={areas.isError}
-              isUnsupported={isUnsupportedArea}
-            />
-          )}
-          {STEPS[stepIdx].id === "vehicle" && (
-            <VehicleStep
-              form={form}
-              errors={errors}
-              update={update}
-              services={services.data ?? []}
-              servicesLoading={services.isLoading}
-              servicesError={services.isError}
-            />
-          )}
-          {STEPS[stepIdx].id === "schedule" && (
-            <ScheduleStep
-              form={form}
-              errors={errors}
-              update={update}
-              availableDates={availableDates}
-              slotsForChosenDate={slotsForChosenDate}
-              slotsLoading={slots.isLoading}
-              slotsError={slots.isError}
-            />
-          )}
-          {STEPS[stepIdx].id === "payment" && <PaymentStep form={form} update={update} />}
-          {STEPS[stepIdx].id === "review" && (
-            <ReviewStep form={form} service={selectedService} isUnsupportedArea={isUnsupportedArea} />
-          )}
-        </CardContent>
-      </Card>
-
-      <div className="mt-6 flex items-center justify-between gap-3">
-        <Button variant="ghost" onClick={goBack} disabled={stepIdx === 0 || submitting}>
-          <ArrowLeft className="mr-1 h-4 w-4" /> Atrás
-        </Button>
-        {stepIdx < STEPS.length - 1 ? (
-          <Button onClick={goNext} size="lg">
-            Continuar <ArrowRight className="ml-1 h-4 w-4" />
-          </Button>
-        ) : (
-          <Button onClick={handleSubmit} size="lg" disabled={submitting}>
-            {submitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando…
-              </>
-            ) : (
-              <>Confirmar reserva</>
-            )}
-          </Button>
-        )}
-      </div>
+      <CalendarCard
+        viewMonth={viewMonth}
+        setViewMonth={setViewMonth}
+        today={today}
+        datesWithAvailability={datesWithAvailability}
+        selectedDate={selectedDate}
+        onPickDay={openDay}
+        loading={availability.isLoading}
+        error={availability.isError}
+      />
 
       <p className="mt-6 text-center text-xs text-muted-foreground">
         ¿Necesitás ayuda?{" "}
-        <a href={WHATSAPP_URL} target="_blank" rel="noreferrer" className="underline underline-offset-4">
-          Escribinos por WhatsApp
+        <a href={WHATSAPP_URL} target="_blank" rel="noreferrer" className="underline underline-offset-4 inline-flex items-center gap-1">
+          <MessageCircle className="h-3 w-3" /> Escribinos por WhatsApp
         </a>
       </p>
-    </div>
-  );
-}
 
-// ---------- Stepper ----------
-function Stepper({ currentIdx }: { currentIdx: number }) {
-  return (
-    <ol className="flex items-center gap-1.5 overflow-x-auto pb-1">
-      {STEPS.map((s, i) => {
-        const Icon = s.icon;
-        const active = i === currentIdx;
-        const done = i < currentIdx;
-        return (
-          <li key={s.id} className="flex items-center gap-1.5">
-            <div
-              className={cn(
-                "flex h-8 min-w-8 items-center justify-center rounded-full border text-xs font-semibold transition-colors",
-                active && "border-primary bg-primary text-primary-foreground",
-                done && "border-primary/40 bg-primary/10 text-primary",
-                !active && !done && "border-border bg-muted text-muted-foreground",
-              )}
-            >
-              {done ? <CheckCircle2 className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
-            </div>
-            {i < STEPS.length - 1 && <div className="h-px w-4 bg-border sm:w-6" />}
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
+      {/* Time selector */}
+      <Sheet open={timeSheetOpen} onOpenChange={setTimeSheetOpen}>
+        <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto rounded-t-2xl sm:max-w-lg sm:mx-auto">
+          <SheetHeader className="text-left">
+            <SheetTitle>Horarios disponibles</SheetTitle>
+            <SheetDescription className="capitalize">
+              {selectedDate ? formatDayLong(selectedDate) : ""}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
+            {slotsForSelected.length === 0 && (
+              <p className="col-span-full text-sm text-muted-foreground">
+                No quedan horarios disponibles para este día.
+              </p>
+            )}
+            {slotsForSelected.map((s) => {
+              const time = s.start_time.slice(0,5);
+              const disabled = s.remaining <= 0;
+              return (
+                <Button
+                  key={s.id}
+                  variant="outline"
+                  disabled={disabled}
+                  onClick={() => pickTime(time)}
+                  className="h-12 text-base font-semibold"
+                >
+                  {time}
+                </Button>
+              );
+            })}
+          </div>
+        </SheetContent>
+      </Sheet>
 
-// ---------- Steps ----------
-type StepProps = {
-  form: FormState;
-  errors: Record<string, string>;
-  update: <K extends keyof FormState>(key: K, value: FormState[K]) => void;
-};
-
-function FieldError({ msg }: { msg?: string }) {
-  if (!msg) return null;
-  return <p className="text-xs text-destructive">{msg}</p>;
-}
-
-function CustomerStep({ form, errors, update }: StepProps) {
-  return (
-    <div className="space-y-4">
-      <div className="space-y-1.5">
-        <Label htmlFor="customer_name">Nombre completo</Label>
-        <Input
-          id="customer_name"
-          value={form.customer_name}
-          onChange={(e) => update("customer_name", e.target.value)}
-          placeholder="Juan Pérez"
-          autoComplete="name"
-        />
-        <FieldError msg={errors.customer_name} />
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="customer_phone">WhatsApp</Label>
-        <Input
-          id="customer_phone"
-          inputMode="tel"
-          value={form.customer_phone}
-          onChange={(e) => update("customer_phone", e.target.value)}
-          placeholder="+54 9 11 1234 5678"
-          autoComplete="tel"
-        />
-        <FieldError msg={errors.customer_phone} />
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="customer_email">
-          Email <span className="text-muted-foreground">(opcional)</span>
-        </Label>
-        <Input
-          id="customer_email"
-          type="email"
-          value={form.customer_email}
-          onChange={(e) => update("customer_email", e.target.value)}
-          placeholder="vos@email.com"
-          autoComplete="email"
-        />
-        <FieldError msg={errors.customer_email} />
-      </div>
-    </div>
-  );
-}
-
-function LocationStep({
-  form,
-  errors,
-  update,
-  areas,
-  areasLoading,
-  areasError,
-  isUnsupported,
-}: StepProps & {
-  areas: ServiceArea[];
-  areasLoading: boolean;
-  areasError: boolean;
-  isUnsupported: boolean;
-}) {
-  const [otherMode, setOtherMode] = useState(
-    form.neighborhood.length > 0 && !areas.some((a) => a.name === form.neighborhood),
-  );
-
-  return (
-    <div className="space-y-4">
-      <div className="space-y-1.5">
-        <Label htmlFor="address">Dirección</Label>
-        <Input
-          id="address"
-          value={form.address}
-          onChange={(e) => update("address", e.target.value)}
-          placeholder="Calle, número, piso/depto"
-          autoComplete="street-address"
-        />
-        <FieldError msg={errors.address} />
-      </div>
-      <div className="space-y-1.5">
-        <Label>Barrio o zona</Label>
-        {areasError && (
-          <p className="text-xs text-destructive">
-            No pudimos cargar las zonas. Podés escribirla a mano.
-          </p>
-        )}
-        {!otherMode ? (
-          <Select
-            value={form.neighborhood}
-            onValueChange={(v) => {
-              if (v === "__other__") {
-                setOtherMode(true);
-                update("neighborhood", "");
-              } else {
-                update("neighborhood", v);
-              }
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder={areasLoading ? "Cargando…" : "Elegí tu barrio"} />
-            </SelectTrigger>
-            <SelectContent>
-              {areas.map((a) => (
-                <SelectItem key={a.id} value={a.name}>
-                  {a.name}
-                </SelectItem>
-              ))}
-              <SelectItem value="__other__">Otra zona…</SelectItem>
-            </SelectContent>
-          </Select>
-        ) : (
-          <div className="space-y-2">
-            <Input
-              value={form.neighborhood}
-              onChange={(e) => update("neighborhood", e.target.value)}
-              placeholder="Escribí tu barrio o localidad"
-            />
-            <button
-              type="button"
-              className="text-xs text-muted-foreground underline underline-offset-4"
-              onClick={() => {
-                setOtherMode(false);
-                update("neighborhood", "");
+      {/* Booking modal */}
+      <Dialog open={bookingOpen} onOpenChange={setBookingOpen}>
+        <DialogContent className="max-w-[620px] max-h-[90vh] overflow-y-auto p-0">
+          {selectedDate && selectedTime && (
+            <BookingForm
+              services={services.data ?? []}
+              servicesLoading={services.isLoading}
+              areas={areas.data ?? []}
+              date={selectedDate}
+              time={selectedTime}
+              onBack={backToTimes}
+              onClose={() => setBookingOpen(false)}
+              onSuccess={(checkoutUrl, summary) => {
+                try { sessionStorage.setItem("washero:last-booking", JSON.stringify(summary)); } catch {}
+                if (checkoutUrl) {
+                  window.location.assign(checkoutUrl);
+                  return;
+                }
+                navigate({ to: "/gracias" });
               }}
-            >
-              Elegir de la lista
-            </button>
-          </div>
-        )}
-        <FieldError msg={errors.neighborhood} />
-        {isUnsupported && (
-          <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs text-foreground">
-            Tu zona no está en nuestra cobertura habitual. Vamos a confirmarte por WhatsApp si podemos llegar.
-          </div>
-        )}
-      </div>
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function VehicleStep({
-  form,
-  errors,
-  update,
-  services,
-  servicesLoading,
-  servicesError,
-}: StepProps & { services: Service[]; servicesLoading: boolean; servicesError: boolean }) {
-  if (servicesLoading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" /> Cargando servicios…
-      </div>
-    );
-  }
-  if (servicesError || services.length === 0) {
-    return (
-      <div className="space-y-3">
-        <p className="text-sm text-destructive">No pudimos cargar los servicios.</p>
-        <Button asChild variant="outline">
-          <a href={WHATSAPP_URL} target="_blank" rel="noreferrer">
-            <MessageCircle className="mr-2 h-4 w-4" /> Escribinos por WhatsApp
-          </a>
-        </Button>
-      </div>
-    );
-  }
-  return (
-    <div className="space-y-5">
-      <div className="space-y-2">
-        <Label>Tipo de vehículo</Label>
-        <RadioGroup
-          value={form.vehicle_type}
-          onValueChange={(v) => update("vehicle_type", v as FormState["vehicle_type"])}
-          className="grid grid-cols-2 gap-2 sm:grid-cols-4"
-        >
-          {VEHICLE_TYPES.map((v) => (
-            <Label
-              key={v}
-              htmlFor={`v-${v}`}
-              className={cn(
-                "flex cursor-pointer items-center justify-center rounded-md border bg-card p-3 text-sm font-medium transition-colors",
-                form.vehicle_type === v && "border-primary ring-2 ring-primary/30",
-              )}
-            >
-              <RadioGroupItem id={`v-${v}`} value={v} className="sr-only" />
-              {v}
-            </Label>
-          ))}
-        </RadioGroup>
-        <FieldError msg={errors.vehicle_type} />
-      </div>
-
-      <Separator />
-
-      <div className="space-y-2">
-        <Label>Servicio</Label>
-        <RadioGroup
-          value={form.service_id}
-          onValueChange={(v) => update("service_id", v)}
-          className="grid gap-2"
-        >
-          {services.map((s) => {
-            const checked = form.service_id === s.id;
-            return (
-              <Label
-                key={s.id}
-                htmlFor={`s-${s.id}`}
-                className={cn(
-                  "flex cursor-pointer items-start gap-3 rounded-lg border bg-card p-4 transition-colors",
-                  checked && "border-primary ring-2 ring-primary/30",
-                )}
-              >
-                <RadioGroupItem id={`s-${s.id}`} value={s.id} className="mt-1" />
-                <div className="flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-semibold">{s.name}</span>
-                    <span className="font-semibold text-primary">{formatARS(s.base_price)}</span>
-                  </div>
-                  {s.description && (
-                    <p className="mt-1 text-sm text-muted-foreground">{s.description}</p>
-                  )}
-                  <Badge variant="secondary" className="mt-2">
-                    <Clock className="mr-1 h-3 w-3" /> {s.duration_minutes} min
-                  </Badge>
-                </div>
-              </Label>
-            );
-          })}
-        </RadioGroup>
-        <FieldError msg={errors.service_id} />
-      </div>
-    </div>
-  );
-}
-
-function ScheduleStep({
-  form,
-  errors,
-  update,
-  availableDates,
-  slotsForChosenDate,
-  slotsLoading,
-  slotsError,
-}: StepProps & {
-  availableDates: string[];
-  slotsForChosenDate: Slot[];
-  slotsLoading: boolean;
-  slotsError: boolean;
+// ============ Calendar Card ============
+function CalendarCard({
+  viewMonth, setViewMonth, today, datesWithAvailability, selectedDate, onPickDay, loading, error,
+}: {
+  viewMonth: Date;
+  setViewMonth: (d: Date) => void;
+  today: Date;
+  datesWithAvailability: Set<string>;
+  selectedDate: string | null;
+  onPickDay: (iso: string) => void;
+  loading: boolean;
+  error: boolean;
 }) {
-  // reset time when date changes to one without that time
-  useEffect(() => {
-    if (form.scheduled_time && !slotsForChosenDate.some((s) => s.start_time === form.scheduled_time)) {
-      update("scheduled_time", "");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.scheduled_date]);
+  const year = viewMonth.getFullYear();
+  const month = viewMonth.getMonth();
+  const firstDow = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  if (slotsLoading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" /> Cargando disponibilidad…
-      </div>
-    );
+  const cells: Array<{ iso: string; day: number } | null> = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month, d);
+    cells.push({ iso: isoFromDate(date), day: d });
   }
-  if (slotsError || availableDates.length === 0) {
-    return (
-      <div className="space-y-3">
-        <p className="text-sm text-destructive">
-          No pudimos cargar los horarios disponibles en este momento.
-        </p>
-        <Button asChild variant="outline">
-          <a href={WHATSAPP_URL} target="_blank" rel="noreferrer">
-            <MessageCircle className="mr-2 h-4 w-4" /> Coordinemos por WhatsApp
-          </a>
-        </Button>
-      </div>
-    );
-  }
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const canGoPrev = new Date(year, month, 1) > new Date(today.getFullYear(), today.getMonth(), 1);
 
   return (
-    <div className="space-y-5">
-      <div className="space-y-2">
-        <Label>Fecha</Label>
-        <div className="flex flex-wrap gap-2">
-          {availableDates.slice(0, 14).map((d) => {
-            const active = form.scheduled_date === d;
+    <div className="rounded-2xl border border-border/60 bg-card p-4 sm:p-6 shadow-sm">
+      <div className="flex items-center justify-between">
+        <Button variant="ghost" size="icon" onClick={() => setViewMonth(new Date(year, month - 1, 1))} disabled={!canGoPrev} aria-label="Mes anterior">
+          <ChevronLeft className="h-5 w-5" />
+        </Button>
+        <h2 className="text-base font-semibold">
+          {MONTHS_ES[month]} {year}
+        </h2>
+        <Button variant="ghost" size="icon" onClick={() => setViewMonth(new Date(year, month + 1, 1))} aria-label="Mes siguiente">
+          <ChevronRight className="h-5 w-5" />
+        </Button>
+      </div>
+
+      <div className="mt-4 grid grid-cols-7 gap-1 text-center text-xs font-medium text-muted-foreground">
+        {WEEKDAYS_ES.map((w) => (
+          <div key={w} className="py-1">{w}</div>
+        ))}
+      </div>
+
+      {error ? (
+        <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          No pudimos cargar los horarios disponibles. Probá de nuevo o{" "}
+          <a href={WHATSAPP_URL} target="_blank" rel="noreferrer" className="underline">escribinos por WhatsApp</a>.
+        </div>
+      ) : loading ? (
+        <div className="mt-4 grid grid-cols-7 gap-1">
+          {Array.from({ length: 35 }).map((_, i) => (
+            <div key={i} className="aspect-square rounded-md bg-muted/40 animate-pulse" />
+          ))}
+        </div>
+      ) : (
+        <div className="mt-1 grid grid-cols-7 gap-1">
+          {cells.map((c, idx) => {
+            if (!c) return <div key={idx} className="aspect-square" />;
+            const date = dateFromIso(c.iso);
+            const isPast = date < today;
+            const hasAvail = datesWithAvailability.has(c.iso);
+            const isSelected = selectedDate === c.iso;
+            const disabled = isPast || !hasAvail;
             return (
               <button
-                key={d}
+                key={idx}
                 type="button"
-                onClick={() => update("scheduled_date", d)}
+                disabled={disabled}
+                onClick={() => onPickDay(c.iso)}
                 className={cn(
-                  "rounded-md border px-3 py-2 text-sm transition-colors",
-                  active
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "bg-card hover:bg-accent",
+                  "relative aspect-square rounded-lg text-sm font-medium transition-colors",
+                  disabled && "text-muted-foreground/40 cursor-not-allowed",
+                  !disabled && "hover:bg-primary/10 text-foreground",
+                  isSelected && "border-2 border-primary bg-primary/10",
                 )}
               >
-                <span className="block text-xs opacity-80">{formatDateLong(d).split(",")[0]}</span>
-                <span className="block font-semibold">
-                  {formatDateLong(d).split(",")[1]?.trim() ?? d}
-                </span>
+                {c.day}
+                {hasAvail && !disabled && (
+                  <span className="absolute bottom-1 left-1/2 -translate-x-1/2 h-1 w-1 rounded-full bg-primary" />
+                )}
               </button>
             );
           })}
         </div>
-        <FieldError msg={errors.scheduled_date} />
+      )}
+    </div>
+  );
+}
+
+// ============ Booking Form ============
+function BookingForm({
+  services, servicesLoading, areas, date, time, onBack, onClose, onSuccess,
+}: {
+  services: Service[];
+  servicesLoading: boolean;
+  areas: ServiceArea[];
+  date: string;
+  time: string;
+  onBack: () => void;
+  onClose: () => void;
+  onSuccess: (checkoutUrl: string | null, summary: any) => void;
+}) {
+  const [form, setForm] = useState<FormState>(INITIAL);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
+
+  // Auto-select first service
+  useEffect(() => {
+    if (!form.service_id && services.length > 0) {
+      setForm((f) => ({ ...f, service_id: services[0].id }));
+    }
+  }, [services, form.service_id]);
+
+  const update = <K extends keyof FormState>(k: K, v: FormState[K]) => {
+    setForm((f) => ({ ...f, [k]: v }));
+    setErrors((e) => { const { [k]: _, ...rest } = e as any; return rest; });
+  };
+
+  const selectedService = services.find((s) => s.id === form.service_id);
+  const vehicleSurcharge = VEHICLE_OPTIONS.find((v) => v.value === form.vehicle_type)?.surcharge ?? 0;
+  const extrasTotal = form.extras.reduce((sum, k) => sum + (EXTRAS.find((e) => e.key === k)?.price ?? 0), 0);
+  const basePrice = selectedService?.base_price ?? 0;
+  const total = basePrice + vehicleSurcharge + extrasTotal;
+
+  const neighborhood = form.neighborhood_choice === OTHER_AREA
+    ? form.neighborhood_other
+    : form.neighborhood_choice;
+
+  function toggleExtra(key: string) {
+    setForm((f) => ({
+      ...f,
+      extras: f.extras.includes(key) ? f.extras.filter((k) => k !== key) : [...f.extras, key],
+    }));
+  }
+
+  async function submit() {
+    const candidate = {
+      service_id: form.service_id,
+      vehicle_type: form.vehicle_type,
+      address: form.address,
+      neighborhood,
+      customer_name: form.customer_name,
+      customer_phone: form.customer_phone,
+      customer_email: form.customer_email,
+    };
+    const result = formSchema.safeParse(candidate);
+    if (!result.success) {
+      const errs: Record<string, string> = {};
+      result.error.issues.forEach((i) => { if (i.path[0]) errs[i.path[0] as string] = i.message; });
+      setErrors(errs);
+      return;
+    }
+
+    setSubmitting(true);
+    const noteParts: string[] = [];
+    if (form.notes.trim()) noteParts.push(form.notes.trim());
+    if (form.whatsapp_reminders) noteParts.push("Recordatorios WhatsApp: sí");
+    if (form.kipper_quote) noteParts.push("Interés en cotización Kipper Seguros: sí");
+
+    const payload = {
+      customer_name: form.customer_name.trim(),
+      customer_phone: form.customer_phone.trim(),
+      customer_email: form.customer_email.trim() || null,
+      address: form.address.trim(),
+      neighborhood: neighborhood.trim(),
+      vehicle_type: form.vehicle_type,
+      service_id: form.service_id,
+      scheduled_date: date,
+      scheduled_time: time,
+      payment_method: form.payment_method,
+      notes: noteParts.join(" · ") || null,
+      selected_extras: form.extras,
+    };
+
+    const { data, error } = await supabase.functions.invoke("create-website-booking", { body: payload });
+    type Resp = { ok: boolean; customer_message?: string; checkout_url?: string | null; summary?: any; booking_status?: string };
+    const res = (data ?? null) as Resp | null;
+
+    if (error || !res?.ok) {
+      setSubmitting(false);
+      const msg = res?.customer_message ?? "No pudimos crear la reserva. Probá de nuevo o escribinos por WhatsApp.";
+      toast.error(msg, {
+        action: { label: "WhatsApp", onClick: () => window.open(WHATSAPP_URL, "_blank") },
+      });
+      return;
+    }
+
+    onSuccess(res.checkout_url ?? null, {
+      ...(res.summary ?? {}),
+      payment_method: payload.payment_method,
+      booking_status: res.booking_status ?? "pending",
+    });
+  }
+
+  const requiredOk =
+    !!form.service_id &&
+    !!form.vehicle_type &&
+    form.address.trim().length >= 4 &&
+    neighborhood.trim().length >= 2 &&
+    form.customer_name.trim().length >= 2 &&
+    form.customer_phone.trim().length >= 6;
+
+  return (
+    <div className="flex flex-col">
+      {/* Header */}
+      <div className="sticky top-0 z-10 bg-background border-b px-5 py-4">
+        <div className="flex items-center justify-between gap-2">
+          <button onClick={onBack} className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+            <ArrowLeft className="h-4 w-4" /> Cambiar horario
+          </button>
+        </div>
+        <h2 className="mt-2 text-lg font-semibold">Completá tu reserva</h2>
+        <p className="text-sm text-muted-foreground capitalize">
+          {formatDayLong(date)} · {time} hs
+        </p>
       </div>
 
-      {form.scheduled_date && (
-        <div className="space-y-2">
-          <Label>Horario</Label>
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-            {slotsForChosenDate.map((s) => {
-              const active = form.scheduled_time === s.start_time;
+      <div className="px-5 py-4 space-y-6">
+        {/* Servicio */}
+        <Section title="Servicio">
+          {servicesLoading ? (
+            <div className="text-sm text-muted-foreground">Cargando…</div>
+          ) : (
+            <div className="space-y-2">
+              {services.map((s) => {
+                const active = form.service_id === s.id;
+                return (
+                  <button
+                    key={s.id} type="button"
+                    onClick={() => update("service_id", s.id)}
+                    className={cn(
+                      "w-full text-left rounded-xl border p-3 transition-colors",
+                      active ? "border-primary border-2 bg-primary/5" : "border-border hover:bg-muted/50",
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold">{s.name}</div>
+                        {s.description && <div className="text-xs text-muted-foreground mt-0.5">{s.description}</div>}
+                        <div className="text-xs text-muted-foreground mt-1">{s.duration_minutes} min</div>
+                      </div>
+                      <div className="text-sm font-semibold whitespace-nowrap">{formatARS(s.base_price)}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </Section>
+
+        {/* Vehículo */}
+        <Section title="Tamaño del vehículo">
+          <div className="grid gap-2 sm:grid-cols-3">
+            {VEHICLE_OPTIONS.map((v) => {
+              const active = form.vehicle_type === v.value;
               return (
                 <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => update("scheduled_time", s.start_time)}
+                  key={v.value} type="button"
+                  onClick={() => update("vehicle_type", v.value)}
                   className={cn(
-                    "rounded-md border px-2 py-2 text-sm transition-colors",
-                    active
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "bg-card hover:bg-accent",
+                    "rounded-xl border p-3 text-left transition-colors",
+                    active ? "border-primary border-2 bg-primary/5" : "border-border hover:bg-muted/50",
                   )}
                 >
-                  {formatTime(s.start_time)}
+                  <div className="font-medium text-sm">{v.label}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">{v.hint}</div>
                 </button>
               );
             })}
           </div>
-          <FieldError msg={errors.scheduled_time} />
-        </div>
-      )}
+        </Section>
 
-      <p className="text-xs text-muted-foreground">
-        Horario de Buenos Aires (GMT-3). Te confirmamos por WhatsApp.
-      </p>
-    </div>
-  );
-}
+        {/* Extras */}
+        <Section title="Extras opcionales" subtitle="Sumá los que necesites">
+          <div className="space-y-2">
+            {EXTRAS.map((e) => {
+              const active = form.extras.includes(e.key);
+              return (
+                <label
+                  key={e.key}
+                  className={cn(
+                    "flex items-center justify-between gap-3 rounded-xl border p-3 cursor-pointer transition-colors",
+                    active ? "border-primary border-2 bg-primary/5" : "border-border hover:bg-muted/50",
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <Checkbox checked={active} onCheckedChange={() => toggleExtra(e.key)} />
+                    <span className="text-sm font-medium">{e.label}</span>
+                  </div>
+                  <span className="text-sm font-semibold">{formatARS(e.price)}</span>
+                </label>
+              );
+            })}
+          </div>
+        </Section>
 
-function PaymentStep({
-  form,
-  update,
-}: {
-  form: FormState;
-  update: <K extends keyof FormState>(key: K, value: FormState[K]) => void;
-}) {
-  return (
-    <div className="space-y-4">
-      <Label>Método de pago</Label>
-      <RadioGroup
-        value={form.payment_method}
-        onValueChange={(v) => update("payment_method", v as FormState["payment_method"])}
-        className="grid gap-2"
-      >
-        {PAYMENT_METHODS.map((p) => {
-          const checked = form.payment_method === p.value;
-          return (
-            <Label
-              key={p.value}
-              htmlFor={`p-${p.value}`}
-              className={cn(
-                "flex cursor-pointer items-start gap-3 rounded-lg border bg-card p-4 transition-colors",
-                checked && p.available && "border-primary ring-2 ring-primary/30",
-                !p.available && "cursor-not-allowed opacity-60",
-              )}
-            >
-              <RadioGroupItem
-                id={`p-${p.value}`}
-                value={p.value}
-                disabled={!p.available}
-                className="mt-1"
-              />
-              <div className="flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold">{p.label}</span>
-                  {!p.available && <Badge variant="secondary">Próximamente</Badge>}
-                </div>
-                <p className="mt-1 text-sm text-muted-foreground">{p.hint}</p>
+        {/* Dirección */}
+        <Section title="Dirección">
+          <Input
+            placeholder="Ej: Av. Corrientes 1234, CABA"
+            value={form.address}
+            onChange={(e) => update("address", e.target.value)}
+          />
+          <FieldError msg={errors.address} />
+        </Section>
+
+        {/* Zona */}
+        <Section title="Barrio / Zona">
+          <Select
+            value={form.neighborhood_choice}
+            onValueChange={(v) => update("neighborhood_choice", v)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Seleccioná tu barrio o zona" />
+            </SelectTrigger>
+            <SelectContent>
+              {areas.map((a) => (
+                <SelectItem key={a.id} value={a.name}>{a.name}</SelectItem>
+              ))}
+              <SelectItem value={OTHER_AREA}>Otra zona</SelectItem>
+            </SelectContent>
+          </Select>
+          {form.neighborhood_choice === OTHER_AREA && (
+            <Input
+              className="mt-2"
+              placeholder="Escribí tu barrio o zona"
+              value={form.neighborhood_other}
+              onChange={(e) => update("neighborhood_other", e.target.value)}
+            />
+          )}
+          <FieldError msg={errors.neighborhood} />
+        </Section>
+
+        {/* Contacto */}
+        <Section title="Datos de contacto">
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="cn">Nombre completo</Label>
+              <Input id="cn" value={form.customer_name} onChange={(e) => update("customer_name", e.target.value)} placeholder="Juan Pérez" />
+              <FieldError msg={errors.customer_name} />
+            </div>
+            <div>
+              <Label htmlFor="cp">Teléfono</Label>
+              <Input id="cp" inputMode="tel" value={form.customer_phone} onChange={(e) => update("customer_phone", e.target.value)} placeholder="+54 9 11 ..." />
+              <FieldError msg={errors.customer_phone} />
+            </div>
+            <div>
+              <Label htmlFor="ce">Email <span className="text-muted-foreground text-xs">(opcional)</span></Label>
+              <Input id="ce" type="email" value={form.customer_email} onChange={(e) => update("customer_email", e.target.value)} placeholder="vos@email.com" />
+              <FieldError msg={errors.customer_email} />
+            </div>
+          </div>
+        </Section>
+
+        {/* Notas */}
+        <Section title="Notas adicionales">
+          <Textarea
+            value={form.notes}
+            onChange={(e) => update("notes", e.target.value)}
+            placeholder="Acceso, color del auto, instrucciones..."
+            rows={3}
+          />
+          <label className="mt-3 flex items-center gap-2 text-sm cursor-pointer">
+            <Checkbox checked={form.whatsapp_reminders} onCheckedChange={(v) => update("whatsapp_reminders", !!v)} />
+            Recibir recordatorios por WhatsApp
+          </label>
+        </Section>
+
+        {/* Kipper */}
+        <label
+          className={cn(
+            "block rounded-xl border p-3 cursor-pointer transition-colors",
+            form.kipper_quote ? "border-primary border-2 bg-primary/5" : "border-border hover:bg-muted/50",
+          )}
+        >
+          <div className="flex items-start gap-3">
+            <Checkbox checked={form.kipper_quote} onCheckedChange={(v) => update("kipper_quote", !!v)} className="mt-0.5" />
+            <div>
+              <div className="text-sm font-medium">
+                Quiero recibir una cotización de seguro con Kipper Seguros y acceder a beneficios exclusivos.
               </div>
-            </Label>
-          );
-        })}
-      </RadioGroup>
+              <div className="text-xs text-muted-foreground mt-1">
+                Sin compromiso. Te contactamos para ofrecerte descuentos especiales en Washero.
+              </div>
+            </div>
+          </div>
+        </label>
 
-      <Separator />
+        {/* Pago */}
+        <Section title="Método de pago">
+          <div className="grid gap-2">
+            {PAYMENTS.map((p) => {
+              const active = form.payment_method === p.value;
+              return (
+                <button
+                  key={p.value} type="button"
+                  onClick={() => update("payment_method", p.value as FormState["payment_method"])}
+                  className={cn(
+                    "rounded-xl border p-3 text-left transition-colors",
+                    active ? "border-primary border-2 bg-primary/5" : "border-border hover:bg-muted/50",
+                  )}
+                >
+                  <div className="font-medium text-sm">{p.label}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">{p.hint}</div>
+                </button>
+              );
+            })}
+          </div>
+        </Section>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="notes">
-          Notas <span className="text-muted-foreground">(opcional)</span>
-        </Label>
-        <Textarea
-          id="notes"
-          value={form.notes}
-          onChange={(e) => update("notes", e.target.value)}
-          placeholder="Color del auto, indicaciones del portero, etc."
-          rows={3}
-        />
+        {/* Resumen */}
+        <div className="rounded-xl border bg-muted/30 p-4 space-y-1.5 text-sm">
+          <div className="flex justify-between"><span>Servicio base</span><span>{formatARS(basePrice)}</span></div>
+          <div className="flex justify-between"><span>Vehículo</span><span>{formatARS(vehicleSurcharge)}</span></div>
+          <div className="flex justify-between"><span>Extras</span><span>{formatARS(extrasTotal)}</span></div>
+          <div className="border-t pt-1.5 flex justify-between font-semibold text-base">
+            <span>Total</span><span>{formatARS(total)}</span>
+          </div>
+          <p className="text-[10px] text-muted-foreground pt-1">
+            El precio final se confirma del lado del servidor.
+          </p>
+        </div>
+      </div>
+
+      {/* Sticky CTA */}
+      <div className="sticky bottom-0 bg-background border-t px-5 py-3">
+        <Button
+          className="w-full"
+          size="lg"
+          disabled={!requiredOk || submitting}
+          onClick={submit}
+        >
+          {submitting ? (
+            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando…</>
+          ) : form.payment_method === "MercadoPago" ? (
+            <>Pagar con Mercado Pago →</>
+          ) : (
+            <>Confirmar reserva →</>
+          )}
+        </Button>
       </div>
     </div>
   );
 }
 
-function ReviewStep({
-  form,
-  service,
-  isUnsupportedArea,
-}: {
-  form: FormState;
-  service?: Service;
-  isUnsupportedArea: boolean;
-}) {
+function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-3 text-sm">
-      <Row label="Nombre" value={form.customer_name} />
-      <Row label="WhatsApp" value={form.customer_phone} />
-      {form.customer_email && <Row label="Email" value={form.customer_email} />}
-      <Separator />
-      <Row label="Dirección" value={form.address} />
-      <Row label="Barrio" value={form.neighborhood} />
-      <Separator />
-      <Row label="Vehículo" value={form.vehicle_type || "—"} />
-      <Row label="Servicio" value={service?.name ?? "—"} />
-      <Row label="Fecha" value={formatDateLong(form.scheduled_date)} />
-      <Row label="Horario" value={formatTime(form.scheduled_time)} />
-      <Separator />
-      <Row label="Método de pago" value={form.payment_method} />
-      <Row
-        label="Total"
-        value={service ? <span className="font-semibold text-primary">{formatARS(service.base_price)}</span> : "—"}
-      />
-      {isUnsupportedArea && (
-        <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs">
-          Tu zona requiere confirmación. La reserva quedará en revisión y te confirmamos por WhatsApp.
-        </div>
-      )}
+    <div>
+      <h3 className="text-sm font-semibold mb-2">{title}</h3>
+      {subtitle && <p className="text-xs text-muted-foreground mb-2 -mt-1">{subtitle}</p>}
+      {children}
     </div>
   );
 }
 
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-right">{value}</span>
-    </div>
-  );
+function FieldError({ msg }: { msg?: string }) {
+  if (!msg) return null;
+  return <p className="text-xs text-destructive mt-1">{msg}</p>;
 }
