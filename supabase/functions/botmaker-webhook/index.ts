@@ -1,6 +1,17 @@
-// deno-lint-ignore-file no-explicit-any
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
-import { tryCreateBooking } from "../_shared/booking-core.ts";
+import {
+  extractChannel,
+  extractConversationId,
+  extractEventType,
+  extractMessageText,
+  extractName,
+  extractPhone,
+  extractSenderType,
+  findLatestSummary,
+  isConfirmation,
+  pick,
+  processBotmakerBookingImpact,
+} from "../_shared/botmaker-booking.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -15,99 +26,6 @@ const WEBHOOK_SECRET = Deno.env.get("BOTMAKER_WEBHOOK_SECRET") ?? "";
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false },
 });
-
-function pick(obj: any, paths: string[]): string | null {
-  for (const p of paths) {
-    const parts = p.split(".");
-    let cur: any = obj;
-    let ok = true;
-    for (const k of parts) {
-      if (cur == null) { ok = false; break; }
-      cur = cur[k];
-    }
-    if (ok && cur != null && cur !== "") {
-      if (typeof cur === "string" || typeof cur === "number") return String(cur);
-    }
-  }
-  return null;
-}
-
-function extractConversationId(p: any): string | null {
-  return pick(p, [
-    "customerId","chatId","chat.id","conversationId","conversation.id",
-    "sessionId","userId","contactId",
-  ]);
-}
-function extractPhone(p: any): string | null {
-  const v = pick(p, [
-    "realWhatsAppId","whatsappId","customer.phone","contact.phone",
-    "user.phone","from","sender","phone",
-  ]);
-  return v ? v.replace(/[^\d+]/g, "") : null;
-}
-function extractName(p: any): string | null {
-  return pick(p, ["fullName","customer.name","contact.name","user.name","name"]);
-}
-function extractMessageText(p: any): string | null {
-  let v = pick(p, [
-    "message","text","message.text","content","content.text","body",
-    "data.text","data.message","event.message","event.text",
-  ]);
-  if (!v && Array.isArray(p?.messages) && p.messages[0]) {
-    v = p.messages[0].text ?? p.messages[0].message ?? null;
-  }
-  return v;
-}
-function extractChannel(p: any, phone: string | null): string {
-  const v = pick(p, ["channel","chatPlatform","platform"]);
-  if (v) return v;
-  if (phone) return "whatsapp";
-  return "webchat";
-}
-function extractSenderType(p: any): string {
-  const raw = (pick(p, ["senderType","sender_type","from_type","author.type","sender.type"]) || "").toLowerCase();
-  if (raw.includes("bot")) return "bot";
-  if (raw.includes("agent") || raw.includes("operator") || raw.includes("human")) return "agent";
-  if (raw.includes("user") || raw.includes("customer") || raw.includes("client")) return "user";
-  if (raw.includes("system") || raw.includes("event")) return "system";
-  // heuristics
-  if (p?.fromBot === true || p?.from_bot === true) return "bot";
-  if (p?.fromAgent === true) return "agent";
-  return "user";
-}
-function extractEventType(p: any): string {
-  return pick(p, ["eventType","event_type","type","event"]) || "message";
-}
-
-// ---- Booking summary detection / parsing ----
-const SUMMARY_MARKERS = [
-  "tengo estos datos",
-  "nombre completo:",
-  "¿confirmás que está todo bien?",
-];
-const CONFIRM_WORDS = [
-  "si","sí","sisi","confirmo","correcto","ok","dale","joya","perfecto","confirmado","está bien","esta bien",
-];
-
-function isSummary(text: string): boolean {
-  const t = text.toLowerCase();
-  let hits = 0;
-  for (const m of SUMMARY_MARKERS) if (t.includes(m)) hits++;
-  // Also count typical fields
-  if (t.includes("dirección:") || t.includes("direccion:")) hits++;
-  if (t.includes("zona:")) hits++;
-  if (t.includes("vehículo:") || t.includes("vehiculo:")) hits++;
-  if (t.includes("servicio:")) hits++;
-  if (t.includes("día:") || t.includes("dia:")) hits++;
-  if (t.includes("horario:")) hits++;
-  return hits >= 3;
-}
-function isConfirmation(text: string): boolean {
-  const t = text.trim().toLowerCase().replace(/[!.¡¿?]/g, "");
-  if (!t) return false;
-  if (t.length > 30) return false;
-  return CONFIRM_WORDS.some((w) => t === w || t.startsWith(w + " ") || t.endsWith(" " + w));
-}
 
 function getField(text: string, label: string): string | null {
   const re = new RegExp(label + "\\s*:\\s*([^\\n\\r]+)", "i");
