@@ -802,7 +802,7 @@ function BulkGenerateDialog({
           const end = addMinutesToTime(t, duration);
           if (end > dayEnd) break;
           out.push({ date: cur, start_time: toTimeStr(t), end_time: toTimeStr(end) });
-          const next = addMinutesToTime(t, interval);
+          const next = addMinutesToTime(t, effectiveInterval);
           if (next <= t) break;
           t = next;
           if (t >= dayEnd) break;
