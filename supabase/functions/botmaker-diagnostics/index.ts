@@ -28,8 +28,10 @@ async function isAdmin(authHeader: string | null) {
 }
 
 async function status() {
-  const [evAll, convAll, msgAll, lastValid, lastInvalid, lastConv, lastMsg, lastBR] = await Promise.all([
+  const [evAll, evValid, evInvalid, convAll, msgAll, lastValid, lastInvalid, lastConv, lastMsg, lastBR] = await Promise.all([
     admin.from("botmaker_events").select("id", { count: "exact", head: true }),
+    admin.from("botmaker_events").select("id", { count: "exact", head: true }).eq("auth_valid", true),
+    admin.from("botmaker_events").select("id", { count: "exact", head: true }).eq("auth_valid", false),
     admin.from("botmaker_conversations").select("id", { count: "exact", head: true }),
     admin.from("botmaker_messages").select("id", { count: "exact", head: true }),
     admin.from("botmaker_events").select("created_at").eq("auth_valid", true).order("created_at",{ascending:false}).limit(1).maybeSingle(),
@@ -42,6 +44,8 @@ async function status() {
     secret_configured: !!WEBHOOK_SECRET,
     counts: {
       events: evAll.count ?? 0,
+      valid_events: evValid.count ?? 0,
+      invalid_events: evInvalid.count ?? 0,
       conversations: convAll.count ?? 0,
       messages: msgAll.count ?? 0,
     },
