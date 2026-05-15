@@ -48,6 +48,34 @@ type Message = {
   raw_payload: any;
 };
 
+function foldText(v: string) {
+  return v.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+const SUMMARY_LABELS = [/nombre\s+completo\s*:/i, /(^|\n|\r)\s*nombre\s*:/i, /direcci[oó]n\s*:/i, /zona\s*:/i, /veh[ií]culo\s*:/i, /servicio\s*:/i, /d[ií]a\s*:/i, /horario\s*:/i, /pago\s*:/i, /confirm[aá]s\s+que\s+est[aá]\s+todo\s+bien/i];
+function isSummaryText(text: string) { return SUMMARY_LABELS.filter((re) => re.test(text)).length >= 5; }
+function isConfirmText(text: string) {
+  const t = foldText(text).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  const words = ["si", "sisi", "si si", "confirmo", "confirmado", "correcto", "ok", "okay", "dale", "joya", "perfecto", "esta bien", "todo bien", "va", "de una"];
+  return !!t && t.length <= 80 && words.some((w) => t === w || t.startsWith(`${w} `) || t.endsWith(` ${w}`));
+}
+function fieldFrom(text: string, label: string) {
+  return text.match(new RegExp(`${label}\\s*:\\s*([^\\n\\r]+)`, "i"))?.[1]?.trim() ?? null;
+}
+function parseSummaryDebug(text: string) {
+  const parsed = {
+    customer_name: fieldFrom(text, "Nombre completo") ?? fieldFrom(text, "Nombre"),
+    address: fieldFrom(text, "Dirección") ?? fieldFrom(text, "Direccion"),
+    neighborhood: fieldFrom(text, "Zona"),
+    vehicle_type: fieldFrom(text, "Vehículo") ?? fieldFrom(text, "Vehiculo"),
+    service_type: fieldFrom(text, "Servicio"),
+    preferred_date: fieldFrom(text, "Día") ?? fieldFrom(text, "Dia"),
+    preferred_time: fieldFrom(text, "Horario"),
+    payment_method: fieldFrom(text, "Pago"),
+  };
+  return { parsed, missing: Object.entries(parsed).filter(([, v]) => !v).map(([k]) => k) };
+}
+
 function formatWhen(ts: string | null) {
   if (!ts) return "—";
   return new Date(ts).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
