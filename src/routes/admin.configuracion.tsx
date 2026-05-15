@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Plus, Pencil, Trash2, RefreshCw, CheckCircle2, Clock, XCircle } from "lucide-react";
+import { Loader2, Plus, Pencil, Trash2, RefreshCw, CheckCircle2, Clock, XCircle, Copy } from "lucide-react";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
