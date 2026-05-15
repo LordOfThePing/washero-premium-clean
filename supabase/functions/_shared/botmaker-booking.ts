@@ -29,9 +29,32 @@ export function pick(obj: any, paths: string[]): string | null {
 export function extractConversationId(p: any): string | null {
   return pick(p, ["customerId","chatId","chat.id","conversationId","conversation.id","sessionId","userId","contactId"]);
 }
+export function normalizePhone(v: string | null | undefined): string | null {
+  if (!v) return null;
+  let s = String(v).trim();
+  // Strip whatsapp suffixes like @c.us, @s.whatsapp.net
+  s = s.replace(/@.*$/, "");
+  // Strip "whatsapp:" prefix
+  s = s.replace(/^whatsapp:/i, "");
+  // Keep + and digits
+  s = s.replace(/[^\d+]/g, "");
+  if (!s) return null;
+  return s;
+}
 export function extractPhone(p: any): string | null {
-  const v = pick(p, ["realWhatsAppId","whatsappId","customer.phone","contact.phone","user.phone","from","sender","phone"]);
-  return v ? v.replace(/[^\d+]/g, "") : null;
+  const v = pick(p, ["customer_phone","realWhatsAppId","whatsappId","customer.phone","contact.phone","user.phone","from","sender","phone"]);
+  return normalizePhone(v);
+}
+export function extractPhoneFromSummary(text: string): string | null {
+  if (!text) return null;
+  for (const label of ["Teléfono","Telefono","WhatsApp","Whatsapp","Celular","Tel"]) {
+    const m = text.match(new RegExp(label + "\\s*:\\s*([^\\n\\r]+)", "i"));
+    if (m) {
+      const n = normalizePhone(m[1]);
+      if (n && n.replace(/\D/g, "").length >= 6) return n;
+    }
+  }
+  return null;
 }
 export function extractName(p: any): string | null {
   return pick(p, ["fullName","customer.name","contact.name","user.name","name"]);
