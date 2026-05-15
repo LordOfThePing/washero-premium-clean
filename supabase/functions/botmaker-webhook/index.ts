@@ -1,5 +1,6 @@
 // deno-lint-ignore-file no-explicit-any
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import { tryCreateBooking } from "../_shared/booking-core.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -382,11 +383,43 @@ Deno.serve(async (req) => {
           );
           if (!dup) {
             const parsed = parseSummary(summary.message_text);
+            const phoneFinal = phone ?? convoRow.customer_phone ?? "";
+            const isTest = !!payload?.is_test;
+
+            // Try auto-booking
+            let autoBooking: { id: string } | null = null;
+            let fallbackReason: string | null = null;
+
+            if (parsed.missing.length > 0) {
+              fallbackReason = "missing_fields";
+            } else {
+              const attempt = await tryCreateBooking(supabase, {
+                customer_name: parsed.fields.customer_name ?? "",
+                customer_phone: phoneFinal,
+                address: parsed.fields.address ?? "",
+                neighborhood: parsed.fields.neighborhood ?? "",
+                vehicle_type: parsed.fields.vehicle_type ?? "",
+                service_name: parsed.fields.service_type ?? "",
+                scheduled_date: parsed.fields.preferred_date ?? "",
+                scheduled_time: parsed.fields.preferred_time ?? "",
+                payment_method: parsed.fields.payment_method ?? "Pagar después",
+                notes: `Reserva creada automáticamente desde Botmaker. Conversación: ${convoRow.botmaker_conversation_id ?? "-"}`,
+                source: "botmaker",
+                is_test: isTest,
+              });
+              if (attempt.ok) {
+                autoBooking = { id: attempt.booking.id };
+              } else {
+                fallbackReason = attempt.reason;
+              }
+            }
+
+            const brStatus = autoBooking ? "converted" : "needs_review";
             const { data: br } = await supabase.from("booking_requests").insert({
               source: "botmaker",
-              status: "needs_review",
+              status: brStatus,
               customer_name: parsed.fields.customer_name,
-              customer_phone: phone ?? convoRow.customer_phone,
+              customer_phone: phoneFinal,
               address: parsed.fields.address,
               neighborhood: parsed.fields.neighborhood,
               vehicle_type: parsed.fields.vehicle_type,
@@ -395,7 +428,8 @@ Deno.serve(async (req) => {
               preferred_time: parsed.fields.preferred_time,
               payment_method: parsed.fields.payment_method,
               missing_fields: parsed.missing,
-              is_test: !!payload?.is_test,
+              is_test: isTest,
+              linked_booking_id: autoBooking?.id ?? null,
               raw_payload: {
                 conversation_id: convoRow.botmaker_conversation_id,
                 summary_text: summary.message_text,
@@ -404,20 +438,32 @@ Deno.serve(async (req) => {
                 missing_fields: parsed.missing,
                 bot_payload: summary.raw_payload,
                 user_payload: payload,
-                is_test: !!payload?.is_test,
+                is_test: isTest,
+                auto_booked: !!autoBooking,
+                auto_booking_id: autoBooking?.id ?? null,
+                fallback_reason: fallbackReason,
               },
             }).select("id").maybeSingle();
+
             if (br?.id) {
-              await supabase.from("botmaker_conversations")
-                .update({ linked_booking_request_id: br.id })
-                .eq("id", convoRow.id);
+              const updates: any = { linked_booking_request_id: br.id };
+              if (autoBooking) updates.linked_booking_id = autoBooking.id;
+              await supabase.from("botmaker_conversations").update(updates).eq("id", convoRow.id);
+
               await supabase.from("communication_logs").insert({
                 channel: "whatsapp",
                 provider: "botmaker",
                 direction: "system",
-                message_text: "booking_request creado desde Botmaker",
+                message_text: autoBooking
+                  ? `Reserva creada automáticamente desde Botmaker (booking ${autoBooking.id})`
+                  : `booking_request creado desde Botmaker (revisión: ${fallbackReason ?? "n/a"})`,
                 booking_request_id: br.id,
-                raw_payload: { conversation_id: convoRow.botmaker_conversation_id },
+                booking_id: autoBooking?.id ?? null,
+                raw_payload: {
+                  conversation_id: convoRow.botmaker_conversation_id,
+                  auto_booked: !!autoBooking,
+                  fallback_reason: fallbackReason,
+                },
               });
             }
           }

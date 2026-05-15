@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.botmaker-diagnostics]
 verify_jwt = true
+
+[functions.get-public-availability]
+verify_jwt = false

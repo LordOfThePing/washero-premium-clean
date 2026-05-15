@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, RefreshCw, MessageSquare, Phone, AlertTriangle, CheckCircle2, ArrowRight } from "lucide-react";
+import { Loader2, RefreshCw, MessageSquare, Phone, AlertTriangle, CheckCircle2, ArrowRight, Sparkles, AlertCircle, Calendar as CalendarIcon, ClipboardList } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -153,8 +153,8 @@ function MensajesPage() {
                       <div className="text-xs text-muted-foreground truncate mt-0.5">{c.last_message || "—"}</div>
                       <div className="flex gap-1 mt-1 flex-wrap">
                         {isTestConvo(c) && <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-300">test</Badge>}
-                        {c.linked_booking_request_id && <Badge variant="secondary" className="text-[10px]">solicitud</Badge>}
-                        {c.linked_booking_id && <Badge className="text-[10px]">reserva</Badge>}
+                        {c.linked_booking_id && <Badge className="text-[10px] gap-1"><Sparkles className="h-3 w-3" /> auto-reservada</Badge>}
+                        {!c.linked_booking_id && c.linked_booking_request_id && <Badge variant="secondary" className="text-[10px]">requiere revisión</Badge>}
                       </div>
                     </button>
                   </li>
@@ -217,34 +217,76 @@ function ConversationDetail({ conversation }: { conversation: Conversation }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {bookingRequest.data && (
-          <div className="rounded-md border border-border/60 bg-muted/30 p-3">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-medium flex items-center gap-2">
-                Solicitud de reserva ({bookingRequest.data.status})
-                {bookingRequest.data.is_test && <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-300">test</Badge>}
+        {bookingRequest.data && (() => {
+          const br = bookingRequest.data as any;
+          const autoBooked = !!br.linked_booking_id;
+          const fallback = br.raw_payload?.fallback_reason as string | undefined;
+          const fallbackLabel: Record<string, string> = {
+            missing_fields: "Datos incompletos",
+            invalid_service: "Servicio no reconocido",
+            invalid_vehicle: "Vehículo inválido",
+            invalid_payment: "Pago inválido",
+            invalid_date: "Fecha inválida",
+            invalid_time: "Horario inválido",
+            past_date: "Fecha pasada",
+            slot_unavailable: "Slot no disponible",
+            slot_full: "Slot lleno",
+            duplicate: "Reserva duplicada",
+            invalid_extra: "Extra inválido",
+            server_error: "Error interno",
+          };
+          return (
+          <div className="rounded-md border border-border/60 bg-muted/30 p-3 space-y-2">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="text-sm font-medium flex items-center gap-2 flex-wrap">
+                Solicitud de reserva
+                {autoBooked ? (
+                  <Badge className="gap-1"><Sparkles className="h-3 w-3" /> Auto-reservada</Badge>
+                ) : br.status === "converted" ? (
+                  <Badge className="gap-1"><CheckCircle2 className="h-3 w-3" /> Convertida</Badge>
+                ) : (
+                  <Badge variant="secondary" className="gap-1"><AlertCircle className="h-3 w-3" /> Requiere revisión</Badge>
+                )}
+                {fallback && !autoBooked && (
+                  <Badge variant="outline" className="text-[10px]">{fallbackLabel[fallback] ?? fallback}</Badge>
+                )}
+                {br.is_test && <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-300">test</Badge>}
               </div>
-              {bookingRequest.data.status !== "converted" ? (
+              {!autoBooked && br.status !== "converted" && (
                 <Button size="sm" onClick={() => setApproveOpen(true)}>
                   Aprobar y crear reserva <ArrowRight className="ml-1 h-3 w-3" />
                 </Button>
-              ) : (
-                <Badge className="gap-1"><CheckCircle2 className="h-3 w-3" /> Convertida</Badge>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mt-2">
-              <Field label="Cliente" v={bookingRequest.data.customer_name} />
-              <Field label="Teléfono" v={bookingRequest.data.customer_phone} />
-              <Field label="Dirección" v={bookingRequest.data.address} />
-              <Field label="Zona" v={bookingRequest.data.neighborhood} />
-              <Field label="Vehículo" v={bookingRequest.data.vehicle_type} />
-              <Field label="Servicio" v={bookingRequest.data.service_type} />
-              <Field label="Día" v={bookingRequest.data.preferred_date} />
-              <Field label="Horario" v={bookingRequest.data.preferred_time} />
-              <Field label="Pago" v={bookingRequest.data.payment_method} />
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+              <Field label="Cliente" v={br.customer_name} />
+              <Field label="Teléfono" v={br.customer_phone} />
+              <Field label="Dirección" v={br.address} />
+              <Field label="Zona" v={br.neighborhood} />
+              <Field label="Vehículo" v={br.vehicle_type} />
+              <Field label="Servicio" v={br.service_type} />
+              <Field label="Día" v={br.preferred_date} />
+              <Field label="Horario" v={br.preferred_time} />
+              <Field label="Pago" v={br.payment_method} />
             </div>
+            {autoBooked && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button asChild size="sm" variant="outline">
+                  <Link to="/admin/reservas"><ClipboardList className="mr-1 h-3 w-3" /> Ver en Reservas</Link>
+                </Button>
+                <Button asChild size="sm" variant="outline">
+                  <Link to="/admin/calendario"><CalendarIcon className="mr-1 h-3 w-3" /> Ver en Calendario</Link>
+                </Button>
+              </div>
+            )}
+            {Array.isArray(br.missing_fields) && br.missing_fields.length > 0 && !autoBooked && (
+              <div className="text-[11px] text-muted-foreground">
+                Faltan: {br.missing_fields.join(", ")}
+              </div>
+            )}
           </div>
-        )}
+          );
+        })()}
 
         <div className="space-y-2 max-h-[55vh] overflow-y-auto">
           {messages.isLoading && <Loader2 className="h-5 w-5 animate-spin" />}

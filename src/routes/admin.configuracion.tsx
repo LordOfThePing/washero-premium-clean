@@ -896,6 +896,25 @@ function BotmakerHealthCard() {
     },
   });
 
+  const autoStats = useQuery({
+    queryKey: ["admin", "botmaker-auto-stats"],
+    queryFn: async () => {
+      const [convertedAll, needsReviewAll, lastConverted, lastReview] = await Promise.all([
+        supabase.from("booking_requests").select("id", { count: "exact", head: true }).eq("source", "botmaker").eq("status", "converted"),
+        supabase.from("booking_requests").select("id", { count: "exact", head: true }).eq("source", "botmaker").eq("status", "needs_review"),
+        supabase.from("booking_requests").select("created_at,linked_booking_id,raw_payload").eq("source", "botmaker").eq("status", "converted").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("booking_requests").select("created_at,raw_payload").eq("source", "botmaker").eq("status", "needs_review").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      ]);
+      return {
+        converted: convertedAll.count ?? 0,
+        needs_review: needsReviewAll.count ?? 0,
+        last_converted_at: (lastConverted.data as any)?.created_at ?? null,
+        last_review_at: (lastReview.data as any)?.created_at ?? null,
+        last_fallback_reason: (lastReview.data as any)?.raw_payload?.fallback_reason ?? null,
+      };
+    },
+  });
+
   async function runAction(action: string) {
     setRunning(action);
     try {
@@ -939,7 +958,16 @@ function BotmakerHealthCard() {
           <Row label="Última conversación" value={d?.last_conversation?.created_at ? `${new Date(d.last_conversation.created_at).toLocaleString("es-AR")}${d.last_conversation.customer_phone ? ` · ${d.last_conversation.customer_phone}` : ""}` : "—"} />
           <Row label="Último mensaje" value={d?.last_message?.created_at ? `${new Date(d.last_message.created_at).toLocaleString("es-AR")} · ${d.last_message.sender_type ?? ""}` : "—"} />
           <Row label="Última solicitud (booking_request)" value={d?.last_booking_request?.created_at ? new Date(d.last_booking_request.created_at).toLocaleString("es-AR") : "—"} />
+          <Row label="Auto-reservas creadas" value={autoStats.isLoading ? "…" : autoStats.data?.converted ?? 0} />
+          <Row label="Solicitudes en revisión" value={autoStats.isLoading ? "…" : autoStats.data?.needs_review ?? 0} />
+          <Row label="Última auto-reserva" value={autoStats.data?.last_converted_at ? new Date(autoStats.data.last_converted_at).toLocaleString("es-AR") : "—"} />
+          <Row label="Último envío a revisión" value={autoStats.data?.last_review_at ? new Date(autoStats.data.last_review_at).toLocaleString("es-AR") : "—"} />
+          <Row label="Último motivo de fallback" value={autoStats.data?.last_fallback_reason ?? "—"} />
         </div>
+        <div className="rounded-md border bg-muted/30 p-3 text-xs">
+          Botmaker intenta crear reservas automáticamente si hay disponibilidad. Si el horario no está disponible o faltan datos, crea una solicitud para revisión manual.
+        </div>
+
 
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" disabled={running !== null} onClick={() => runAction("test_no_token")}>
