@@ -958,6 +958,16 @@ function BotmakerHealthCard() {
           <Row label="Última conversación" value={d?.last_conversation?.created_at ? `${new Date(d.last_conversation.created_at).toLocaleString("es-AR")}${d.last_conversation.customer_phone ? ` · ${d.last_conversation.customer_phone}` : ""}` : "—"} />
           <Row label="Último mensaje" value={d?.last_message?.created_at ? `${new Date(d.last_message.created_at).toLocaleString("es-AR")} · ${d.last_message.sender_type ?? ""}` : "—"} />
           <Row label="Última solicitud (booking_request)" value={d?.last_booking_request?.created_at ? new Date(d.last_booking_request.created_at).toLocaleString("es-AR") : "—"} />
+          <Row label="Auto-reservas creadas" value={autoStats.isLoading ? "…" : autoStats.data?.converted ?? 0} />
+          <Row label="Solicitudes en revisión" value={autoStats.isLoading ? "…" : autoStats.data?.needs_review ?? 0} />
+          <Row label="Última auto-reserva" value={autoStats.data?.last_converted_at ? new Date(autoStats.data.last_converted_at).toLocaleString("es-AR") : "—"} />
+          <Row label="Último envío a revisión" value={autoStats.data?.last_review_at ? new Date(autoStats.data.last_review_at).toLocaleString("es-AR") : "—"} />
+          <Row label="Último motivo de fallback" value={autoStats.data?.last_fallback_reason ?? "—"} />
+        </div>
+        <div className="rounded-md border bg-muted/30 p-3 text-xs">
+          Botmaker intenta crear reservas automáticamente si hay disponibilidad. Si el horario no está disponible o faltan datos, crea una solicitud para revisión manual.
+        </div>
+        <div className="grid gap-2">
         </div>
 
         <div className="flex flex-wrap gap-2">
