@@ -77,6 +77,8 @@ export type CoreResult =
         | "past_date"
         | "invalid_extra"
         | "slot_unavailable"
+        | "slot_not_found"
+        | "service_does_not_fit_slot"
         | "slot_full"
         | "duplicate"
         | "server_error";
