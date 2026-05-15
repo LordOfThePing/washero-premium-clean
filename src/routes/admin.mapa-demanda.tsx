@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Map } from "lucide-react";
+import { Loader2, Map as MapIcon } from "lucide-react";
 
 export const Route = createFileRoute("/admin/mapa-demanda")({
   component: MapaDemandaPage,
@@ -22,7 +22,8 @@ function MapaDemandaPage() {
         .select("neighborhood, price, booking_status")
         .limit(5000);
       if (error) throw error;
-      const map = new Map<string, { count: number; revenue: number; pending: number; confirmed: number; completed: number }>();
+      type Agg = { count: number; revenue: number; pending: number; confirmed: number; completed: number };
+      const map = new Map<string, Agg>();
       for (const b of data ?? []) {
         const k = b.neighborhood || "(sin zona)";
         const cur = map.get(k) ?? { count: 0, revenue: 0, pending: 0, confirmed: 0, completed: 0 };
@@ -43,7 +44,7 @@ function MapaDemandaPage() {
     <div className="space-y-6">
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-          <Map className="h-5 w-5" /> Mapa de Demanda
+          <MapIcon className="h-5 w-5" /> Mapa de Demanda
         </h1>
         <p className="text-sm text-muted-foreground">Distribución de reservas por zona.</p>
       </div>
