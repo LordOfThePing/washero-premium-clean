@@ -372,6 +372,31 @@ function ConversationDetail({ conversation }: { conversation: Conversation }) {
           {messages.data?.length === 0 && <p className="text-sm text-muted-foreground">Sin mensajes.</p>}
         </div>
 
+        <details className="rounded-md border bg-muted/20 p-3 text-xs">
+          <summary className="cursor-pointer font-medium">Debug parser</summary>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            <Field label="Último resumen detectado" v={parserDebug.summary ? "sí" : "no"} />
+            <Field label="Confirmación detectada" v={parserDebug.confirmation ? "sí" : "no"} />
+            <Field label="Confirmación" v={parserDebug.confirmation?.message_text} />
+            <Field label="auto_booking_attempted" v={parserDebug.raw.auto_booking_attempted === undefined ? "—" : parserDebug.raw.auto_booking_attempted ? "sí" : "no"} />
+            <Field label="auto_booking_result" v={parserDebug.raw.auto_booking_result ?? (parserDebug.raw.auto_booking_success ? "booking_created" : "—")} />
+            <Field label="fallback_reason" v={parserDebug.raw.fallback_reason} />
+            <Field label="parsed customer_name" v={(parserDebug.raw.parsed ?? parserDebug.parsedLocal.parsed)?.customer_name} />
+            <Field label="parsed address" v={(parserDebug.raw.parsed ?? parserDebug.parsedLocal.parsed)?.address} />
+            <Field label="parsed neighborhood" v={(parserDebug.raw.parsed ?? parserDebug.parsedLocal.parsed)?.neighborhood} />
+            <Field label="parsed vehicle_type" v={(parserDebug.raw.parsed ?? parserDebug.parsedLocal.parsed)?.vehicle_type} />
+            <Field label="parsed service_type" v={(parserDebug.raw.parsed ?? parserDebug.parsedLocal.parsed)?.service_type} />
+            <Field label="parsed preferred_date" v={(parserDebug.raw.parsed ?? parserDebug.parsedLocal.parsed)?.preferred_date} />
+            <Field label="parsed preferred_time" v={(parserDebug.raw.parsed ?? parserDebug.parsedLocal.parsed)?.preferred_time} />
+            <Field label="parsed payment_method" v={(parserDebug.raw.parsed ?? parserDebug.parsedLocal.parsed)?.payment_method} />
+            <Field label="missing_fields" v={(parserDebug.raw.missing_fields ?? parserDebug.parsedLocal.missing)?.join?.(", ") ?? "—"} />
+          </div>
+          <div className="mt-3 space-y-1">
+            <p className="text-muted-foreground">Resumen preview</p>
+            <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-background p-2 text-[10px]">{parserDebug.summary?.message_text ?? "—"}</pre>
+          </div>
+        </details>
+
         <div>
           <Button variant="ghost" size="sm" onClick={() => setShowRaw((v) => !v)}>
             {showRaw ? "Ocultar" : "Ver"} payload crudo
