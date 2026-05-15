@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -45,13 +46,17 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import {
   CalendarPlus,
-  Layers,
   Lock,
   RefreshCw,
   Pencil,
   Trash2,
   AlertTriangle,
   Loader2,
+  Power,
+  PowerOff,
+  Save,
+  Sparkles,
+  Unlock,
 } from "lucide-react";
 
 export const Route = createFileRoute("/admin/disponibilidad")({
@@ -61,8 +66,8 @@ export const Route = createFileRoute("/admin/disponibilidad")({
 // ---------- types ----------
 type Slot = {
   id: string;
-  date: string; // yyyy-mm-dd
-  start_time: string; // HH:MM:SS
+  date: string;
+  start_time: string;
   end_time: string;
   capacity: number;
   active: boolean;
@@ -70,9 +75,26 @@ type Slot = {
   updated_at: string;
 };
 
-type RangePreset = "today" | "7" | "14" | "month" | "custom";
-type StatusFilter = "all" | "active" | "inactive";
-type CapFilter = "all" | "available" | "full";
+type WeeklyRule = {
+  id: string;
+  day_of_week: number;
+  day_name: string;
+  is_open: boolean;
+  start_time: string;
+  end_time: string;
+  slot_duration_minutes: number;
+  interval_minutes: number;
+  capacity: number;
+  allow_overlaps: boolean;
+};
+
+type Exception = {
+  id: string;
+  date: string;
+  is_closed: boolean;
+  note: string | null;
+  created_at: string;
+};
 
 // ---------- helpers ----------
 const WEEKDAY_NAMES = [
@@ -125,7 +147,6 @@ function hhmm(t: string) {
   return t?.slice(0, 5) ?? "";
 }
 function toTimeStr(t: string) {
-  // ensure HH:MM:SS
   if (!t) return t;
   return t.length === 5 ? `${t}:00` : t;
 }
@@ -140,6 +161,68 @@ function addMinutesToTime(time: string, mins: number) {
 // ---------- main ----------
 function DisponibilidadPage() {
   const qc = useQueryClient();
+  const [tab, setTab] = useState("horarios");
+
+  const refreshAll = () => {
+    qc.invalidateQueries({ queryKey: ["availability_slots"] });
+    qc.invalidateQueries({ queryKey: ["availability_bookings"] });
+    qc.invalidateQueries({ queryKey: ["availability_exceptions"] });
+    qc.invalidateQueries({ queryKey: ["weekly_rules"] });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Disponibilidad</h1>
+          <p className="text-sm text-muted-foreground">
+            Gestioná horarios, reglas semanales y bloqueos de fechas.
+          </p>
+        </div>
+        <Button variant="outline" onClick={refreshAll}>
+          <RefreshCw className="mr-2 h-4 w-4" /> Actualizar
+        </Button>
+      </div>
+
+      <Tabs value={tab} onValueChange={setTab} className="space-y-4">
+        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 p-1">
+          <TabsTrigger value="horarios">Horarios</TabsTrigger>
+          <TabsTrigger value="generador">Generador</TabsTrigger>
+          <TabsTrigger value="reglas">Reglas semanales</TabsTrigger>
+          <TabsTrigger value="bloqueos">Bloqueos</TabsTrigger>
+          <TabsTrigger value="diagnostico">Diagnóstico</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="horarios">
+          <SlotsTab onChanged={refreshAll} />
+        </TabsContent>
+        <TabsContent value="generador">
+          <GeneradorTab onSaved={refreshAll} />
+        </TabsContent>
+        <TabsContent value="reglas">
+          <WeeklyRulesTab onSaved={refreshAll} />
+        </TabsContent>
+        <TabsContent value="bloqueos">
+          <BlocksTab onSaved={refreshAll} />
+        </TabsContent>
+        <TabsContent value="diagnostico">
+          <DiagnosticoTab />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+// ============================================================
+// TAB 1 — HORARIOS
+// ============================================================
+
+type RangePreset = "today" | "7" | "14" | "month" | "custom";
+type StatusFilter = "all" | "active" | "inactive";
+type CapFilter = "all" | "available" | "full";
+
+function SlotsTab({ onChanged }: { onChanged: () => void }) {
+  const qc = useQueryClient();
   const [range, setRange] = useState<RangePreset>("14");
   const [customFrom, setCustomFrom] = useState(todayISO());
   const [customTo, setCustomTo] = useState(addDays(todayISO(), 14));
@@ -150,8 +233,11 @@ function DisponibilidadPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Slot | null>(null);
   const [deleting, setDeleting] = useState<Slot | null>(null);
-  const [bulkOpen, setBulkOpen] = useState(false);
-  const [blockOpen, setBlockOpen] = useState(false);
+
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkConfirm, setBulkConfirm] = useState<null | "activate" | "deactivate" | "delete" | "capacity">(null);
+  const [forceDelete, setForceDelete] = useState(false);
+  const [newCap, setNewCap] = useState(1);
 
   const [from, to] = useMemo(() => {
     const today = todayISO();
@@ -182,7 +268,7 @@ function DisponibilidadPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("bookings")
-        .select("scheduled_date, scheduled_time, booking_status")
+        .select("scheduled_date, scheduled_time, duration_minutes, booking_status")
         .gte("scheduled_date", from)
         .lte("scheduled_date", to)
         .neq("booking_status", "cancelled");
@@ -190,34 +276,40 @@ function DisponibilidadPage() {
       return (data ?? []) as {
         scheduled_date: string;
         scheduled_time: string;
+        duration_minutes: number;
         booking_status: string;
       }[];
     },
   });
 
-  // booking count per (date|HH:MM)
-  const bookingsMap = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const b of bookingsQuery.data ?? []) {
-      const key = `${b.scheduled_date}|${hhmm(b.scheduled_time)}`;
-      m.set(key, (m.get(key) ?? 0) + 1);
-    }
-    return m;
-  }, [bookingsQuery.data]);
+  const toMin = (t: string) => {
+    const [h, m] = String(t).slice(0, 5).split(":").map(Number);
+    return h * 60 + m;
+  };
 
-  const bookingsForSlot = (s: Slot) =>
-    bookingsMap.get(`${s.date}|${hhmm(s.start_time)}`) ?? 0;
-  const bookingsForDate = (date: string) => {
+  // overlap-aware bookings count per slot
+  const overlapCountForSlot = (s: Slot) => {
+    const list = (bookingsQuery.data ?? []).filter((b) => b.scheduled_date === s.date);
+    const sStart = toMin(s.start_time);
+    const sEnd = toMin(s.end_time);
     let n = 0;
-    for (const [k, v] of bookingsMap) if (k.startsWith(date + "|")) n += v;
+    for (const b of list) {
+      const bs = toMin(b.scheduled_time);
+      const be = bs + (b.duration_minutes ?? 0);
+      if (bs < sEnd && be > sStart) n++;
+    }
     return n;
   };
 
+  const bookingsForDate = (date: string) => {
+    return (bookingsQuery.data ?? []).filter((b) => b.scheduled_date === date).length;
+  };
+
   const filtered = useMemo(() => {
-    const list = (slotsQuery.data ?? []).filter((s) => {
+    return (slotsQuery.data ?? []).filter((s) => {
       if (status === "active" && !s.active) return false;
       if (status === "inactive" && s.active) return false;
-      const used = bookingsForSlot(s);
+      const used = overlapCountForSlot(s);
       const remaining = s.capacity - used;
       if (cap === "available" && !(s.active && remaining > 0)) return false;
       if (cap === "full" && remaining > 0) return false;
@@ -232,8 +324,7 @@ function DisponibilidadPage() {
       }
       return true;
     });
-    return list;
-  }, [slotsQuery.data, status, cap, search, bookingsMap]);
+  }, [slotsQuery.data, bookingsQuery.data, status, cap, search]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, Slot[]>();
@@ -245,16 +336,44 @@ function DisponibilidadPage() {
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, [filtered]);
 
-  const refreshAll = () => {
+  const refresh = () => {
     qc.invalidateQueries({ queryKey: ["availability_slots"] });
     qc.invalidateQueries({ queryKey: ["availability_bookings"] });
+    onChanged();
   };
 
+  const toggleOne = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const selectAllVisible = () => setSelected(new Set(filtered.map((s) => s.id)));
+  const clearSelection = () => setSelected(new Set());
+  const selectDate = (date: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const s of filtered.filter((x) => x.date === date)) next.add(s.id);
+      return next;
+    });
+  };
+
+  const selectedSlots = useMemo(
+    () => (slotsQuery.data ?? []).filter((s) => selected.has(s.id)),
+    [slotsQuery.data, selected],
+  );
+  const selectedWithBookings = useMemo(
+    () => selectedSlots.filter((s) => overlapCountForSlot(s) > 0),
+    [selectedSlots, bookingsQuery.data],
+  );
+
   const toggleActive = async (s: Slot) => {
-    const used = bookingsForSlot(s);
+    const used = overlapCountForSlot(s);
     if (s.active && used > 0) {
       const ok = window.confirm(
-        `Este horario tiene ${used} reserva(s) existentes. Desactivarlo no cancela las reservas ya creadas. ¿Continuar?`,
+        `Este horario tiene ${used} reserva(s). Desactivarlo no cancela las reservas existentes. ¿Continuar?`,
       );
       if (!ok) return;
     }
@@ -262,39 +381,100 @@ function DisponibilidadPage() {
       .from("availability_slots")
       .update({ active: !s.active })
       .eq("id", s.id);
-    if (error) {
-      toast.error("No se pudo actualizar", { description: error.message });
-      return;
-    }
+    if (error) return toast.error("No se pudo actualizar", { description: error.message });
     toast.success(s.active ? "Horario desactivado" : "Horario activado");
-    refreshAll();
+    refresh();
+  };
+
+  const dayActivate = async (date: string, active: boolean) => {
+    const ids = (slotsQuery.data ?? []).filter((s) => s.date === date).map((s) => s.id);
+    if (!ids.length) return;
+    const { error } = await supabase
+      .from("availability_slots")
+      .update({ active })
+      .in("id", ids);
+    if (error) return toast.error("Error", { description: error.message });
+    toast.success(active ? "Día activado" : "Día desactivado");
+    refresh();
+  };
+
+  const dayDeleteEmpty = async (date: string) => {
+    const slots = (slotsQuery.data ?? []).filter((s) => s.date === date);
+    const empty = slots.filter((s) => overlapCountForSlot(s) === 0);
+    if (!empty.length) return toast.info("No hay horarios sin reservas en este día.");
+    const { error } = await supabase
+      .from("availability_slots")
+      .delete()
+      .in("id", empty.map((s) => s.id));
+    if (error) return toast.error("Error", { description: error.message });
+    toast.success(`Eliminados ${empty.length} horarios sin reservas`);
+    refresh();
+  };
+
+  const runBulk = async () => {
+    if (!bulkConfirm) return;
+    const ids = selectedSlots.map((s) => s.id);
+    if (!ids.length) return;
+
+    if (bulkConfirm === "activate") {
+      const { error } = await supabase
+        .from("availability_slots")
+        .update({ active: true })
+        .in("id", ids);
+      if (error) return toast.error("Error", { description: error.message });
+      toast.success(`${ids.length} horarios activados`);
+    } else if (bulkConfirm === "deactivate") {
+      const { error } = await supabase
+        .from("availability_slots")
+        .update({ active: false })
+        .in("id", ids);
+      if (error) return toast.error("Error", { description: error.message });
+      toast.success(`${ids.length} horarios desactivados`);
+    } else if (bulkConfirm === "delete") {
+      const targets = forceDelete
+        ? selectedSlots
+        : selectedSlots.filter((s) => overlapCountForSlot(s) === 0);
+      if (!targets.length) return toast.info("No hay horarios para eliminar.");
+      const { error } = await supabase
+        .from("availability_slots")
+        .delete()
+        .in("id", targets.map((s) => s.id));
+      if (error) return toast.error("Error", { description: error.message });
+      toast.success(`${targets.length} horarios eliminados`, {
+        description: forceDelete
+          ? undefined
+          : `${selectedSlots.length - targets.length} omitidos por tener reservas`,
+      });
+    } else if (bulkConfirm === "capacity") {
+      if (newCap < 1) return toast.error("Capacidad inválida");
+      const conflicts = selectedSlots.filter((s) => overlapCountForSlot(s) > newCap);
+      if (conflicts.length) {
+        const ok = window.confirm(
+          `${conflicts.length} horarios tienen más reservas que la nueva capacidad. ¿Continuar igual?`,
+        );
+        if (!ok) return;
+      }
+      const { error } = await supabase
+        .from("availability_slots")
+        .update({ capacity: newCap })
+        .in("id", ids);
+      if (error) return toast.error("Error", { description: error.message });
+      toast.success(`Capacidad actualizada en ${ids.length} horarios`);
+    }
+    setBulkConfirm(null);
+    setForceDelete(false);
+    clearSelection();
+    refresh();
   };
 
   const loading = slotsQuery.isLoading || bookingsQuery.isLoading;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Disponibilidad</h1>
-          <p className="text-sm text-muted-foreground">
-            Gestioná los días, horarios y capacidad disponibles para recibir reservas.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={() => setCreating(true)}>
-            <CalendarPlus className="mr-2 h-4 w-4" /> Crear horario
-          </Button>
-          <Button variant="secondary" onClick={() => setBulkOpen(true)}>
-            <Layers className="mr-2 h-4 w-4" /> Generar horarios
-          </Button>
-          <Button variant="secondary" onClick={() => setBlockOpen(true)}>
-            <Lock className="mr-2 h-4 w-4" /> Bloquear día
-          </Button>
-          <Button variant="outline" onClick={refreshAll}>
-            <RefreshCw className="mr-2 h-4 w-4" /> Actualizar
-          </Button>
-        </div>
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={() => setCreating(true)}>
+          <CalendarPlus className="mr-2 h-4 w-4" /> Crear horario
+        </Button>
       </div>
 
       {/* Filters */}
@@ -354,9 +534,6 @@ function DisponibilidadPage() {
         </CardContent>
       </Card>
 
-      {/* Overlap diagnostic */}
-      <OverlapDiagnostic slots={slotsQuery.data ?? []} bookingsMap={bookingsMap} />
-
       {/* List */}
       {loading ? (
         <div className="flex items-center justify-center p-10 text-muted-foreground">
@@ -370,13 +547,24 @@ function DisponibilidadPage() {
         </Card>
       ) : (
         <div className="space-y-4">
+          <div className="flex flex-wrap gap-2 text-xs">
+            <Button size="sm" variant="outline" onClick={selectAllVisible}>
+              Seleccionar todos los visibles
+            </Button>
+            {selected.size > 0 && (
+              <Button size="sm" variant="ghost" onClick={clearSelection}>
+                Limpiar selección
+              </Button>
+            )}
+          </div>
           {grouped.map(([date, slots]) => {
             const activeCount = slots.filter((s) => s.active).length;
             const inactiveCount = slots.length - activeCount;
             const bookings = bookingsForDate(date);
+            const fullCount = slots.filter((s) => s.capacity - overlapCountForSlot(s) <= 0).length;
             return (
               <Card key={date}>
-                <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-3">
+                <CardHeader className="flex flex-col gap-2 pb-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <CardTitle className="text-base">
                       {dayName(date)} — {fmtDate(date)}
@@ -385,7 +573,22 @@ function DisponibilidadPage() {
                       <Badge variant="secondary">{activeCount} activos</Badge>
                       {inactiveCount > 0 && <Badge variant="outline">{inactiveCount} inactivos</Badge>}
                       <Badge variant="outline">{bookings} reservas</Badge>
+                      {fullCount > 0 && <Badge variant="destructive">{fullCount} llenos</Badge>}
                     </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    <Button size="sm" variant="outline" onClick={() => selectDate(date)}>
+                      Seleccionar día
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => dayActivate(date, true)}>
+                      <Power className="mr-1 h-3 w-3" /> Activar
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => dayActivate(date, false)}>
+                      <PowerOff className="mr-1 h-3 w-3" /> Desactivar
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => dayDeleteEmpty(date)}>
+                      <Trash2 className="mr-1 h-3 w-3" /> Sin reservas
+                    </Button>
                   </div>
                 </CardHeader>
                 <CardContent className="p-0">
@@ -394,6 +597,7 @@ function DisponibilidadPage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
+                          <TableHead className="w-10"></TableHead>
                           <TableHead>Inicio</TableHead>
                           <TableHead>Fin</TableHead>
                           <TableHead>Capacidad</TableHead>
@@ -405,10 +609,16 @@ function DisponibilidadPage() {
                       </TableHeader>
                       <TableBody>
                         {slots.map((s) => {
-                          const used = bookingsForSlot(s);
+                          const used = overlapCountForSlot(s);
                           const remaining = s.capacity - used;
                           return (
-                            <TableRow key={s.id}>
+                            <TableRow key={s.id} data-state={selected.has(s.id) ? "selected" : undefined}>
+                              <TableCell>
+                                <Checkbox
+                                  checked={selected.has(s.id)}
+                                  onCheckedChange={() => toggleOne(s.id)}
+                                />
+                              </TableCell>
                               <TableCell className="font-medium">{hhmm(s.start_time)}</TableCell>
                               <TableCell>{hhmm(s.end_time)}</TableCell>
                               <TableCell>{s.capacity}</TableCell>
@@ -425,8 +635,12 @@ function DisponibilidadPage() {
                               <TableCell>
                                 {!s.active ? (
                                   <Badge variant="outline">Inactivo</Badge>
-                                ) : remaining <= 0 ? (
-                                  <Badge variant="destructive">Lleno</Badge>
+                                ) : used > 0 ? (
+                                  remaining <= 0 ? (
+                                    <Badge variant="destructive">Lleno</Badge>
+                                  ) : (
+                                    <Badge variant="secondary">Tiene reservas</Badge>
+                                  )
                                 ) : (
                                   <Badge>Disponible</Badge>
                                 )}
@@ -453,18 +667,27 @@ function DisponibilidadPage() {
                   {/* Mobile */}
                   <div className="space-y-2 p-3 md:hidden">
                     {slots.map((s) => {
-                      const used = bookingsForSlot(s);
+                      const used = overlapCountForSlot(s);
                       const remaining = s.capacity - used;
                       return (
-                        <div key={s.id} className="rounded-lg border p-3">
+                        <div
+                          key={s.id}
+                          className={`rounded-lg border p-3 ${selected.has(s.id) ? "border-primary bg-primary/5" : ""}`}
+                        >
                           <div className="flex items-center justify-between">
-                            <div className="font-medium">
+                            <label className="flex items-center gap-2 font-medium">
+                              <Checkbox
+                                checked={selected.has(s.id)}
+                                onCheckedChange={() => toggleOne(s.id)}
+                              />
                               {hhmm(s.start_time)} – {hhmm(s.end_time)}
-                            </div>
+                            </label>
                             {!s.active ? (
                               <Badge variant="outline">Inactivo</Badge>
                             ) : remaining <= 0 ? (
                               <Badge variant="destructive">Lleno</Badge>
+                            ) : used > 0 ? (
+                              <Badge variant="secondary">Reservas</Badge>
                             ) : (
                               <Badge>Disponible</Badge>
                             )}
@@ -474,11 +697,6 @@ function DisponibilidadPage() {
                             <div>Reservas: {used}</div>
                             <div>Restante: {Math.max(remaining, 0)}</div>
                           </div>
-                          {used > 0 && (
-                            <div className="mt-2 flex items-center gap-1 text-xs text-amber-600">
-                              <AlertTriangle className="h-3 w-3" /> Tiene reservas
-                            </div>
-                          )}
                           <div className="mt-3 flex flex-wrap gap-2">
                             <Button size="sm" variant="outline" onClick={() => setEditing(s)}>
                               <Pencil className="mr-1 h-3 w-3" /> Editar
@@ -501,32 +719,120 @@ function DisponibilidadPage() {
         </div>
       )}
 
+      {/* Sticky bulk action bar */}
+      {selected.size > 0 && (
+        <div className="sticky bottom-2 z-30 mx-auto flex w-full max-w-3xl flex-wrap items-center justify-between gap-3 rounded-lg border bg-background p-3 shadow-lg">
+          <div className="text-sm">
+            <b>{selected.size}</b> horarios seleccionados ·{" "}
+            <span className="text-amber-700">{selectedWithBookings.length}</span> con reservas ·{" "}
+            <span className="text-muted-foreground">
+              {selected.size - selectedWithBookings.length} sin reservas
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            <Button size="sm" variant="outline" onClick={() => setBulkConfirm("activate")}>
+              <Power className="mr-1 h-3 w-3" /> Activar
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setBulkConfirm("deactivate")}>
+              <PowerOff className="mr-1 h-3 w-3" /> Desactivar
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setBulkConfirm("capacity")}>
+              Capacidad
+            </Button>
+            <Button size="sm" variant="destructive" onClick={() => setBulkConfirm("delete")}>
+              <Trash2 className="mr-1 h-3 w-3" /> Eliminar
+            </Button>
+            <Button size="sm" variant="ghost" onClick={clearSelection}>
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk confirm dialog */}
+      <AlertDialog open={!!bulkConfirm} onOpenChange={(o) => !o && (setBulkConfirm(null), setForceDelete(false))}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {bulkConfirm === "activate" && "Activar horarios"}
+              {bulkConfirm === "deactivate" && "Desactivar horarios"}
+              {bulkConfirm === "delete" && "Eliminar horarios"}
+              {bulkConfirm === "capacity" && "Cambiar capacidad"}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                <div>
+                  Horarios seleccionados: <b>{selectedSlots.length}</b>. Con reservas:{" "}
+                  <b>{selectedWithBookings.length}</b>.
+                </div>
+                {bulkConfirm === "deactivate" && selectedWithBookings.length > 0 && (
+                  <div className="text-amber-700">
+                    Algunos horarios tienen reservas. Desactivarlos no cancela las reservas existentes.
+                  </div>
+                )}
+                {bulkConfirm === "delete" && (
+                  <>
+                    <div>
+                      Por defecto se eliminarán <b>{selectedSlots.length - selectedWithBookings.length}</b>{" "}
+                      horarios sin reservas. Los <b>{selectedWithBookings.length}</b> con reservas serán omitidos.
+                    </div>
+                    {selectedWithBookings.length > 0 && (
+                      <label className="flex items-center gap-2 rounded border border-destructive/40 bg-destructive/5 p-2 text-destructive">
+                        <Checkbox
+                          checked={forceDelete}
+                          onCheckedChange={(v) => setForceDelete(!!v)}
+                        />
+                        <span className="text-xs">
+                          Entiendo el riesgo y quiero eliminar también horarios con reservas
+                        </span>
+                      </label>
+                    )}
+                  </>
+                )}
+                {bulkConfirm === "capacity" && (
+                  <div>
+                    <Label>Nueva capacidad</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={newCap}
+                      onChange={(e) => setNewCap(Number(e.target.value))}
+                    />
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={runBulk}>Confirmar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Dialogs */}
-      <SlotFormDialog
-        open={creating}
-        onOpenChange={setCreating}
-        onSaved={refreshAll}
-      />
+      <SlotFormDialog open={creating} onOpenChange={setCreating} onSaved={refresh} />
       <SlotFormDialog
         open={!!editing}
         slot={editing}
-        existingBookings={editing ? bookingsForSlot(editing) : 0}
+        existingBookings={editing ? overlapCountForSlot(editing) : 0}
         onOpenChange={(o) => !o && setEditing(null)}
-        onSaved={refreshAll}
+        onSaved={refresh}
       />
       <DeleteSlotDialog
         slot={deleting}
-        bookings={deleting ? bookingsForSlot(deleting) : 0}
+        bookings={deleting ? overlapCountForSlot(deleting) : 0}
         onOpenChange={(o) => !o && setDeleting(null)}
-        onDeleted={refreshAll}
+        onDeleted={refresh}
       />
-      <BulkGenerateDialog open={bulkOpen} onOpenChange={setBulkOpen} onSaved={refreshAll} />
-      <BlockDayDialog open={blockOpen} onOpenChange={setBlockOpen} onSaved={refreshAll} />
     </div>
   );
 }
 
-// ---------- create/edit dialog ----------
+// ============================================================
+// SlotFormDialog & DeleteSlotDialog (kept from previous version)
+// ============================================================
+
 function SlotFormDialog({
   open,
   onOpenChange,
@@ -548,8 +854,7 @@ function SlotFormDialog({
   const [active, setActive] = useState<boolean>(slot?.active ?? true);
   const [saving, setSaving] = useState(false);
 
-  // reset when slot changes
-  useMemo(() => {
+  useEffect(() => {
     if (open) {
       setDate(slot?.date ?? todayISO());
       setStartTime(hhmm(slot?.start_time ?? "09:00"));
@@ -560,18 +865,9 @@ function SlotFormDialog({
   }, [open, slot]);
 
   const submit = async () => {
-    if (!date || !startTime || !endTime) {
-      toast.error("Completá todos los campos");
-      return;
-    }
-    if (endTime <= startTime) {
-      toast.error("La hora de fin debe ser mayor a la de inicio");
-      return;
-    }
-    if (capacity < 1) {
-      toast.error("La capacidad debe ser al menos 1");
-      return;
-    }
+    if (!date || !startTime || !endTime) return toast.error("Completá todos los campos");
+    if (endTime <= startTime) return toast.error("La hora de fin debe ser mayor a la de inicio");
+    if (capacity < 1) return toast.error("La capacidad debe ser al menos 1");
     if (isEdit && capacity < existingBookings) {
       const ok = window.confirm(
         `Este horario ya tiene ${existingBookings} reserva(s). Reducir la capacidad a ${capacity} puede sobrepasar el cupo. ¿Continuar?`,
@@ -594,7 +890,6 @@ function SlotFormDialog({
         if (error) throw error;
         toast.success("Horario actualizado");
       } else {
-        // duplicate check
         const { data: dup } = await supabase
           .from("availability_slots")
           .select("id")
@@ -627,13 +922,11 @@ function SlotFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Editar horario" : "Crear horario"}</DialogTitle>
           <DialogDescription>
-            {isEdit
-              ? "Modificá los datos del horario."
-              : "Definí fecha, horario y capacidad."}
+            {isEdit ? "Modificá los datos del horario." : "Definí fecha, horario y capacidad."}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
@@ -653,12 +946,7 @@ function SlotFormDialog({
           </div>
           <div>
             <Label>Capacidad</Label>
-            <Input
-              type="number"
-              min={1}
-              value={capacity}
-              onChange={(e) => setCapacity(Number(e.target.value))}
-            />
+            <Input type="number" min={1} value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} />
           </div>
           <div className="flex items-center justify-between rounded border p-3">
             <div>
@@ -679,9 +967,7 @@ function SlotFormDialog({
           )}
         </div>
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
           <Button onClick={submit} disabled={saving}>
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Guardar
@@ -692,7 +978,6 @@ function SlotFormDialog({
   );
 }
 
-// ---------- delete ----------
 function DeleteSlotDialog({
   slot,
   bookings,
@@ -711,14 +996,10 @@ function DeleteSlotDialog({
   const onConfirm = async () => {
     if (!slot) return;
     if (requiresStrong && confirmText.trim().toLowerCase() !== "eliminar") {
-      toast.error("Escribí 'eliminar' para confirmar");
-      return;
+      return toast.error("Escribí 'eliminar' para confirmar");
     }
     const { error } = await supabase.from("availability_slots").delete().eq("id", slot.id);
-    if (error) {
-      toast.error("No se pudo eliminar", { description: error.message });
-      return;
-    }
+    if (error) return toast.error("No se pudo eliminar", { description: error.message });
     toast.success("Horario eliminado");
     onDeleted();
     onOpenChange(false);
@@ -730,17 +1011,19 @@ function DeleteSlotDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Eliminar horario</AlertDialogTitle>
-          <AlertDialogDescription>
-            {requiresStrong ? (
-              <>
-                Este horario tiene <b>{bookings}</b> reserva(s) asociadas. Eliminarlo no eliminará las reservas, pero puede generar inconsistencias. Te recomendamos desactivarlo en lugar de eliminarlo.
-                <div className="mt-3">
-                  Escribí <b>eliminar</b> para confirmar:
-                </div>
-              </>
-            ) : (
-              "¿Confirmás que querés eliminar este horario?"
-            )}
+          <AlertDialogDescription asChild>
+            <div>
+              {requiresStrong ? (
+                <>
+                  Este horario tiene <b>{bookings}</b> reserva(s) asociadas. Eliminarlo no eliminará las reservas, pero puede generar inconsistencias. Te recomendamos desactivarlo en lugar de eliminarlo.
+                  <div className="mt-3">
+                    Escribí <b>eliminar</b> para confirmar:
+                  </div>
+                </>
+              ) : (
+                "¿Confirmás que querés eliminar este horario?"
+              )}
+            </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
         {requiresStrong && (
@@ -755,7 +1038,10 @@ function DeleteSlotDialog({
   );
 }
 
-// ---------- bulk generate ----------
+// ============================================================
+// TAB 2 — GENERADOR
+// ============================================================
+
 const WEEKDAYS = [
   { v: 1, l: "Lun" },
   { v: 2, l: "Mar" },
@@ -766,15 +1052,7 @@ const WEEKDAYS = [
   { v: 0, l: "Dom" },
 ];
 
-function BulkGenerateDialog({
-  open,
-  onOpenChange,
-  onSaved,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  onSaved: () => void;
-}) {
+function GeneradorTab({ onSaved }: { onSaved: () => void }) {
   const [startDate, setStartDate] = useState(todayISO());
   const [endDate, setEndDate] = useState(addDays(todayISO(), 14));
   const [weekdays, setWeekdays] = useState<number[]>([1, 2, 3, 4, 5, 6]);
@@ -818,18 +1096,13 @@ function BulkGenerateDialog({
 
   const doPreview = async () => {
     const cand = generateCandidates();
-    if (!cand.length) {
-      setPreview({ created: 0, skipped: 0 });
-      return;
-    }
+    if (!cand.length) return setPreview({ created: 0, skipped: 0 });
     const { data: existing } = await supabase
       .from("availability_slots")
       .select("date, start_time")
       .gte("date", startDate)
       .lte("date", endDate);
-    const existSet = new Set(
-      (existing ?? []).map((e: any) => `${e.date}|${e.start_time}`),
-    );
+    const existSet = new Set((existing ?? []).map((e: any) => `${e.date}|${e.start_time}`));
     let skipped = 0;
     for (const c of cand) if (existSet.has(`${c.date}|${c.start_time}`)) skipped++;
     setPreview({ created: cand.length - skipped, skipped });
@@ -839,24 +1112,18 @@ function BulkGenerateDialog({
     setSaving(true);
     try {
       const cand = generateCandidates();
-      if (!cand.length) {
-        toast.error("No hay horarios para generar");
-        return;
-      }
+      if (!cand.length) return toast.error("No hay horarios para generar");
       const { data: existing } = await supabase
         .from("availability_slots")
         .select("date, start_time")
         .gte("date", startDate)
         .lte("date", endDate);
-      const existSet = new Set(
-        (existing ?? []).map((e: any) => `${e.date}|${e.start_time}`),
-      );
+      const existSet = new Set((existing ?? []).map((e: any) => `${e.date}|${e.start_time}`));
       const rows = cand
         .filter((c) => !existSet.has(`${c.date}|${c.start_time}`))
         .map((c) => ({ ...c, capacity, active }));
       if (!rows.length) {
         toast.info("Todos los horarios ya existían");
-        onOpenChange(false);
         return;
       }
       const { error } = await supabase.from("availability_slots").insert(rows);
@@ -864,9 +1131,8 @@ function BulkGenerateDialog({
       toast.success(`Se crearon ${rows.length} horarios`, {
         description: `Omitidos: ${cand.length - rows.length}`,
       });
-      onSaved();
-      onOpenChange(false);
       setPreview(null);
+      onSaved();
     } catch (e: any) {
       toast.error("Error al generar", { description: e.message });
     } finally {
@@ -875,259 +1141,646 @@ function BulkGenerateDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) setPreview(null); }}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Generar horarios</DialogTitle>
-          <DialogDescription>
-            Creá múltiples horarios automáticamente para un rango de fechas.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Desde</Label>
-              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-            </div>
-            <div>
-              <Label>Hasta</Label>
-              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-            </div>
+    <Card>
+      <CardHeader>
+        <CardTitle>Generador de horarios</CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label>Desde</Label>
+            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
           </div>
           <div>
-            <Label>Días de la semana</Label>
-            <div className="mt-1 flex flex-wrap gap-2">
-              {WEEKDAYS.map((w) => (
-                <label key={w.v} className="flex items-center gap-1 rounded border px-2 py-1 text-sm">
-                  <Checkbox checked={weekdays.includes(w.v)} onCheckedChange={() => toggleWd(w.v)} />
-                  {w.l}
-                </label>
-              ))}
-            </div>
+            <Label>Hasta</Label>
+            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Apertura</Label>
-              <Input type="time" value={dayStart} onChange={(e) => setDayStart(e.target.value)} />
-            </div>
-            <div>
-              <Label>Cierre</Label>
-              <Input type="time" value={dayEnd} onChange={(e) => setDayEnd(e.target.value)} />
-            </div>
-          </div>
-          <div>
-            <Label>Duración del turno (min)</Label>
-            <Select value={String(duration)} onValueChange={(v) => setDuration(Number(v))}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="60">60</SelectItem>
-                <SelectItem value="90">90</SelectItem>
-                <SelectItem value="120">120</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Por defecto los inicios se separan por la misma duración (sin solapamientos).
-            </p>
-          </div>
-          <div className="flex items-center justify-between rounded border p-3">
-            <div>
-              <div className="text-sm font-medium">Permitir horarios solapados</div>
-              <div className="text-xs text-muted-foreground">
-                Inicios cada X minutos menores a la duración. Avanzado.
-              </div>
-            </div>
-            <Switch checked={allowOverlap} onCheckedChange={setAllowOverlap} />
-          </div>
-          {allowOverlap && (
-            <>
-              <div>
-                <Label>Intervalo entre inicios (min)</Label>
-                <Select value={String(interval)} onValueChange={(v) => setInterval(Number(v))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="30">30</SelectItem>
-                    <SelectItem value="60">60</SelectItem>
-                    <SelectItem value="90">90</SelectItem>
-                    <SelectItem value="120">120</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-start gap-2 rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
-                <AlertTriangle className="mt-0.5 h-4 w-4" />
-                <div>
-                  Esto puede generar horarios solapados. El backend igual evita sobreventa según capacidad y duración del servicio.
-                </div>
-              </div>
-            </>
-          )}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Capacidad</Label>
-              <Input type="number" min={1} value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} />
-            </div>
-            <div className="flex items-end">
-              <label className="flex items-center gap-2">
-                <Switch checked={active} onCheckedChange={setActive} />
-                <span className="text-sm">Activos</span>
-              </label>
-            </div>
-          </div>
-          {preview && (
-            <div className="rounded border bg-muted/30 p-3 text-sm">
-              Se crearán <b>{preview.created}</b> horarios. Se omitirán <b>{preview.skipped}</b> duplicados.
-            </div>
-          )}
         </div>
-        <DialogFooter className="gap-2">
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
+        <div>
+          <Label>Días de la semana</Label>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {WEEKDAYS.map((w) => (
+              <label key={w.v} className="flex items-center gap-1 rounded border px-2 py-1 text-sm">
+                <Checkbox checked={weekdays.includes(w.v)} onCheckedChange={() => toggleWd(w.v)} />
+                {w.l}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label>Apertura</Label>
+            <Input type="time" value={dayStart} onChange={(e) => setDayStart(e.target.value)} />
+          </div>
+          <div>
+            <Label>Cierre</Label>
+            <Input type="time" value={dayEnd} onChange={(e) => setDayEnd(e.target.value)} />
+          </div>
+        </div>
+        <div>
+          <Label>Duración del turno (min)</Label>
+          <Select value={String(duration)} onValueChange={(v) => setDuration(Number(v))}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="60">60</SelectItem>
+              <SelectItem value="90">90</SelectItem>
+              <SelectItem value="120">120</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Por defecto los inicios se separan por la misma duración (sin solapamientos).
+          </p>
+        </div>
+        <div className="flex items-center justify-between rounded border p-3">
+          <div>
+            <div className="text-sm font-medium">Permitir horarios solapados</div>
+            <div className="text-xs text-muted-foreground">
+              Inicios cada X minutos menores a la duración. Avanzado.
+            </div>
+          </div>
+          <Switch checked={allowOverlap} onCheckedChange={setAllowOverlap} />
+        </div>
+        {allowOverlap && (
+          <>
+            <div>
+              <Label>Intervalo entre inicios (min)</Label>
+              <Select value={String(interval)} onValueChange={(v) => setInterval(Number(v))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="30">30</SelectItem>
+                  <SelectItem value="60">60</SelectItem>
+                  <SelectItem value="90">90</SelectItem>
+                  <SelectItem value="120">120</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-start gap-2 rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+              <AlertTriangle className="mt-0.5 h-4 w-4" />
+              <div>
+                Esto puede generar horarios solapados. El backend evita sobreventa según capacidad y duración del servicio, pero la operación puede ser más difícil de manejar.
+              </div>
+            </div>
+          </>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label>Capacidad</Label>
+            <Input type="number" min={1} value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} />
+          </div>
+          <div className="flex items-end">
+            <label className="flex items-center gap-2">
+              <Switch checked={active} onCheckedChange={setActive} />
+              <span className="text-sm">Activos</span>
+            </label>
+          </div>
+        </div>
+        {preview && (
+          <div className="rounded border bg-muted/30 p-3 text-sm">
+            Se crearán <b>{preview.created}</b> horarios. Se omitirán <b>{preview.skipped}</b> duplicados.
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={doPreview}>Previsualizar</Button>
           <Button onClick={submit} disabled={saving}>
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Generar
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
-// ---------- block / unblock day ----------
-function BlockDayDialog({
-  open,
-  onOpenChange,
-  onSaved,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  onSaved: () => void;
-}) {
-  const [date, setDate] = useState(todayISO());
-  const [action, setAction] = useState<"block" | "unblock">("block");
-  const [saving, setSaving] = useState(false);
+// ============================================================
+// TAB 3 — REGLAS SEMANALES
+// ============================================================
 
-  const dayInfo = useQuery({
-    queryKey: ["block_day_info", date],
-    enabled: open && !!date,
+function WeeklyRulesTab({ onSaved }: { onSaved: () => void }) {
+  const qc = useQueryClient();
+  const [generating, setGenerating] = useState<null | 14 | 30>(null);
+
+  const rulesQuery = useQuery({
+    queryKey: ["weekly_rules"],
     queryFn: async () => {
-      const [{ data: slots }, { data: bks }] = await Promise.all([
-        supabase.from("availability_slots").select("id, active").eq("date", date),
-        supabase
-          .from("bookings")
-          .select("id")
-          .eq("scheduled_date", date)
-          .neq("booking_status", "cancelled"),
-      ]);
-      return {
-        slots: slots ?? [],
-        bookings: (bks ?? []).length,
-      };
+      const { data, error } = await supabase
+        .from("weekly_availability_rules")
+        .select("*")
+        .order("day_of_week", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as WeeklyRule[];
     },
   });
 
-  const submit = async () => {
-    setSaving(true);
+  const [draft, setDraft] = useState<Record<string, WeeklyRule>>({});
+
+  useEffect(() => {
+    if (rulesQuery.data) {
+      const map: Record<string, WeeklyRule> = {};
+      for (const r of rulesQuery.data) map[r.id] = { ...r };
+      setDraft(map);
+    }
+  }, [rulesQuery.data]);
+
+  const update = (id: string, patch: Partial<WeeklyRule>) =>
+    setDraft((s) => ({ ...s, [id]: { ...s[id], ...patch } }));
+
+  const saveOne = async (r: WeeklyRule) => {
+    const { error } = await supabase
+      .from("weekly_availability_rules")
+      .update({
+        is_open: r.is_open,
+        start_time: toTimeStr(hhmm(r.start_time)),
+        end_time: toTimeStr(hhmm(r.end_time)),
+        slot_duration_minutes: r.slot_duration_minutes,
+        interval_minutes: r.allow_overlaps ? r.interval_minutes : r.slot_duration_minutes,
+        capacity: r.capacity,
+        allow_overlaps: r.allow_overlaps,
+      })
+      .eq("id", r.id);
+    if (error) return toast.error("Error", { description: error.message });
+    toast.success(`Regla ${r.day_name} guardada`);
+    qc.invalidateQueries({ queryKey: ["weekly_rules"] });
+  };
+
+  const saveAll = async () => {
+    for (const r of Object.values(draft)) await saveOne(r);
+  };
+
+  const generateFromRules = async (days: 14 | 30) => {
+    setGenerating(days);
     try {
-      const slots = dayInfo.data?.slots ?? [];
-      if (!slots.length) {
-        toast.info("No hay horarios creados para este día.");
-        onOpenChange(false);
+      const rules = Object.values(draft).filter((r) => r.is_open);
+      const start = todayISO();
+      const end = addDays(start, days);
+      const cand: { date: string; start_time: string; end_time: string; capacity: number; active: boolean }[] = [];
+
+      // exceptions to skip
+      const { data: excs } = await supabase
+        .from("availability_exceptions")
+        .select("date,is_closed")
+        .gte("date", start)
+        .lte("date", end);
+      const closedDates = new Set((excs ?? []).filter((e: any) => e.is_closed).map((e: any) => e.date));
+
+      let cur = start;
+      while (cur <= end) {
+        if (!closedDates.has(cur)) {
+          const dow = new Date(cur + "T00:00:00").getDay();
+          const r = rules.find((x) => x.day_of_week === dow);
+          if (r) {
+            const dur = r.slot_duration_minutes;
+            const step = r.allow_overlaps ? r.interval_minutes : dur;
+            let t = hhmm(r.start_time);
+            const dayEnd = hhmm(r.end_time);
+            while (true) {
+              const end_t = addMinutesToTime(t, dur);
+              if (end_t > dayEnd) break;
+              cand.push({
+                date: cur,
+                start_time: toTimeStr(t),
+                end_time: toTimeStr(end_t),
+                capacity: r.capacity,
+                active: true,
+              });
+              const next = addMinutesToTime(t, step);
+              if (next <= t) break;
+              t = next;
+              if (t >= dayEnd) break;
+            }
+          }
+        }
+        cur = addDays(cur, 1);
+      }
+
+      const { data: existing } = await supabase
+        .from("availability_slots")
+        .select("date,start_time")
+        .gte("date", start)
+        .lte("date", end);
+      const existSet = new Set((existing ?? []).map((e: any) => `${e.date}|${e.start_time}`));
+      const rows = cand.filter((c) => !existSet.has(`${c.date}|${c.start_time}`));
+      if (!rows.length) {
+        toast.info("Todos los horarios ya existían");
         return;
       }
-      if (action === "block" && (dayInfo.data?.bookings ?? 0) > 0) {
-        const ok = window.confirm(
-          `Este día tiene ${dayInfo.data?.bookings} reserva(s). Bloquear el día no cancela las reservas existentes. ¿Continuar?`,
-        );
-        if (!ok) return;
-      }
-      const { error } = await supabase
-        .from("availability_slots")
-        .update({ active: action === "unblock" })
-        .eq("date", date);
+      const { error } = await supabase.from("availability_slots").insert(rows);
       if (error) throw error;
-      toast.success(action === "block" ? "Día bloqueado" : "Día desbloqueado");
+      toast.success(`Generados ${rows.length} horarios`, {
+        description: `Duplicados omitidos: ${cand.length - rows.length}`,
+      });
       onSaved();
-      onOpenChange(false);
     } catch (e: any) {
       toast.error("Error", { description: e.message });
     } finally {
-      setSaving(false);
+      setGenerating(null);
     }
   };
 
+  if (rulesQuery.isLoading) {
+    return (
+      <div className="flex items-center justify-center p-10 text-muted-foreground">
+        <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Cargando...
+      </div>
+    );
+  }
+
+  const ordered = [1, 2, 3, 4, 5, 6, 0]
+    .map((dow) => Object.values(draft).find((r) => r.day_of_week === dow))
+    .filter(Boolean) as WeeklyRule[];
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Bloquear / desbloquear día</DialogTitle>
-          <DialogDescription>
-            Activá o desactivá todos los horarios de un día específico.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-3">
-          <div>
-            <Label>Fecha</Label>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </div>
-          <div>
-            <Label>Acción</Label>
-            <Select value={action} onValueChange={(v) => setAction(v as any)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="block">Bloquear</SelectItem>
-                <SelectItem value="unblock">Desbloquear</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {dayInfo.data && (
-            <div className="rounded border bg-muted/30 p-3 text-xs">
-              {dayInfo.data.slots.length === 0 ? (
-                <>No hay horarios creados para este día.</>
-              ) : (
-                <>
-                  {dayInfo.data.slots.length} horario(s) en este día.{" "}
-                  {dayInfo.data.bookings > 0 && (
-                    <span className="text-amber-700">
-                      Hay {dayInfo.data.bookings} reserva(s); no se cancelarán.
-                    </span>
-                  )}
-                </>
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Reglas semanales</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Definí horarios por día de la semana. Sirven para generar disponibilidad rápidamente.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {ordered.map((r) => (
+            <div key={r.id} className="rounded-lg border p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-3">
+                  <Switch
+                    checked={r.is_open}
+                    onCheckedChange={(v) => update(r.id, { is_open: v })}
+                  />
+                  <div className="font-medium">{r.day_name}</div>
+                  <Badge variant={r.is_open ? "default" : "outline"}>
+                    {r.is_open ? "Abierto" : "Cerrado"}
+                  </Badge>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => saveOne(r)}>
+                  <Save className="mr-1 h-3 w-3" /> Guardar
+                </Button>
+              </div>
+              {r.is_open && (
+                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-6">
+                  <div>
+                    <Label className="text-xs">Apertura</Label>
+                    <Input
+                      type="time"
+                      value={hhmm(r.start_time)}
+                      onChange={(e) => update(r.id, { start_time: toTimeStr(e.target.value) })}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Cierre</Label>
+                    <Input
+                      type="time"
+                      value={hhmm(r.end_time)}
+                      onChange={(e) => update(r.id, { end_time: toTimeStr(e.target.value) })}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Duración (min)</Label>
+                    <Input
+                      type="number"
+                      min={15}
+                      value={r.slot_duration_minutes}
+                      onChange={(e) => update(r.id, { slot_duration_minutes: Number(e.target.value) })}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Intervalo (min)</Label>
+                    <Input
+                      type="number"
+                      min={15}
+                      value={r.allow_overlaps ? r.interval_minutes : r.slot_duration_minutes}
+                      disabled={!r.allow_overlaps}
+                      onChange={(e) => update(r.id, { interval_minutes: Number(e.target.value) })}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Capacidad</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={r.capacity}
+                      onChange={(e) => update(r.id, { capacity: Number(e.target.value) })}
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <label className="flex items-center gap-2 text-xs">
+                      <Switch
+                        checked={r.allow_overlaps}
+                        onCheckedChange={(v) => update(r.id, { allow_overlaps: v })}
+                      />
+                      Solapar
+                    </label>
+                  </div>
+                </div>
               )}
             </div>
-          )}
-        </div>
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={submit} disabled={saving}>
-            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Confirmar
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          ))}
+          <div className="flex flex-wrap gap-2 pt-2">
+            <Button variant="outline" onClick={saveAll}>
+              <Save className="mr-2 h-4 w-4" /> Guardar todos
+            </Button>
+            <Button onClick={() => generateFromRules(14)} disabled={!!generating}>
+              {generating === 14 && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Sparkles className="mr-2 h-4 w-4" /> Generar próximos 14 días
+            </Button>
+            <Button variant="secondary" onClick={() => generateFromRules(30)} disabled={!!generating}>
+              {generating === 30 && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Generar próximos 30 días
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
-// ---------- Overlap diagnostic ----------
-function OverlapDiagnostic({
-  slots,
-  bookingsMap,
-}: {
-  slots: Slot[];
-  bookingsMap: Map<string, number>;
-}) {
-  const [open, setOpen] = useState(false);
+// ============================================================
+// TAB 4 — BLOQUEOS / EXCEPCIONES
+// ============================================================
+
+function BlocksTab({ onSaved }: { onSaved: () => void }) {
+  const qc = useQueryClient();
+  const [singleDate, setSingleDate] = useState(todayISO());
+  const [singleNote, setSingleNote] = useState("");
+  const [rangeFrom, setRangeFrom] = useState(todayISO());
+  const [rangeTo, setRangeTo] = useState(addDays(todayISO(), 7));
+  const [rangeNote, setRangeNote] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const exceptionsQuery = useQuery({
+    queryKey: ["availability_exceptions"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("availability_exceptions")
+        .select("*")
+        .order("date", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as Exception[];
+    },
+  });
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["availability_exceptions"] });
+    onSaved();
+  };
+
+  const blockOne = async () => {
+    setBusy(true);
+    try {
+      const { count } = await supabase
+        .from("bookings")
+        .select("id", { head: true, count: "exact" })
+        .eq("scheduled_date", singleDate)
+        .neq("booking_status", "cancelled");
+      if ((count ?? 0) > 0) {
+        const ok = window.confirm(
+          `Hay ${count} reserva(s) ese día. Bloquearlo no las cancela. ¿Continuar?`,
+        );
+        if (!ok) return;
+      }
+      const { data: existing } = await supabase
+        .from("availability_exceptions")
+        .select("id")
+        .eq("date", singleDate)
+        .maybeSingle();
+      if (existing) {
+        await supabase.from("availability_exceptions").update({
+          is_closed: true,
+          note: singleNote || null,
+        }).eq("id", existing.id);
+      } else {
+        await supabase.from("availability_exceptions").insert({
+          date: singleDate,
+          is_closed: true,
+          note: singleNote || null,
+        });
+      }
+      await supabase.from("availability_slots").update({ active: false }).eq("date", singleDate);
+      toast.success("Fecha bloqueada");
+      setSingleNote("");
+      refresh();
+    } catch (e: any) {
+      toast.error("Error", { description: e.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const blockRange = async () => {
+    if (rangeTo < rangeFrom) return toast.error("Rango inválido");
+    setBusy(true);
+    try {
+      const { count } = await supabase
+        .from("bookings")
+        .select("id", { head: true, count: "exact" })
+        .gte("scheduled_date", rangeFrom)
+        .lte("scheduled_date", rangeTo)
+        .neq("booking_status", "cancelled");
+      if ((count ?? 0) > 0) {
+        const ok = window.confirm(
+          `Hay ${count} reserva(s) en el rango. Bloquearlo no las cancela. ¿Continuar?`,
+        );
+        if (!ok) return;
+      }
+      const dates: string[] = [];
+      let cur = rangeFrom;
+      while (cur <= rangeTo) {
+        dates.push(cur);
+        cur = addDays(cur, 1);
+      }
+      const { data: existing } = await supabase
+        .from("availability_exceptions")
+        .select("id,date")
+        .in("date", dates);
+      const existMap = new Map((existing ?? []).map((e: any) => [e.date, e.id]));
+      for (const d of dates) {
+        if (existMap.has(d)) {
+          await supabase
+            .from("availability_exceptions")
+            .update({ is_closed: true, note: rangeNote || null })
+            .eq("id", existMap.get(d)!);
+        } else {
+          await supabase.from("availability_exceptions").insert({
+            date: d,
+            is_closed: true,
+            note: rangeNote || null,
+          });
+        }
+      }
+      await supabase
+        .from("availability_slots")
+        .update({ active: false })
+        .gte("date", rangeFrom)
+        .lte("date", rangeTo);
+      toast.success(`Rango bloqueado (${dates.length} días)`);
+      setRangeNote("");
+      refresh();
+    } catch (e: any) {
+      toast.error("Error", { description: e.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const unblock = async (e: Exception) => {
+    const reactivate = window.confirm(
+      `Desbloquear ${e.date}.\n¿Reactivar también los horarios existentes de ese día?`,
+    );
+    await supabase.from("availability_exceptions").delete().eq("id", e.id);
+    if (reactivate) {
+      await supabase.from("availability_slots").update({ active: true }).eq("date", e.date);
+    }
+    toast.success("Fecha desbloqueada");
+    refresh();
+  };
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <Card>
+        <CardHeader>
+          <CardTitle>Bloquear una fecha</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <Label>Fecha</Label>
+            <Input type="date" value={singleDate} onChange={(e) => setSingleDate(e.target.value)} />
+          </div>
+          <div>
+            <Label>Nota (opcional)</Label>
+            <Input value={singleNote} onChange={(e) => setSingleNote(e.target.value)} placeholder="Feriado, lluvia, etc." />
+          </div>
+          <Button onClick={blockOne} disabled={busy}>
+            <Lock className="mr-2 h-4 w-4" /> Bloquear fecha
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Bloquear un rango</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Desde</Label>
+              <Input type="date" value={rangeFrom} onChange={(e) => setRangeFrom(e.target.value)} />
+            </div>
+            <div>
+              <Label>Hasta</Label>
+              <Input type="date" value={rangeTo} onChange={(e) => setRangeTo(e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <Label>Nota (opcional)</Label>
+            <Input value={rangeNote} onChange={(e) => setRangeNote(e.target.value)} placeholder="Vacaciones, etc." />
+          </div>
+          <Button onClick={blockRange} disabled={busy}>
+            <Lock className="mr-2 h-4 w-4" /> Bloquear rango
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="lg:col-span-2">
+        <CardHeader>
+          <CardTitle>Excepciones registradas</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {exceptionsQuery.isLoading ? (
+            <div className="text-sm text-muted-foreground">Cargando...</div>
+          ) : (exceptionsQuery.data ?? []).length === 0 ? (
+            <div className="text-sm text-muted-foreground">Sin excepciones registradas.</div>
+          ) : (
+            <div className="space-y-2">
+              {(exceptionsQuery.data ?? []).map((e) => (
+                <div
+                  key={e.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={e.is_closed ? "destructive" : "outline"}>
+                      {e.is_closed ? "Cerrado" : "Abierto"}
+                    </Badge>
+                    <span className="font-medium">{fmtDate(e.date)}</span>
+                    <span className="text-xs text-muted-foreground">{dayName(e.date)}</span>
+                    {e.note && <span className="text-sm text-muted-foreground">— {e.note}</span>}
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => unblock(e)}>
+                    <Unlock className="mr-1 h-3 w-3" /> Desbloquear
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ============================================================
+// TAB 5 — DIAGNÓSTICO
+// ============================================================
+
+function DiagnosticoTab() {
+  const qc = useQueryClient();
+  const today = todayISO();
+  const horizon = addDays(today, 60);
+
+  const slotsQuery = useQuery({
+    queryKey: ["availability_slots", today, horizon],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("availability_slots")
+        .select("*")
+        .gte("date", today)
+        .lte("date", horizon)
+        .order("date", { ascending: true })
+        .order("start_time", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as Slot[];
+    },
+  });
+
+  const bookingsQuery = useQuery({
+    queryKey: ["availability_bookings", today, horizon],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("bookings")
+        .select("scheduled_date,scheduled_time,duration_minutes,booking_status")
+        .gte("scheduled_date", today)
+        .lte("scheduled_date", horizon)
+        .neq("booking_status", "cancelled");
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
+  });
+
   const toMin = (t: string) => {
     const [h, m] = String(t).slice(0, 5).split(":").map(Number);
     return h * 60 + m;
   };
+
+  const overlapsForSlot = (s: Slot) => {
+    const list = (bookingsQuery.data ?? []).filter((b) => b.scheduled_date === s.date);
+    const sStart = toMin(s.start_time);
+    const sEnd = toMin(s.end_time);
+    let n = 0;
+    for (const b of list) {
+      const bs = toMin(b.scheduled_time);
+      const be = bs + (b.duration_minutes ?? 0);
+      if (bs < sEnd && be > sStart) n++;
+    }
+    return n;
+  };
+
   const overlaps = useMemo(() => {
+    const slots = slotsQuery.data ?? [];
     const byDate = new Map<string, Slot[]>();
     for (const s of slots) {
       const arr = byDate.get(s.date) ?? [];
       arr.push(s);
       byDate.set(s.date, arr);
     }
-    const out: { date: string; a: Slot; b: Slot; aHasBookings: boolean; bHasBookings: boolean }[] = [];
+    const out: { date: string; a: Slot; b: Slot; aBks: number; bBks: number }[] = [];
     for (const [date, list] of byDate) {
       const sorted = [...list].sort((x, y) => x.start_time.localeCompare(y.start_time));
       for (let i = 0; i < sorted.length; i++) {
@@ -1136,69 +1789,125 @@ function OverlapDiagnostic({
           const aS = toMin(a.start_time), aE = toMin(a.end_time);
           const bS = toMin(b.start_time), bE = toMin(b.end_time);
           if (aS < bE && aE > bS) {
-            const aHas = (bookingsMap.get(`${date}|${hhmm(a.start_time)}`) ?? 0) > 0;
-            const bHas = (bookingsMap.get(`${date}|${hhmm(b.start_time)}`) ?? 0) > 0;
-            out.push({ date, a, b, aHasBookings: aHas, bHasBookings: bHas });
+            out.push({
+              date,
+              a,
+              b,
+              aBks: overlapsForSlot(a),
+              bBks: overlapsForSlot(b),
+            });
           }
         }
       }
     }
     return out;
-  }, [slots, bookingsMap]);
+  }, [slotsQuery.data, bookingsQuery.data]);
 
-  if (overlaps.length === 0 && !open) {
+  const totalDates = new Set(overlaps.map((o) => o.date)).size;
+  const withBookings = overlaps.filter((o) => o.aBks > 0 || o.bBks > 0).length;
+  const withoutBookings = overlaps.length - withBookings;
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["availability_slots"] });
+    qc.invalidateQueries({ queryKey: ["availability_bookings"] });
+  };
+
+  const deactivate = async (id: string) => {
+    await supabase.from("availability_slots").update({ active: false }).eq("id", id);
+    toast.success("Slot desactivado");
+    refresh();
+  };
+  const remove = async (id: string) => {
+    if (!window.confirm("¿Eliminar slot?")) return;
+    await supabase.from("availability_slots").delete().eq("id", id);
+    toast.success("Slot eliminado");
+    refresh();
+  };
+
+  if (slotsQuery.isLoading) {
     return (
-      <Card>
-        <CardContent className="flex flex-wrap items-center justify-between gap-2 p-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <AlertTriangle className="h-4 w-4" /> Sin solapamientos detectados en el rango.
-          </div>
-          <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>Ver detalle</Button>
-        </CardContent>
-      </Card>
+      <div className="flex items-center justify-center p-10 text-muted-foreground">
+        <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Cargando...
+      </div>
     );
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <AlertTriangle className="h-4 w-4 text-amber-600" />
-          Solapamientos detectados ({overlaps.length})
-        </CardTitle>
-        <Button variant="ghost" size="sm" onClick={() => setOpen((o) => !o)}>
-          {open ? "Ocultar" : "Mostrar"}
-        </Button>
-      </CardHeader>
-      {open && (
-        <CardContent className="space-y-2 pt-0">
-          <p className="text-xs text-muted-foreground">
-            Estos horarios se superponen entre sí. El backend evita sobreventa, pero conviene limpiarlos manualmente. No se eliminan slots que tengan reservas.
-          </p>
-          {overlaps.length === 0 ? (
-            <div className="text-sm text-muted-foreground">Sin solapamientos.</div>
-          ) : (
-            <div className="space-y-1 text-sm">
-              {overlaps.slice(0, 50).map((o, i) => (
-                <div key={i} className="flex flex-wrap items-center gap-2 rounded border p-2">
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="grid grid-cols-2 gap-3 p-4 text-sm sm:grid-cols-4">
+          <div>
+            <div className="text-xs text-muted-foreground">Pares solapados</div>
+            <div className="text-2xl font-semibold">{overlaps.length}</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">Días afectados</div>
+            <div className="text-2xl font-semibold">{totalDates}</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">Con reservas</div>
+            <div className="text-2xl font-semibold text-amber-600">{withBookings}</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">Sin reservas</div>
+            <div className="text-2xl font-semibold text-emerald-600">{withoutBookings}</div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {overlaps.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center text-sm text-muted-foreground">
+            Sin solapamientos detectados en los próximos 60 días.
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <AlertTriangle className="h-4 w-4 text-amber-600" /> Detalle de solapamientos
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {overlaps.slice(0, 100).map((o, i) => {
+              const safe = o.aBks === 0 || o.bBks === 0;
+              const safeSlot = o.aBks === 0 ? o.a : o.bBks === 0 ? o.b : null;
+              return (
+                <div key={i} className="flex flex-wrap items-center gap-2 rounded-lg border p-3">
                   <Badge variant="outline">{o.date}</Badge>
-                  <span>{hhmm(o.a.start_time)}–{hhmm(o.a.end_time)}</span>
+                  <span className="font-mono text-sm">
+                    {hhmm(o.a.start_time)}–{hhmm(o.a.end_time)}{" "}
+                    <Badge variant="secondary" className="ml-1">{o.aBks} reservas</Badge>
+                  </span>
                   <span className="text-muted-foreground">⇄</span>
-                  <span>{hhmm(o.b.start_time)}–{hhmm(o.b.end_time)}</span>
-                  {(o.aHasBookings || o.bHasBookings) && (
-                    <Badge variant="secondary" className="gap-1">
-                      <AlertTriangle className="h-3 w-3" /> Con reservas
-                    </Badge>
+                  <span className="font-mono text-sm">
+                    {hhmm(o.b.start_time)}–{hhmm(o.b.end_time)}{" "}
+                    <Badge variant="secondary" className="ml-1">{o.bBks} reservas</Badge>
+                  </span>
+                  {o.aBks + o.bBks === 0 ? (
+                    <Badge variant="outline">Sin reservas</Badge>
+                  ) : (
+                    <Badge variant="destructive">Con reservas</Badge>
+                  )}
+                  {safe && safeSlot && (
+                    <div className="ml-auto flex gap-1">
+                      <Button size="sm" variant="ghost" onClick={() => deactivate(safeSlot.id)}>
+                        Desactivar sin reservas
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => remove(safeSlot.id)}>
+                        Eliminar sin reservas
+                      </Button>
+                    </div>
                   )}
                 </div>
-              ))}
-              {overlaps.length > 50 && (
-                <div className="text-xs text-muted-foreground">… y {overlaps.length - 50} más.</div>
-              )}
-            </div>
-          )}
-        </CardContent>
+              );
+            })}
+            {overlaps.length > 100 && (
+              <div className="text-xs text-muted-foreground">… y {overlaps.length - 100} más.</div>
+            )}
+          </CardContent>
+        </Card>
       )}
-    </Card>
+    </div>
   );
 }
