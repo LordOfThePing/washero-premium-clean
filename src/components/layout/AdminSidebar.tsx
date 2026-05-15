@@ -1,66 +1,96 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  LayoutDashboard,
-  CalendarDays,
-  CalendarClock,
-  ClipboardList,
-  Users,
-  Settings,
-  MessageSquare,
+  LayoutDashboard, CalendarDays, CalendarClock, ClipboardList, Users, Settings,
+  MessageSquare, CreditCard, UserCircle, Sparkles, Shield, Map as MapIcon,
+  TrendingUp, FileText, Tag, Bell, MessageCircle, Bot, Cog,
 } from "lucide-react";
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
+  Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
+  SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { Logo } from "@/components/brand/Logo";
+import type { LucideIcon } from "lucide-react";
 
-const items = [
-  { title: "Dashboard", to: "/admin" as const, icon: LayoutDashboard },
-  { title: "Reservas", to: "/admin/reservas" as const, icon: ClipboardList },
-  { title: "Calendario", to: "/admin/calendario" as const, icon: CalendarDays },
-  { title: "Disponibilidad", to: "/admin/disponibilidad" as const, icon: CalendarClock },
-  { title: "Clientes", to: "/admin/clientes" as const, icon: Users },
-  { title: "Mensajes", to: "/admin/mensajes" as const, icon: MessageSquare },
-  { title: "Configuración", to: "/admin/configuracion" as const, icon: Settings },
+type NavItem = { title: string; to: string; icon: LucideIcon };
+
+const primary: NavItem[] = [
+  { title: "Dashboard", to: "/admin", icon: LayoutDashboard },
+  { title: "Reservas", to: "/admin/reservas", icon: ClipboardList },
+  { title: "Calendario", to: "/admin/calendario", icon: CalendarDays },
+  { title: "Mensajes", to: "/admin/mensajes", icon: MessageSquare },
+  { title: "Disponibilidad", to: "/admin/disponibilidad", icon: CalendarClock },
+  { title: "Clientes", to: "/admin/clientes", icon: Users },
+  { title: "Suscripciones", to: "/admin/suscripciones", icon: CreditCard },
+];
+
+const crm: NavItem[] = [
+  { title: "Contactos", to: "/admin/clientes", icon: UserCircle },
+  { title: "Early Access", to: "/admin/early-access", icon: Sparkles },
+  { title: "Leads Kipper", to: "/admin/leads-kipper", icon: Shield },
+];
+
+const ops: NavItem[] = [
+  { title: "Mapa Demanda", to: "/admin/mapa-demanda", icon: MapIcon },
+];
+
+const finance: NavItem[] = [
+  { title: "Finanzas", to: "/admin/finanzas", icon: TrendingUp },
+  { title: "Facturas", to: "/admin/facturas", icon: FileText },
+];
+
+const config: NavItem[] = [
+  { title: "Precios", to: "/admin/precios", icon: Tag },
+  { title: "Notificaciones", to: "/admin/notificaciones", icon: Bell },
+  { title: "WhatsApp Config", to: "/admin/whatsapp-config", icon: MessageCircle },
+  { title: "Botmaker", to: "/admin/botmaker", icon: Bot },
+  { title: "App Config", to: "/admin/app-config", icon: Cog },
+  { title: "Configuración", to: "/admin/configuracion", icon: Settings },
 ];
 
 export function AdminSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
+  const renderItems = (items: NavItem[]) =>
+    items.map((item) => {
+      const active = item.to === "/admin" ? pathname === "/admin" : pathname === item.to;
+      return (
+        <SidebarMenuItem key={item.title + item.to}>
+          <SidebarMenuButton asChild isActive={active}>
+            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+            <Link to={item.to as any} className="flex items-center gap-2">
+              <item.icon className="h-4 w-4" />
+              <span>{item.title}</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      );
+    });
+
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <div className="px-2 py-2">
-          <Logo />
-        </div>
+        <div className="px-2 py-2"><Logo /></div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Administración</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {items.map((item) => {
-                const active = item.to === "/admin" ? pathname === "/admin" : pathname.startsWith(item.to);
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={active}>
-                      <Link to={item.to} className="flex items-center gap-2">
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
+          <SidebarGroupLabel>Operación</SidebarGroupLabel>
+          <SidebarGroupContent><SidebarMenu>{renderItems(primary)}</SidebarMenu></SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel>CRM &amp; Ventas</SidebarGroupLabel>
+          <SidebarGroupContent><SidebarMenu>{renderItems(crm)}</SidebarMenu></SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel>Demanda</SidebarGroupLabel>
+          <SidebarGroupContent><SidebarMenu>{renderItems(ops)}</SidebarMenu></SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel>Finanzas</SidebarGroupLabel>
+          <SidebarGroupContent><SidebarMenu>{renderItems(finance)}</SidebarMenu></SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel>Configuración</SidebarGroupLabel>
+          <SidebarGroupContent><SidebarMenu>{renderItems(config)}</SidebarMenu></SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
     </Sidebar>

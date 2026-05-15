@@ -13,13 +13,24 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as PublicRouteImport } from './routes/_public'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as PublicIndexRouteImport } from './routes/_public.index'
+import { Route as AdminWhatsappConfigRouteImport } from './routes/admin.whatsapp-config'
+import { Route as AdminSuscripcionesRouteImport } from './routes/admin.suscripciones'
 import { Route as AdminReservasRouteImport } from './routes/admin.reservas'
+import { Route as AdminPreciosRouteImport } from './routes/admin.precios'
+import { Route as AdminNotificacionesRouteImport } from './routes/admin.notificaciones'
 import { Route as AdminMensajesRouteImport } from './routes/admin.mensajes'
+import { Route as AdminMapaDemandaRouteImport } from './routes/admin.mapa-demanda'
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
+import { Route as AdminLeadsKipperRouteImport } from './routes/admin.leads-kipper'
+import { Route as AdminFinanzasRouteImport } from './routes/admin.finanzas'
+import { Route as AdminFacturasRouteImport } from './routes/admin.facturas'
+import { Route as AdminEarlyAccessRouteImport } from './routes/admin.early-access'
 import { Route as AdminDisponibilidadRouteImport } from './routes/admin.disponibilidad'
 import { Route as AdminConfiguracionRouteImport } from './routes/admin.configuracion'
 import { Route as AdminClientesRouteImport } from './routes/admin.clientes'
 import { Route as AdminCalendarioRouteImport } from './routes/admin.calendario'
+import { Route as AdminBotmakerRouteImport } from './routes/admin.botmaker'
+import { Route as AdminAppConfigRouteImport } from './routes/admin.app-config'
 import { Route as PublicReservarRouteImport } from './routes/_public.reservar'
 import { Route as PublicGraciasRouteImport } from './routes/_public.gracias'
 
@@ -42,9 +53,29 @@ const PublicIndexRoute = PublicIndexRouteImport.update({
   path: '/',
   getParentRoute: () => PublicRoute,
 } as any)
+const AdminWhatsappConfigRoute = AdminWhatsappConfigRouteImport.update({
+  id: '/whatsapp-config',
+  path: '/whatsapp-config',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminSuscripcionesRoute = AdminSuscripcionesRouteImport.update({
+  id: '/suscripciones',
+  path: '/suscripciones',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminReservasRoute = AdminReservasRouteImport.update({
   id: '/reservas',
   path: '/reservas',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminPreciosRoute = AdminPreciosRouteImport.update({
+  id: '/precios',
+  path: '/precios',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminNotificacionesRoute = AdminNotificacionesRouteImport.update({
+  id: '/notificaciones',
+  path: '/notificaciones',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminMensajesRoute = AdminMensajesRouteImport.update({
@@ -52,9 +83,34 @@ const AdminMensajesRoute = AdminMensajesRouteImport.update({
   path: '/mensajes',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminMapaDemandaRoute = AdminMapaDemandaRouteImport.update({
+  id: '/mapa-demanda',
+  path: '/mapa-demanda',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminLoginRoute = AdminLoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminLeadsKipperRoute = AdminLeadsKipperRouteImport.update({
+  id: '/leads-kipper',
+  path: '/leads-kipper',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminFinanzasRoute = AdminFinanzasRouteImport.update({
+  id: '/finanzas',
+  path: '/finanzas',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminFacturasRoute = AdminFacturasRouteImport.update({
+  id: '/facturas',
+  path: '/facturas',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminEarlyAccessRoute = AdminEarlyAccessRouteImport.update({
+  id: '/early-access',
+  path: '/early-access',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminDisponibilidadRoute = AdminDisponibilidadRouteImport.update({
@@ -77,6 +133,16 @@ const AdminCalendarioRoute = AdminCalendarioRouteImport.update({
   path: '/calendario',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminBotmakerRoute = AdminBotmakerRouteImport.update({
+  id: '/botmaker',
+  path: '/botmaker',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminAppConfigRoute = AdminAppConfigRouteImport.update({
+  id: '/app-config',
+  path: '/app-config',
+  getParentRoute: () => AdminRoute,
+} as any)
 const PublicReservarRoute = PublicReservarRouteImport.update({
   id: '/reservar',
   path: '/reservar',
@@ -93,25 +159,47 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteWithChildren
   '/gracias': typeof PublicGraciasRoute
   '/reservar': typeof PublicReservarRoute
+  '/admin/app-config': typeof AdminAppConfigRoute
+  '/admin/botmaker': typeof AdminBotmakerRoute
   '/admin/calendario': typeof AdminCalendarioRoute
   '/admin/clientes': typeof AdminClientesRoute
   '/admin/configuracion': typeof AdminConfiguracionRoute
   '/admin/disponibilidad': typeof AdminDisponibilidadRoute
+  '/admin/early-access': typeof AdminEarlyAccessRoute
+  '/admin/facturas': typeof AdminFacturasRoute
+  '/admin/finanzas': typeof AdminFinanzasRoute
+  '/admin/leads-kipper': typeof AdminLeadsKipperRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/mapa-demanda': typeof AdminMapaDemandaRoute
   '/admin/mensajes': typeof AdminMensajesRoute
+  '/admin/notificaciones': typeof AdminNotificacionesRoute
+  '/admin/precios': typeof AdminPreciosRoute
   '/admin/reservas': typeof AdminReservasRoute
+  '/admin/suscripciones': typeof AdminSuscripcionesRoute
+  '/admin/whatsapp-config': typeof AdminWhatsappConfigRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRoutesByTo {
   '/gracias': typeof PublicGraciasRoute
   '/reservar': typeof PublicReservarRoute
+  '/admin/app-config': typeof AdminAppConfigRoute
+  '/admin/botmaker': typeof AdminBotmakerRoute
   '/admin/calendario': typeof AdminCalendarioRoute
   '/admin/clientes': typeof AdminClientesRoute
   '/admin/configuracion': typeof AdminConfiguracionRoute
   '/admin/disponibilidad': typeof AdminDisponibilidadRoute
+  '/admin/early-access': typeof AdminEarlyAccessRoute
+  '/admin/facturas': typeof AdminFacturasRoute
+  '/admin/finanzas': typeof AdminFinanzasRoute
+  '/admin/leads-kipper': typeof AdminLeadsKipperRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/mapa-demanda': typeof AdminMapaDemandaRoute
   '/admin/mensajes': typeof AdminMensajesRoute
+  '/admin/notificaciones': typeof AdminNotificacionesRoute
+  '/admin/precios': typeof AdminPreciosRoute
   '/admin/reservas': typeof AdminReservasRoute
+  '/admin/suscripciones': typeof AdminSuscripcionesRoute
+  '/admin/whatsapp-config': typeof AdminWhatsappConfigRoute
   '/': typeof PublicIndexRoute
   '/admin': typeof AdminIndexRoute
 }
@@ -121,13 +209,24 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteWithChildren
   '/_public/gracias': typeof PublicGraciasRoute
   '/_public/reservar': typeof PublicReservarRoute
+  '/admin/app-config': typeof AdminAppConfigRoute
+  '/admin/botmaker': typeof AdminBotmakerRoute
   '/admin/calendario': typeof AdminCalendarioRoute
   '/admin/clientes': typeof AdminClientesRoute
   '/admin/configuracion': typeof AdminConfiguracionRoute
   '/admin/disponibilidad': typeof AdminDisponibilidadRoute
+  '/admin/early-access': typeof AdminEarlyAccessRoute
+  '/admin/facturas': typeof AdminFacturasRoute
+  '/admin/finanzas': typeof AdminFinanzasRoute
+  '/admin/leads-kipper': typeof AdminLeadsKipperRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/mapa-demanda': typeof AdminMapaDemandaRoute
   '/admin/mensajes': typeof AdminMensajesRoute
+  '/admin/notificaciones': typeof AdminNotificacionesRoute
+  '/admin/precios': typeof AdminPreciosRoute
   '/admin/reservas': typeof AdminReservasRoute
+  '/admin/suscripciones': typeof AdminSuscripcionesRoute
+  '/admin/whatsapp-config': typeof AdminWhatsappConfigRoute
   '/_public/': typeof PublicIndexRoute
   '/admin/': typeof AdminIndexRoute
 }
@@ -138,25 +237,47 @@ export interface FileRouteTypes {
     | '/admin'
     | '/gracias'
     | '/reservar'
+    | '/admin/app-config'
+    | '/admin/botmaker'
     | '/admin/calendario'
     | '/admin/clientes'
     | '/admin/configuracion'
     | '/admin/disponibilidad'
+    | '/admin/early-access'
+    | '/admin/facturas'
+    | '/admin/finanzas'
+    | '/admin/leads-kipper'
     | '/admin/login'
+    | '/admin/mapa-demanda'
     | '/admin/mensajes'
+    | '/admin/notificaciones'
+    | '/admin/precios'
     | '/admin/reservas'
+    | '/admin/suscripciones'
+    | '/admin/whatsapp-config'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/gracias'
     | '/reservar'
+    | '/admin/app-config'
+    | '/admin/botmaker'
     | '/admin/calendario'
     | '/admin/clientes'
     | '/admin/configuracion'
     | '/admin/disponibilidad'
+    | '/admin/early-access'
+    | '/admin/facturas'
+    | '/admin/finanzas'
+    | '/admin/leads-kipper'
     | '/admin/login'
+    | '/admin/mapa-demanda'
     | '/admin/mensajes'
+    | '/admin/notificaciones'
+    | '/admin/precios'
     | '/admin/reservas'
+    | '/admin/suscripciones'
+    | '/admin/whatsapp-config'
     | '/'
     | '/admin'
   id:
@@ -165,13 +286,24 @@ export interface FileRouteTypes {
     | '/admin'
     | '/_public/gracias'
     | '/_public/reservar'
+    | '/admin/app-config'
+    | '/admin/botmaker'
     | '/admin/calendario'
     | '/admin/clientes'
     | '/admin/configuracion'
     | '/admin/disponibilidad'
+    | '/admin/early-access'
+    | '/admin/facturas'
+    | '/admin/finanzas'
+    | '/admin/leads-kipper'
     | '/admin/login'
+    | '/admin/mapa-demanda'
     | '/admin/mensajes'
+    | '/admin/notificaciones'
+    | '/admin/precios'
     | '/admin/reservas'
+    | '/admin/suscripciones'
+    | '/admin/whatsapp-config'
     | '/_public/'
     | '/admin/'
   fileRoutesById: FileRoutesById
@@ -211,11 +343,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PublicIndexRouteImport
       parentRoute: typeof PublicRoute
     }
+    '/admin/whatsapp-config': {
+      id: '/admin/whatsapp-config'
+      path: '/whatsapp-config'
+      fullPath: '/admin/whatsapp-config'
+      preLoaderRoute: typeof AdminWhatsappConfigRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/suscripciones': {
+      id: '/admin/suscripciones'
+      path: '/suscripciones'
+      fullPath: '/admin/suscripciones'
+      preLoaderRoute: typeof AdminSuscripcionesRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/reservas': {
       id: '/admin/reservas'
       path: '/reservas'
       fullPath: '/admin/reservas'
       preLoaderRoute: typeof AdminReservasRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/precios': {
+      id: '/admin/precios'
+      path: '/precios'
+      fullPath: '/admin/precios'
+      preLoaderRoute: typeof AdminPreciosRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/notificaciones': {
+      id: '/admin/notificaciones'
+      path: '/notificaciones'
+      fullPath: '/admin/notificaciones'
+      preLoaderRoute: typeof AdminNotificacionesRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/mensajes': {
@@ -225,11 +385,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminMensajesRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/mapa-demanda': {
+      id: '/admin/mapa-demanda'
+      path: '/mapa-demanda'
+      fullPath: '/admin/mapa-demanda'
+      preLoaderRoute: typeof AdminMapaDemandaRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/login': {
       id: '/admin/login'
       path: '/login'
       fullPath: '/admin/login'
       preLoaderRoute: typeof AdminLoginRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/leads-kipper': {
+      id: '/admin/leads-kipper'
+      path: '/leads-kipper'
+      fullPath: '/admin/leads-kipper'
+      preLoaderRoute: typeof AdminLeadsKipperRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/finanzas': {
+      id: '/admin/finanzas'
+      path: '/finanzas'
+      fullPath: '/admin/finanzas'
+      preLoaderRoute: typeof AdminFinanzasRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/facturas': {
+      id: '/admin/facturas'
+      path: '/facturas'
+      fullPath: '/admin/facturas'
+      preLoaderRoute: typeof AdminFacturasRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/early-access': {
+      id: '/admin/early-access'
+      path: '/early-access'
+      fullPath: '/admin/early-access'
+      preLoaderRoute: typeof AdminEarlyAccessRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/disponibilidad': {
@@ -258,6 +453,20 @@ declare module '@tanstack/react-router' {
       path: '/calendario'
       fullPath: '/admin/calendario'
       preLoaderRoute: typeof AdminCalendarioRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/botmaker': {
+      id: '/admin/botmaker'
+      path: '/botmaker'
+      fullPath: '/admin/botmaker'
+      preLoaderRoute: typeof AdminBotmakerRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/app-config': {
+      id: '/admin/app-config'
+      path: '/app-config'
+      fullPath: '/admin/app-config'
+      preLoaderRoute: typeof AdminAppConfigRouteImport
       parentRoute: typeof AdminRoute
     }
     '/_public/reservar': {
@@ -293,24 +502,46 @@ const PublicRouteWithChildren =
   PublicRoute._addFileChildren(PublicRouteChildren)
 
 interface AdminRouteChildren {
+  AdminAppConfigRoute: typeof AdminAppConfigRoute
+  AdminBotmakerRoute: typeof AdminBotmakerRoute
   AdminCalendarioRoute: typeof AdminCalendarioRoute
   AdminClientesRoute: typeof AdminClientesRoute
   AdminConfiguracionRoute: typeof AdminConfiguracionRoute
   AdminDisponibilidadRoute: typeof AdminDisponibilidadRoute
+  AdminEarlyAccessRoute: typeof AdminEarlyAccessRoute
+  AdminFacturasRoute: typeof AdminFacturasRoute
+  AdminFinanzasRoute: typeof AdminFinanzasRoute
+  AdminLeadsKipperRoute: typeof AdminLeadsKipperRoute
   AdminLoginRoute: typeof AdminLoginRoute
+  AdminMapaDemandaRoute: typeof AdminMapaDemandaRoute
   AdminMensajesRoute: typeof AdminMensajesRoute
+  AdminNotificacionesRoute: typeof AdminNotificacionesRoute
+  AdminPreciosRoute: typeof AdminPreciosRoute
   AdminReservasRoute: typeof AdminReservasRoute
+  AdminSuscripcionesRoute: typeof AdminSuscripcionesRoute
+  AdminWhatsappConfigRoute: typeof AdminWhatsappConfigRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
+  AdminAppConfigRoute: AdminAppConfigRoute,
+  AdminBotmakerRoute: AdminBotmakerRoute,
   AdminCalendarioRoute: AdminCalendarioRoute,
   AdminClientesRoute: AdminClientesRoute,
   AdminConfiguracionRoute: AdminConfiguracionRoute,
   AdminDisponibilidadRoute: AdminDisponibilidadRoute,
+  AdminEarlyAccessRoute: AdminEarlyAccessRoute,
+  AdminFacturasRoute: AdminFacturasRoute,
+  AdminFinanzasRoute: AdminFinanzasRoute,
+  AdminLeadsKipperRoute: AdminLeadsKipperRoute,
   AdminLoginRoute: AdminLoginRoute,
+  AdminMapaDemandaRoute: AdminMapaDemandaRoute,
   AdminMensajesRoute: AdminMensajesRoute,
+  AdminNotificacionesRoute: AdminNotificacionesRoute,
+  AdminPreciosRoute: AdminPreciosRoute,
   AdminReservasRoute: AdminReservasRoute,
+  AdminSuscripcionesRoute: AdminSuscripcionesRoute,
+  AdminWhatsappConfigRoute: AdminWhatsappConfigRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 

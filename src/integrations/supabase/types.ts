@@ -44,6 +44,33 @@ export type Database = {
         }
         Relationships: []
       }
+      availability_exceptions: {
+        Row: {
+          created_at: string
+          date: string
+          id: string
+          is_closed: boolean
+          note: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          id?: string
+          is_closed?: boolean
+          note?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          id?: string
+          is_closed?: boolean
+          note?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       availability_slots: {
         Row: {
           active: boolean
@@ -503,6 +530,117 @@ export type Database = {
         }
         Relationships: []
       }
+      early_access_leads: {
+        Row: {
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+          neighborhood: string | null
+          notes: string | null
+          phone: string | null
+          source: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          neighborhood?: string | null
+          notes?: string | null
+          phone?: string | null
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          neighborhood?: string | null
+          notes?: string | null
+          phone?: string | null
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      invoices: {
+        Row: {
+          booking_id: string | null
+          created_at: string
+          id: string
+          invoice_number: string | null
+          issued_at: string | null
+          notes: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          booking_id?: string | null
+          created_at?: string
+          id?: string
+          invoice_number?: string | null
+          issued_at?: string | null
+          notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          booking_id?: string | null
+          created_at?: string
+          id?: string
+          invoice_number?: string | null
+          issued_at?: string | null
+          notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      kipper_leads: {
+        Row: {
+          booking_id: string | null
+          created_at: string
+          customer_id: string | null
+          email: string | null
+          full_name: string | null
+          id: string
+          notes: string | null
+          phone: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          booking_id?: string | null
+          created_at?: string
+          customer_id?: string | null
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          notes?: string | null
+          phone?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          booking_id?: string | null
+          created_at?: string
+          customer_id?: string | null
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          notes?: string | null
+          phone?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       payments: {
         Row: {
           amount: number
@@ -603,6 +741,51 @@ export type Database = {
           duration_minutes?: number
           id?: string
           name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      weekly_availability_rules: {
+        Row: {
+          allow_overlaps: boolean
+          capacity: number
+          created_at: string
+          day_name: string
+          day_of_week: number
+          end_time: string
+          id: string
+          interval_minutes: number
+          is_open: boolean
+          slot_duration_minutes: number
+          start_time: string
+          updated_at: string
+        }
+        Insert: {
+          allow_overlaps?: boolean
+          capacity?: number
+          created_at?: string
+          day_name: string
+          day_of_week: number
+          end_time?: string
+          id?: string
+          interval_minutes?: number
+          is_open?: boolean
+          slot_duration_minutes?: number
+          start_time?: string
+          updated_at?: string
+        }
+        Update: {
+          allow_overlaps?: boolean
+          capacity?: number
+          created_at?: string
+          day_name?: string
+          day_of_week?: number
+          end_time?: string
+          id?: string
+          interval_minutes?: number
+          is_open?: boolean
+          slot_duration_minutes?: number
+          start_time?: string
           updated_at?: string
         }
         Relationships: []
