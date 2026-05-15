@@ -83,6 +83,7 @@ Deno.serve(async (req) => {
       phone: confirmation.customer_phone ?? conversation.customer_phone,
       isTest: !!conversation.raw_payload?.is_test || !!summary.raw_payload?.is_test || !!confirmation.raw_payload?.is_test,
       force: true,
+      messages: messages ?? [],
     });
 
     return json({ ok: true, processed: true, ...result });
