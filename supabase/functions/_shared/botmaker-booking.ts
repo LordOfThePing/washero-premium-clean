@@ -251,11 +251,63 @@ export async function processBotmakerBookingImpact(admin: SupabaseClient, args: 
   currentPayload?: any;
   force?: boolean;
 }) {
+export async function processBotmakerBookingImpact(admin: SupabaseClient, args: {
+  conversation: any;
+  summary: BotmakerMessageRow;
+  confirmation: BotmakerMessageRow;
+  phone?: string | null;
+  isTest?: boolean;
+  currentPayload?: any;
+  force?: boolean;
+  messages?: BotmakerMessageRow[];
+}) {
   const summaryText = args.summary.message_text ?? "";
   const confirmationText = args.confirmation.message_text ?? "";
   const parsed = parseSummary(summaryText);
-  const phoneFinal = args.phone ?? args.conversation.customer_phone ?? "";
+
+  // Phone resolution chain
+  let phoneFinal: string | null = null;
+  let phoneSource: "summary" | "botmaker_payload" | "conversation" | "message" | "missing" = "missing";
+
+  const fromSummary = extractPhoneFromSummary(summaryText);
+  if (fromSummary) { phoneFinal = fromSummary; phoneSource = "summary"; }
+
+  if (!phoneFinal) {
+    const fromPayload = normalizePhone(args.phone)
+      ?? extractPhone(args.confirmation.raw_payload)
+      ?? extractPhone(args.summary.raw_payload)
+      ?? extractPhone(args.currentPayload)
+      ?? extractPhone(args.conversation?.raw_payload);
+    if (fromPayload) { phoneFinal = fromPayload; phoneSource = "botmaker_payload"; }
+  }
+
+  if (!phoneFinal) {
+    const fromConv = normalizePhone(args.conversation?.customer_phone);
+    if (fromConv) { phoneFinal = fromConv; phoneSource = "conversation"; }
+  }
+
+  if (!phoneFinal && Array.isArray(args.messages)) {
+    for (const m of args.messages) {
+      const p = normalizePhone((m as any).customer_phone) ?? extractPhone(m.raw_payload);
+      if (p) { phoneFinal = p; phoneSource = "message"; break; }
+    }
+  }
+
   const missingFields = [...parsed.missing, ...(!phoneFinal ? ["customer_phone"] : [])];
+
+  // Update conversation name/phone if we have better info
+  try {
+    const updates: any = {};
+    if (parsed.fields.customer_name && parsed.fields.customer_name !== args.conversation.customer_name) {
+      updates.customer_name = parsed.fields.customer_name;
+    }
+    if (phoneFinal && phoneFinal !== args.conversation.customer_phone) {
+      updates.customer_phone = phoneFinal;
+    }
+    if (Object.keys(updates).length) {
+      await admin.from("botmaker_conversations").update(updates).eq("id", args.conversation.id);
+    }
+  } catch (e) { console.warn("[botmaker-booking] conv update failed", e); }
 
   const { data: recent } = await admin.from("booking_requests")
     .select("id,status,linked_booking_id,raw_payload")
@@ -275,6 +327,42 @@ export async function processBotmakerBookingImpact(admin: SupabaseClient, args: 
     return { ...existing.raw_payload, booking_request_id: existing.id, booking_id: existing.linked_booking_id, existing: true };
   }
 
+  // Availability debug (best-effort, before attempt)
+  let availabilityDebug: any = null;
+  if (parsed.fields.preferred_date && parsed.fields.preferred_time) {
+    try {
+      const time = parsed.fields.preferred_time.length === 5 ? `${parsed.fields.preferred_time}:00` : parsed.fields.preferred_time;
+      const { data: slot } = await admin.from("availability_slots")
+        .select("id,capacity,active")
+        .eq("date", parsed.fields.preferred_date)
+        .eq("start_time", time)
+        .maybeSingle();
+      const { count: taken } = await admin.from("bookings")
+        .select("id", { count: "exact", head: true })
+        .eq("scheduled_date", parsed.fields.preferred_date)
+        .eq("scheduled_time", time)
+        .neq("booking_status", "cancelled");
+      const capacity = slot?.capacity ?? 0;
+      const remaining = Math.max(0, capacity - (taken ?? 0));
+      let result = "not_found";
+      if (slot) {
+        if (!slot.active) result = "inactive";
+        else if (remaining <= 0) result = "full";
+        else result = "available";
+      }
+      availabilityDebug = {
+        requested_date: parsed.fields.preferred_date,
+        requested_time: time,
+        slot_exists: !!slot,
+        slot_active: slot?.active ?? false,
+        capacity,
+        existing_bookings: taken ?? 0,
+        remaining,
+        result,
+      };
+    } catch (e) { console.warn("[botmaker-booking] availability debug failed", e); }
+  }
+
   let bookingId: string | null = null;
   let fallbackReason: string | null = null;
   let autoBookingResult = "not_attempted";
@@ -286,7 +374,7 @@ export async function processBotmakerBookingImpact(admin: SupabaseClient, args: 
     try {
       const attempt = await tryCreateBooking(admin, {
         customer_name: parsed.fields.customer_name ?? "",
-        customer_phone: phoneFinal,
+        customer_phone: phoneFinal ?? "",
         address: parsed.fields.address ?? "",
         neighborhood: parsed.fields.neighborhood ?? "",
         vehicle_type: parsed.fields.vehicle_type ?? "",
@@ -320,6 +408,9 @@ export async function processBotmakerBookingImpact(admin: SupabaseClient, args: 
     confirmation_text: confirmationText,
     parsed: parsed.fields,
     missing_fields: missingFields,
+    phone_resolved: phoneFinal,
+    phone_source: phoneSource,
+    availability_debug: availabilityDebug,
     bot_payload: args.summary.raw_payload ?? null,
     user_payload: args.confirmation.raw_payload ?? args.currentPayload ?? null,
     is_test: !!args.isTest,
@@ -328,6 +419,7 @@ export async function processBotmakerBookingImpact(admin: SupabaseClient, args: 
     auto_booking_result: autoBookingResult,
     auto_booking_id: bookingId,
     auto_booked: !!bookingId,
+    fallback_to_review: !bookingId,
     fallback_reason: fallbackReason,
   };
 
@@ -368,7 +460,7 @@ export async function processBotmakerBookingImpact(admin: SupabaseClient, args: 
         : `booking_request creado desde Botmaker (revisión: ${fallbackReason ?? "n/a"})`,
       booking_request_id: bookingRequestId,
       booking_id: bookingId,
-      raw_payload: { conversation_id: args.conversation.botmaker_conversation_id, auto_booked: !!bookingId, fallback_reason: fallbackReason },
+      raw_payload: { conversation_id: args.conversation.botmaker_conversation_id, auto_booked: !!bookingId, fallback_reason: fallbackReason, phone_source: phoneSource },
     });
   }
 
