@@ -914,6 +914,8 @@ function BotmakerHealthCard() {
       };
     },
   });
+
+  async function runAction(action: string) {
     setRunning(action);
     try {
       const { data, error } = await supabase.functions.invoke("botmaker-diagnostics", { body: { action } });
