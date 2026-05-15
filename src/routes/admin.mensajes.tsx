@@ -99,14 +99,21 @@ function MensajesPage() {
     },
   });
 
-  const invalidEvents = useQuery({
-    queryKey: ["botmaker", "invalid-count"],
+  const eventStats = useQuery({
+    queryKey: ["botmaker", "event-stats"],
     queryFn: async () => {
-      const { count } = await supabase
-        .from("botmaker_events")
-        .select("id", { count: "exact", head: true })
-        .eq("auth_valid", false);
-      return count ?? 0;
+      const [valid, invalid, lastValid, lastInvalid] = await Promise.all([
+        supabase.from("botmaker_events").select("id", { count: "exact", head: true }).eq("auth_valid", true),
+        supabase.from("botmaker_events").select("id", { count: "exact", head: true }).eq("auth_valid", false),
+        supabase.from("botmaker_events").select("created_at").eq("auth_valid", true).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("botmaker_events").select("created_at").eq("auth_valid", false).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      ]);
+      return {
+        valid_count: valid.count ?? 0,
+        invalid_count: invalid.count ?? 0,
+        last_valid_event: lastValid.data?.created_at ?? null,
+        last_invalid_event: lastInvalid.data?.created_at ?? null,
+      };
     },
   });
 
@@ -144,10 +151,14 @@ function MensajesPage() {
         </div>
       </div>
 
-      {(invalidEvents.data ?? 0) > 0 && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 text-destructive" />
-          Hay {invalidEvents.data} eventos rechazados por token inválido. Revisá BOTMAKER_WEBHOOK_SECRET.
+      {(eventStats.data?.invalid_count ?? 0) > 0 && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm flex items-start gap-2">
+          <AlertTriangle className="h-4 w-4 text-destructive mt-0.5" />
+          <div className="space-y-1">
+            <p>Hay {eventStats.data?.invalid_count} eventos rechazados por token inválido.</p>
+            <p className="text-xs text-muted-foreground">Header esperado: <code className="font-mono">auth-bm-token</code>. El token de seguridad de Botmaker debe coincidir exactamente con <code className="font-mono">BOTMAKER_WEBHOOK_SECRET</code> en Supabase.</p>
+            <p className="text-xs text-muted-foreground">Último inválido: {formatWhen(eventStats.data?.last_invalid_event ?? null)} · Válidos: {eventStats.data?.valid_count ?? 0} · Último válido: {formatWhen(eventStats.data?.last_valid_event ?? null)}</p>
+          </div>
         </div>
       )}
 
