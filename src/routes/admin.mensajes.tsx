@@ -218,6 +218,7 @@ function MensajesPage() {
 function ConversationDetail({ conversation }: { conversation: Conversation }) {
   const [showRaw, setShowRaw] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
+  const qc = useQueryClient();
 
   const messages = useQuery({
     queryKey: ["botmaker", "messages", conversation.id],
@@ -245,6 +246,36 @@ function ConversationDetail({ conversation }: { conversation: Conversation }) {
       if (error) throw error;
       return data;
     },
+  });
+
+  const parserDebug = useMemo(() => {
+    const list = messages.data ?? [];
+    const summary = [...list].reverse().find((m) => m.message_text && isSummaryText(m.message_text));
+    const summaryAt = summary?.created_at ? Date.parse(summary.created_at) : 0;
+    const confirmation = summary
+      ? [...list].reverse().find((m) => m.message_text && isConfirmText(m.message_text) && (!summaryAt || Date.parse(m.created_at) >= summaryAt))
+      : null;
+    const parsedLocal = summary?.message_text ? parseSummaryDebug(summary.message_text) : { parsed: {}, missing: [] as string[] };
+    const raw = (bookingRequest.data as any)?.raw_payload ?? {};
+    return { summary, confirmation, parsedLocal, raw };
+  }, [messages.data, bookingRequest.data]);
+
+  const reprocess = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("botmaker-reprocess-conversation", {
+        body: { conversation_id: conversation.id },
+      });
+      if (error) throw error;
+      if (data?.ok === false) throw new Error(data.error ?? "No se pudo reprocesar");
+      return data;
+    },
+    onSuccess: (data) => {
+      if (data?.auto_booking_success) toast.success("Reserva creada automáticamente");
+      else if (data?.processed) toast.success("Solicitud creada para revisión");
+      else toast.warning(data?.fallback_reason ?? "No se detectó resumen + confirmación");
+      qc.invalidateQueries({ queryKey: ["botmaker"] });
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Error al reprocesar"),
   });
 
   return (
