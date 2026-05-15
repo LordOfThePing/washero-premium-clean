@@ -77,6 +77,8 @@ export type CoreResult =
         | "past_date"
         | "invalid_extra"
         | "slot_unavailable"
+        | "slot_not_found"
+        | "service_does_not_fit_slot"
         | "slot_full"
         | "duplicate"
         | "server_error";
@@ -159,20 +161,37 @@ export async function tryCreateBooking(
 
   // Slot lookup
   const { data: slot } = await admin.from("availability_slots")
-    .select("id,date,start_time,capacity,active")
+    .select("id,date,start_time,end_time,capacity,active")
     .eq("date", scheduled_date)
     .eq("start_time", scheduled_time)
     .eq("active", true)
     .maybeSingle();
-  if (!slot) return { ok: false, reason: "slot_unavailable", message: "Ese horario ya no está disponible.", http_status: 409 };
+  if (!slot) return { ok: false, reason: "slot_not_found", message: "Ese horario ya no está disponible.", http_status: 409 };
 
-  // Capacity
-  const { count: takenCount } = await admin.from("bookings")
-    .select("id", { count: "exact", head: true })
+  // Compute requested time window using service duration
+  const toMin = (t: string) => {
+    const [h, m] = String(t).slice(0, 5).split(":").map(Number);
+    return h * 60 + m;
+  };
+  const reqStart = toMin(scheduled_time);
+  const reqEnd = reqStart + (service.duration_minutes ?? 0);
+  const slotEnd = toMin((slot as any).end_time);
+  if (reqEnd > slotEnd) {
+    return { ok: false, reason: "service_does_not_fit_slot", message: "El servicio elegido no entra en el horario seleccionado.", http_status: 409 };
+  }
+
+  // Overlap-based capacity check on the same date
+  const { data: sameDay } = await admin.from("bookings")
+    .select("scheduled_time,duration_minutes,booking_status")
     .eq("scheduled_date", scheduled_date)
-    .eq("scheduled_time", scheduled_time)
     .neq("booking_status", "cancelled");
-  if ((takenCount ?? 0) >= (slot as any).capacity)
+  let overlapping = 0;
+  for (const b of (sameDay ?? []) as any[]) {
+    const bStart = toMin(b.scheduled_time);
+    const bEnd = bStart + (b.duration_minutes ?? 0);
+    if (bStart < reqEnd && bEnd > reqStart) overlapping++;
+  }
+  if (overlapping >= (slot as any).capacity)
     return { ok: false, reason: "slot_full", message: "Ese horario ya se completó.", http_status: 409 };
 
   // Duplicate

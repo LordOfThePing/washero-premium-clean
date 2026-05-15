@@ -354,6 +354,9 @@ function DisponibilidadPage() {
         </CardContent>
       </Card>
 
+      {/* Overlap diagnostic */}
+      <OverlapDiagnostic slots={slotsQuery.data ?? []} bookingsMap={bookingsMap} />
+
       {/* List */}
       {loading ? (
         <div className="flex items-center justify-center p-10 text-muted-foreground">
@@ -777,12 +780,15 @@ function BulkGenerateDialog({
   const [weekdays, setWeekdays] = useState<number[]>([1, 2, 3, 4, 5, 6]);
   const [dayStart, setDayStart] = useState("09:00");
   const [dayEnd, setDayEnd] = useState("18:00");
-  const [interval, setInterval] = useState(90);
   const [duration, setDuration] = useState(90);
+  const [interval, setInterval] = useState(90);
+  const [allowOverlap, setAllowOverlap] = useState(false);
   const [capacity, setCapacity] = useState(1);
   const [active, setActive] = useState(true);
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState<{ created: number; skipped: number } | null>(null);
+
+  const effectiveInterval = allowOverlap ? interval : duration;
 
   const toggleWd = (v: number) =>
     setWeekdays((s) => (s.includes(v) ? s.filter((x) => x !== v) : [...s, v]));
@@ -799,7 +805,7 @@ function BulkGenerateDialog({
           const end = addMinutesToTime(t, duration);
           if (end > dayEnd) break;
           out.push({ date: cur, start_time: toTimeStr(t), end_time: toTimeStr(end) });
-          const next = addMinutesToTime(t, interval);
+          const next = addMinutesToTime(t, effectiveInterval);
           if (next <= t) break;
           t = next;
           if (t >= dayEnd) break;
@@ -909,30 +915,51 @@ function BulkGenerateDialog({
               <Input type="time" value={dayEnd} onChange={(e) => setDayEnd(e.target.value)} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Intervalo (min)</Label>
-              <Select value={String(interval)} onValueChange={(v) => setInterval(Number(v))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="60">60</SelectItem>
-                  <SelectItem value="90">90</SelectItem>
-                  <SelectItem value="120">120</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Duración (min)</Label>
-              <Select value={String(duration)} onValueChange={(v) => setDuration(Number(v))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="60">60</SelectItem>
-                  <SelectItem value="90">90</SelectItem>
-                  <SelectItem value="120">120</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div>
+            <Label>Duración del turno (min)</Label>
+            <Select value={String(duration)} onValueChange={(v) => setDuration(Number(v))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="60">60</SelectItem>
+                <SelectItem value="90">90</SelectItem>
+                <SelectItem value="120">120</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Por defecto los inicios se separan por la misma duración (sin solapamientos).
+            </p>
           </div>
+          <div className="flex items-center justify-between rounded border p-3">
+            <div>
+              <div className="text-sm font-medium">Permitir horarios solapados</div>
+              <div className="text-xs text-muted-foreground">
+                Inicios cada X minutos menores a la duración. Avanzado.
+              </div>
+            </div>
+            <Switch checked={allowOverlap} onCheckedChange={setAllowOverlap} />
+          </div>
+          {allowOverlap && (
+            <>
+              <div>
+                <Label>Intervalo entre inicios (min)</Label>
+                <Select value={String(interval)} onValueChange={(v) => setInterval(Number(v))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="30">30</SelectItem>
+                    <SelectItem value="60">60</SelectItem>
+                    <SelectItem value="90">90</SelectItem>
+                    <SelectItem value="120">120</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-start gap-2 rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+                <AlertTriangle className="mt-0.5 h-4 w-4" />
+                <div>
+                  Esto puede generar horarios solapados. El backend igual evita sobreventa según capacidad y duración del servicio.
+                </div>
+              </div>
+            </>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Capacidad</Label>
@@ -1077,5 +1104,101 @@ function BlockDayDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---------- Overlap diagnostic ----------
+function OverlapDiagnostic({
+  slots,
+  bookingsMap,
+}: {
+  slots: Slot[];
+  bookingsMap: Map<string, number>;
+}) {
+  const [open, setOpen] = useState(false);
+  const toMin = (t: string) => {
+    const [h, m] = String(t).slice(0, 5).split(":").map(Number);
+    return h * 60 + m;
+  };
+  const overlaps = useMemo(() => {
+    const byDate = new Map<string, Slot[]>();
+    for (const s of slots) {
+      const arr = byDate.get(s.date) ?? [];
+      arr.push(s);
+      byDate.set(s.date, arr);
+    }
+    const out: { date: string; a: Slot; b: Slot; aHasBookings: boolean; bHasBookings: boolean }[] = [];
+    for (const [date, list] of byDate) {
+      const sorted = [...list].sort((x, y) => x.start_time.localeCompare(y.start_time));
+      for (let i = 0; i < sorted.length; i++) {
+        for (let j = i + 1; j < sorted.length; j++) {
+          const a = sorted[i], b = sorted[j];
+          const aS = toMin(a.start_time), aE = toMin(a.end_time);
+          const bS = toMin(b.start_time), bE = toMin(b.end_time);
+          if (aS < bE && aE > bS) {
+            const aHas = (bookingsMap.get(`${date}|${hhmm(a.start_time)}`) ?? 0) > 0;
+            const bHas = (bookingsMap.get(`${date}|${hhmm(b.start_time)}`) ?? 0) > 0;
+            out.push({ date, a, b, aHasBookings: aHas, bHasBookings: bHas });
+          }
+        }
+      }
+    }
+    return out;
+  }, [slots, bookingsMap]);
+
+  if (overlaps.length === 0 && !open) {
+    return (
+      <Card>
+        <CardContent className="flex flex-wrap items-center justify-between gap-2 p-4">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <AlertTriangle className="h-4 w-4" /> Sin solapamientos detectados en el rango.
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>Ver detalle</Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          Solapamientos detectados ({overlaps.length})
+        </CardTitle>
+        <Button variant="ghost" size="sm" onClick={() => setOpen((o) => !o)}>
+          {open ? "Ocultar" : "Mostrar"}
+        </Button>
+      </CardHeader>
+      {open && (
+        <CardContent className="space-y-2 pt-0">
+          <p className="text-xs text-muted-foreground">
+            Estos horarios se superponen entre sí. El backend evita sobreventa, pero conviene limpiarlos manualmente. No se eliminan slots que tengan reservas.
+          </p>
+          {overlaps.length === 0 ? (
+            <div className="text-sm text-muted-foreground">Sin solapamientos.</div>
+          ) : (
+            <div className="space-y-1 text-sm">
+              {overlaps.slice(0, 50).map((o, i) => (
+                <div key={i} className="flex flex-wrap items-center gap-2 rounded border p-2">
+                  <Badge variant="outline">{o.date}</Badge>
+                  <span>{hhmm(o.a.start_time)}–{hhmm(o.a.end_time)}</span>
+                  <span className="text-muted-foreground">⇄</span>
+                  <span>{hhmm(o.b.start_time)}–{hhmm(o.b.end_time)}</span>
+                  {(o.aHasBookings || o.bHasBookings) && (
+                    <Badge variant="secondary" className="gap-1">
+                      <AlertTriangle className="h-3 w-3" /> Con reservas
+                    </Badge>
+                  )}
+                </div>
+              ))}
+              {overlaps.length > 50 && (
+                <div className="text-xs text-muted-foreground">… y {overlaps.length - 50} más.</div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      )}
+    </Card>
   );
 }

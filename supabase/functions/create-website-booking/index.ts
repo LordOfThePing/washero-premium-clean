@@ -78,6 +78,8 @@ Deno.serve(async (req) => {
       past_date: "La fecha debe ser hoy o posterior.",
       invalid_extra: "Hay un extra inválido. Actualizá la página e intentá nuevamente.",
       slot_unavailable: "Ese horario ya no está disponible. Elegí otro día u horario.",
+      slot_not_found: "Ese horario ya no está disponible. Elegí otro día u horario.",
+      service_does_not_fit_slot: "Ese horario ya no está disponible para el servicio elegido. Elegí otro horario o escribinos por WhatsApp.",
       slot_full: "Ese horario ya se completó. Elegí otro día u horario.",
       duplicate: "Ya tenemos una reserva registrada para ese teléfono en ese día y horario.",
       server_error: "No pudimos crear la reserva. Probá de nuevo.",
