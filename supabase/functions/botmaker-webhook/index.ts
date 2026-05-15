@@ -180,6 +180,7 @@ Deno.serve(async (req) => {
           phone,
           isTest: !!payload?.is_test,
           currentPayload: payload,
+          messages: msgs ?? [],
         });
       }
     }
