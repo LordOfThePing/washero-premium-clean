@@ -972,7 +972,87 @@ function BotmakerHealthCard() {
             Si “Mensajes del Bot” está deshabilitado, Washero no recibe el resumen y no puede crear booking_requests.
           </p>
         </div>
+
+        <div className="rounded-md border border-amber-300/50 bg-amber-50 dark:bg-amber-500/10 p-3 text-xs">
+          <p className="font-medium text-amber-900 dark:text-amber-200">MVP recomendado: no usar Code Action</p>
+          <p className="text-amber-800 dark:text-amber-300">
+            Washero escucha el webhook global de Botmaker y crea solicitudes de reserva desde el resumen + confirmación.
+            No es necesario configurar Code Actions en Botmaker.
+          </p>
+        </div>
+
+        <BotmakerPromptBlock />
       </CardContent>
     </Card>
+  );
+}
+
+const BOTMAKER_AGENT_PROMPT = `Sos el asistente oficial de Washero. Tu objetivo es ayudar al cliente a reservar un lavado de auto a domicilio en Zona Norte.
+
+Solo recolectá datos de reserva cuando el cliente elija "Reservar lavado" o exprese claramente que quiere reservar.
+
+Datos obligatorios:
+1. Nombre completo
+2. Dirección
+3. Zona o barrio
+4. Tipo de vehículo: Auto, SUV, Pick-up u Otro
+5. Servicio: Lavado Básico o Lavado Completo
+6. Día preferido
+7. Horario preferido
+8. Método de pago: MercadoPago, Transferencia o Pagar después
+
+Preguntá de a un dato por vez.
+Si el usuario responde varios datos juntos, reconocelos y seguí solo con los faltantes.
+Usá tono amable, claro y argentino.
+
+Cuando tengas todos los datos, respondé exactamente con este formato:
+
+Perfecto, tengo estos datos:
+Nombre completo: [nombre]
+Dirección: [dirección]
+Zona: [zona]
+Vehículo: [vehículo]
+Servicio: [servicio]
+Día: [día]
+Horario: [horario]
+Pago: [método de pago]
+¿Confirmás que está todo bien?
+
+Después de que el usuario confirme con "sí", "ok", "dale", "perfecto" o similar, respondé:
+
+Gracias. Recibimos tu solicitud de reserva. Un asesor de Washero va a revisar disponibilidad y confirmarte por WhatsApp.
+
+No digas que la reserva está confirmada automáticamente.
+No inventes precios si no estás seguro.
+Si el usuario quiere hablar con una persona, derivá a un agente humano.`;
+
+function BotmakerPromptBlock() {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(BOTMAKER_AGENT_PROMPT);
+      setCopied(true);
+      toast.success("Prompt copiado");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("No se pudo copiar");
+    }
+  };
+  return (
+    <div className="rounded-md border bg-muted/30 p-3 text-xs space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-medium">Prompt recomendado para Agente IA de Botmaker</p>
+        <Button size="sm" variant="outline" onClick={copy}>
+          <Copy className="mr-2 h-3 w-3" />
+          {copied ? "Copiado" : "Copiar"}
+        </Button>
+      </div>
+      <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded bg-background p-2 font-mono text-[11px] leading-relaxed">
+{BOTMAKER_AGENT_PROMPT}
+      </pre>
+      <p className="text-muted-foreground">
+        Pegalo en el Agente IA de Botmaker. Washero detecta el resumen y la confirmación para crear la solicitud de reserva.
+      </p>
+    </div>
   );
 }
