@@ -260,26 +260,32 @@ export async function processBotmakerBookingImpact(admin: SupabaseClient, args: 
     fallbackReason = "missing_required_fields";
     autoBookingResult = fallbackReason;
   } else {
-    const attempt = await tryCreateBooking(admin, {
-      customer_name: parsed.fields.customer_name ?? "",
-      customer_phone: phoneFinal,
-      address: parsed.fields.address ?? "",
-      neighborhood: parsed.fields.neighborhood ?? "",
-      vehicle_type: parsed.fields.vehicle_type ?? "",
-      service_name: parsed.fields.service_type ?? "",
-      scheduled_date: parsed.fields.preferred_date ?? "",
-      scheduled_time: parsed.fields.preferred_time ?? "",
-      payment_method: parsed.fields.payment_method ?? "Pagar después",
-      notes: `Reserva creada automáticamente desde Botmaker. Conversación: ${args.conversation.botmaker_conversation_id ?? "-"}`,
-      source: "botmaker",
-      is_test: !!args.isTest,
-    });
-    if (attempt.ok) {
-      bookingId = attempt.booking.id;
-      autoBookingResult = "booking_created";
-    } else {
-      fallbackReason = mapFallbackReason(attempt.reason);
-      autoBookingResult = fallbackReason;
+    try {
+      const attempt = await tryCreateBooking(admin, {
+        customer_name: parsed.fields.customer_name ?? "",
+        customer_phone: phoneFinal,
+        address: parsed.fields.address ?? "",
+        neighborhood: parsed.fields.neighborhood ?? "",
+        vehicle_type: parsed.fields.vehicle_type ?? "",
+        service_name: parsed.fields.service_type ?? "",
+        scheduled_date: parsed.fields.preferred_date ?? "",
+        scheduled_time: parsed.fields.preferred_time ?? "",
+        payment_method: parsed.fields.payment_method ?? "Pagar después",
+        notes: `Reserva creada automáticamente desde Botmaker. Conversación: ${args.conversation.botmaker_conversation_id ?? "-"}`,
+        source: "botmaker",
+        is_test: !!args.isTest,
+      });
+      if (attempt.ok) {
+        bookingId = attempt.booking.id;
+        autoBookingResult = "booking_created";
+      } else {
+        fallbackReason = mapFallbackReason(attempt.reason);
+        autoBookingResult = fallbackReason;
+      }
+    } catch (e) {
+      console.error("[botmaker-booking] auto-booking exception", e);
+      fallbackReason = "unknown_error";
+      autoBookingResult = "unknown_error";
     }
   }
 
