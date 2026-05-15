@@ -17,3 +17,6 @@ verify_jwt = true
 
 [functions.get-public-availability]
 verify_jwt = false
+
+[functions.botmaker-reprocess-conversation]
+verify_jwt = true
