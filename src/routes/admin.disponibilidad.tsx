@@ -777,12 +777,15 @@ function BulkGenerateDialog({
   const [weekdays, setWeekdays] = useState<number[]>([1, 2, 3, 4, 5, 6]);
   const [dayStart, setDayStart] = useState("09:00");
   const [dayEnd, setDayEnd] = useState("18:00");
-  const [interval, setInterval] = useState(90);
   const [duration, setDuration] = useState(90);
+  const [interval, setInterval] = useState(90);
+  const [allowOverlap, setAllowOverlap] = useState(false);
   const [capacity, setCapacity] = useState(1);
   const [active, setActive] = useState(true);
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState<{ created: number; skipped: number } | null>(null);
+
+  const effectiveInterval = allowOverlap ? interval : duration;
 
   const toggleWd = (v: number) =>
     setWeekdays((s) => (s.includes(v) ? s.filter((x) => x !== v) : [...s, v]));
