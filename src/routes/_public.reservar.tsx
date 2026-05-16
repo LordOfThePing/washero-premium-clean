@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import { toast } from "sonner";
-import { ArrowLeft, ChevronLeft, ChevronRight, Loader2, MessageCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Loader2, MapPin, MessageCircle, ShieldAlert } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -13,27 +13,21 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PlacesAutocomplete, type PlaceSelection } from "@/components/PlacesAutocomplete";
 import { cn } from "@/lib/utils";
 
 const WHATSAPP_NUMBER = "5491176247835";
 const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUMBER}`;
 
-// ----- Constants (mirror server allowlist) -----
-const VEHICLE_OPTIONS = [
-  { value: "Auto", label: "Auto chico", surcharge: 0, hint: "Sin cargo" },
-  { value: "SUV", label: "SUV / Crossover", surcharge: 5000, hint: "+ $5.000" },
-  { value: "Pick-up", label: "Pick Up / Van", surcharge: 8000, hint: "+ $8.000" },
-] as const;
+const COVERAGE_COPY =
+  "Por ahora Washero solo trabaja en Maschwitz, Escobar, Benavídez, Garín, Dique Luján, Tigre y Nordelta.";
 
-const EXTRAS = [
-  { key: "encerado_rapido", label: "Encerado rápido", price: 8000 },
-  { key: "detallado_interior_profundo", label: "Detallado interior profundo", price: 9000 },
-  { key: "eliminacion_olores", label: "Eliminación de olores", price: 12000 },
-  { key: "barro_auto_muy_sucio", label: "Barro / Auto muy sucio", price: 7000 },
-  { key: "pelo_mascotas", label: "Pelo de mascotas", price: 10000 },
-] as const;
+// Map of pricing_items.code → public vehicle_type expected by backend
+const VEHICLE_CODE_TO_TYPE: Record<string, "Auto" | "SUV" | "Pick-up"> = {
+  auto: "Auto",
+  suv: "SUV",
+  pickup: "Pick-up",
+};
 
 const PAYMENTS = [
   { value: "MercadoPago", label: "Mercado Pago", hint: "Online seguro" },
@@ -41,20 +35,16 @@ const PAYMENTS = [
   { value: "Pagar después", label: "Pagar después", hint: "En el lugar" },
 ] as const;
 
-const OTHER_AREA = "__other__";
-
 // ----- Types -----
 type Service = { id: string; name: string; description: string | null; base_price: number; duration_minutes: number };
-type ServiceArea = { id: string; name: string };
+type PricingItem = { id: string; code: string; name: string; description: string | null; type: string; amount: number; display_order: number };
 type PublicSlot = { id: string; date: string; start_time: string; end_time: string; capacity: number; taken: number; remaining: number };
 
 type FormState = {
   service_id: string;
-  vehicle_type: "Auto" | "SUV" | "Pick-up" | "";
-  extras: string[];
-  address: string;
-  neighborhood_choice: string; // dropdown value (area name or OTHER_AREA)
-  neighborhood_other: string;
+  vehicle_code: string; // pricing_items.code
+  extras: string[]; // pricing_items.code[]
+  address: string; // free-typed (mirrors selected formatted_address)
   customer_name: string;
   customer_phone: string;
   customer_email: string;
@@ -66,11 +56,9 @@ type FormState = {
 
 const INITIAL: FormState = {
   service_id: "",
-  vehicle_type: "",
+  vehicle_code: "",
   extras: [],
   address: "",
-  neighborhood_choice: "",
-  neighborhood_other: "",
   customer_name: "",
   customer_phone: "",
   customer_email: "",
@@ -80,11 +68,7 @@ const INITIAL: FormState = {
   payment_method: "MercadoPago",
 };
 
-const formSchema = z.object({
-  service_id: z.string().uuid("Elegí un servicio"),
-  vehicle_type: z.enum(["Auto", "SUV", "Pick-up"]),
-  address: z.string().trim().min(4, "Ingresá una dirección"),
-  neighborhood: z.string().trim().min(2, "Elegí o escribí tu zona"),
+const contactSchema = z.object({
   customer_name: z.string().trim().min(2, "Ingresá tu nombre"),
   customer_phone: z.string().trim().min(6, "Teléfono inválido").regex(/^[+\d\s\-()]+$/, "Sólo números, espacios y +"),
   customer_email: z.union([z.literal(""), z.string().trim().email("Email inválido")]),
@@ -121,14 +105,14 @@ async function fetchServices(): Promise<Service[]> {
   if (error) throw error;
   return data ?? [];
 }
-async function fetchAreas(): Promise<ServiceArea[]> {
+async function fetchPricing(): Promise<PricingItem[]> {
   const { data, error } = await supabase
-    .from("service_areas")
-    .select("id,name")
+    .from("pricing_items")
+    .select("id,code,name,description,type,amount,display_order")
     .eq("active", true)
-    .order("name");
+    .order("display_order");
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []) as PricingItem[];
 }
 async function fetchAvailability(): Promise<PublicSlot[]> {
   const { data, error } = await supabase.functions.invoke("get-public-availability");
@@ -154,10 +138,9 @@ function ReservarPage() {
   const navigate = useNavigate();
 
   const services = useQuery({ queryKey: ["services"], queryFn: fetchServices, staleTime: 60_000 });
-  const areas = useQuery({ queryKey: ["service_areas"], queryFn: fetchAreas, staleTime: 60_000 });
+  const pricing = useQuery({ queryKey: ["pricing_items"], queryFn: fetchPricing, staleTime: 60_000 });
   const availability = useQuery({ queryKey: ["public_availability"], queryFn: fetchAvailability, staleTime: 30_000, retry: 1 });
 
-  // Group slots by date
   const slotsByDate = useMemo(() => {
     const map = new Map<string, PublicSlot[]>();
     for (const s of availability.data ?? []) {
@@ -175,15 +158,9 @@ function ReservarPage() {
     return out;
   }, [slotsByDate]);
 
-  // Calendar month state
-  const today = useMemo(() => {
-    const t = new Date(); t.setHours(0,0,0,0); return t;
-  }, []);
-  const [viewMonth, setViewMonth] = useState<Date>(() => {
-    const t = new Date(); return new Date(t.getFullYear(), t.getMonth(), 1);
-  });
+  const today = useMemo(() => { const t = new Date(); t.setHours(0,0,0,0); return t; }, []);
+  const [viewMonth, setViewMonth] = useState<Date>(() => { const t = new Date(); return new Date(t.getFullYear(), t.getMonth(), 1); });
 
-  // Selected date / time
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [timeSheetOpen, setTimeSheetOpen] = useState(false);
@@ -191,20 +168,9 @@ function ReservarPage() {
 
   const slotsForSelected = selectedDate ? (slotsByDate.get(selectedDate) ?? []) : [];
 
-  function openDay(iso: string) {
-    setSelectedDate(iso);
-    setSelectedTime(null);
-    setTimeSheetOpen(true);
-  }
-  function pickTime(time: string) {
-    setSelectedTime(time);
-    setTimeSheetOpen(false);
-    setBookingOpen(true);
-  }
-  function backToTimes() {
-    setBookingOpen(false);
-    setTimeSheetOpen(true);
-  }
+  function openDay(iso: string) { setSelectedDate(iso); setSelectedTime(null); setTimeSheetOpen(true); }
+  function pickTime(time: string) { setSelectedTime(time); setTimeSheetOpen(false); setBookingOpen(true); }
+  function backToTimes() { setBookingOpen(false); setTimeSheetOpen(true); }
 
   return (
     <div className="mx-auto max-w-xl px-4 py-8 sm:py-12">
@@ -233,32 +199,21 @@ function ReservarPage() {
         </a>
       </p>
 
-      {/* Time selector */}
       <Sheet open={timeSheetOpen} onOpenChange={setTimeSheetOpen}>
         <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto rounded-t-2xl sm:max-w-lg sm:mx-auto">
           <SheetHeader className="text-left">
             <SheetTitle>Horarios disponibles</SheetTitle>
-            <SheetDescription className="capitalize">
-              {selectedDate ? formatDayLong(selectedDate) : ""}
-            </SheetDescription>
+            <SheetDescription className="capitalize">{selectedDate ? formatDayLong(selectedDate) : ""}</SheetDescription>
           </SheetHeader>
           <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
             {slotsForSelected.length === 0 && (
-              <p className="col-span-full text-sm text-muted-foreground">
-                No quedan horarios disponibles para este día.
-              </p>
+              <p className="col-span-full text-sm text-muted-foreground">No quedan horarios disponibles para este día.</p>
             )}
             {slotsForSelected.map((s) => {
               const time = s.start_time.slice(0,5);
               const disabled = s.remaining <= 0;
               return (
-                <Button
-                  key={s.id}
-                  variant="outline"
-                  disabled={disabled}
-                  onClick={() => pickTime(time)}
-                  className="h-12 text-base font-semibold"
-                >
+                <Button key={s.id} variant="outline" disabled={disabled} onClick={() => pickTime(time)} className="h-12 text-base font-semibold">
                   {time}
                 </Button>
               );
@@ -267,24 +222,21 @@ function ReservarPage() {
         </SheetContent>
       </Sheet>
 
-      {/* Booking modal */}
       <Dialog open={bookingOpen} onOpenChange={setBookingOpen}>
         <DialogContent className="max-w-[620px] max-h-[90vh] overflow-y-auto p-0">
           {selectedDate && selectedTime && (
             <BookingForm
               services={services.data ?? []}
               servicesLoading={services.isLoading}
-              areas={areas.data ?? []}
+              pricing={pricing.data ?? []}
+              pricingLoading={pricing.isLoading}
               date={selectedDate}
               time={selectedTime}
               onBack={backToTimes}
               onClose={() => setBookingOpen(false)}
               onSuccess={(checkoutUrl, summary) => {
                 try { sessionStorage.setItem("washero:last-booking", JSON.stringify(summary)); } catch {}
-                if (checkoutUrl) {
-                  window.location.assign(checkoutUrl);
-                  return;
-                }
+                if (checkoutUrl) { window.location.assign(checkoutUrl); return; }
                 navigate({ to: "/gracias" });
               }}
             />
@@ -299,14 +251,9 @@ function ReservarPage() {
 function CalendarCard({
   viewMonth, setViewMonth, today, datesWithAvailability, selectedDate, onPickDay, loading, error,
 }: {
-  viewMonth: Date;
-  setViewMonth: (d: Date) => void;
-  today: Date;
-  datesWithAvailability: Set<string>;
-  selectedDate: string | null;
-  onPickDay: (iso: string) => void;
-  loading: boolean;
-  error: boolean;
+  viewMonth: Date; setViewMonth: (d: Date) => void; today: Date;
+  datesWithAvailability: Set<string>; selectedDate: string | null;
+  onPickDay: (iso: string) => void; loading: boolean; error: boolean;
 }) {
   const year = viewMonth.getFullYear();
   const month = viewMonth.getMonth();
@@ -329,18 +276,14 @@ function CalendarCard({
         <Button variant="ghost" size="icon" onClick={() => setViewMonth(new Date(year, month - 1, 1))} disabled={!canGoPrev} aria-label="Mes anterior">
           <ChevronLeft className="h-5 w-5" />
         </Button>
-        <h2 className="text-base font-semibold">
-          {MONTHS_ES[month]} {year}
-        </h2>
+        <h2 className="text-base font-semibold">{MONTHS_ES[month]} {year}</h2>
         <Button variant="ghost" size="icon" onClick={() => setViewMonth(new Date(year, month + 1, 1))} aria-label="Mes siguiente">
           <ChevronRight className="h-5 w-5" />
         </Button>
       </div>
 
       <div className="mt-4 grid grid-cols-7 gap-1 text-center text-xs font-medium text-muted-foreground">
-        {WEEKDAYS_ES.map((w) => (
-          <div key={w} className="py-1">{w}</div>
-        ))}
+        {WEEKDAYS_ES.map((w) => (<div key={w} className="py-1">{w}</div>))}
       </div>
 
       {error ? (
@@ -350,9 +293,7 @@ function CalendarCard({
         </div>
       ) : loading ? (
         <div className="mt-4 grid grid-cols-7 gap-1">
-          {Array.from({ length: 35 }).map((_, i) => (
-            <div key={i} className="aspect-square rounded-md bg-muted/40 animate-pulse" />
-          ))}
+          {Array.from({ length: 35 }).map((_, i) => (<div key={i} className="aspect-square rounded-md bg-muted/40 animate-pulse" />))}
         </div>
       ) : (
         <div className="mt-1 grid grid-cols-7 gap-1">
@@ -365,10 +306,7 @@ function CalendarCard({
             const disabled = isPast || !hasAvail;
             return (
               <button
-                key={idx}
-                type="button"
-                disabled={disabled}
-                onClick={() => onPickDay(c.iso)}
+                key={idx} type="button" disabled={disabled} onClick={() => onPickDay(c.iso)}
                 className={cn(
                   "relative aspect-square rounded-lg text-sm font-medium transition-colors",
                   disabled && "text-muted-foreground/40 cursor-not-allowed",
@@ -377,9 +315,7 @@ function CalendarCard({
                 )}
               >
                 {c.day}
-                {hasAvail && !disabled && (
-                  <span className="absolute bottom-1 left-1/2 -translate-x-1/2 h-1 w-1 rounded-full bg-primary" />
-                )}
+                {hasAvail && !disabled && (<span className="absolute bottom-1 left-1/2 -translate-x-1/2 h-1 w-1 rounded-full bg-primary" />)}
               </button>
             );
           })}
@@ -390,12 +326,20 @@ function CalendarCard({
 }
 
 // ============ Booking Form ============
+type CoverageState =
+  | { kind: "idle" }
+  | { kind: "validating" }
+  | { kind: "ok"; zone_id: string | null; zone_name: string }
+  | { kind: "outside" }
+  | { kind: "error"; message: string };
+
 function BookingForm({
-  services, servicesLoading, areas, date, time, onBack, onClose, onSuccess,
+  services, servicesLoading, pricing, pricingLoading, date, time, onBack, onClose, onSuccess,
 }: {
   services: Service[];
   servicesLoading: boolean;
-  areas: ServiceArea[];
+  pricing: PricingItem[];
+  pricingLoading: boolean;
   date: string;
   time: string;
   onBack: () => void;
@@ -405,13 +349,29 @@ function BookingForm({
   const [form, setForm] = useState<FormState>(INITIAL);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [place, setPlace] = useState<PlaceSelection | null>(null);
+  const [coverage, setCoverage] = useState<CoverageState>({ kind: "idle" });
 
-  // Auto-select first service
+  // Suppress unused onClose warning while keeping the prop API stable
+  void onClose;
+
+  // Split pricing
+  const vehicles = useMemo(
+    () => pricing.filter((p) => p.type === "vehicle_surcharge").sort((a, b) => a.display_order - b.display_order),
+    [pricing],
+  );
+  const extras = useMemo(
+    () => pricing.filter((p) => p.type === "extra").sort((a, b) => a.display_order - b.display_order),
+    [pricing],
+  );
+
+  // Auto-select first service / vehicle
   useEffect(() => {
-    if (!form.service_id && services.length > 0) {
-      setForm((f) => ({ ...f, service_id: services[0].id }));
-    }
+    if (!form.service_id && services.length > 0) setForm((f) => ({ ...f, service_id: services[0].id }));
   }, [services, form.service_id]);
+  useEffect(() => {
+    if (!form.vehicle_code && vehicles.length > 0) setForm((f) => ({ ...f, vehicle_code: vehicles[0].code }));
+  }, [vehicles, form.vehicle_code]);
 
   const update = <K extends keyof FormState>(k: K, v: FormState[K]) => {
     setForm((f) => ({ ...f, [k]: v }));
@@ -419,39 +379,70 @@ function BookingForm({
   };
 
   const selectedService = services.find((s) => s.id === form.service_id);
-  const vehicleSurcharge = VEHICLE_OPTIONS.find((v) => v.value === form.vehicle_type)?.surcharge ?? 0;
-  const extrasTotal = form.extras.reduce((sum, k) => sum + (EXTRAS.find((e) => e.key === k)?.price ?? 0), 0);
+  const selectedVehicle = vehicles.find((v) => v.code === form.vehicle_code);
+  const vehicleSurcharge = selectedVehicle?.amount ?? 0;
+  const extrasTotal = form.extras.reduce((sum, code) => sum + (extras.find((e) => e.code === code)?.amount ?? 0), 0);
   const basePrice = selectedService?.base_price ?? 0;
   const total = basePrice + vehicleSurcharge + extrasTotal;
 
-  const neighborhood = form.neighborhood_choice === OTHER_AREA
-    ? form.neighborhood_other
-    : form.neighborhood_choice;
-
-  function toggleExtra(key: string) {
-    setForm((f) => ({
-      ...f,
-      extras: f.extras.includes(key) ? f.extras.filter((k) => k !== key) : [...f.extras, key],
-    }));
+  function toggleExtra(code: string) {
+    setForm((f) => ({ ...f, extras: f.extras.includes(code) ? f.extras.filter((k) => k !== code) : [...f.extras, code] }));
   }
 
+  // Coverage validation triggered when a Google place is selected
+  useEffect(() => {
+    if (!place) { setCoverage({ kind: "idle" }); return; }
+    let cancelled = false;
+    setCoverage({ kind: "validating" });
+    (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("validate-address-location", {
+          body: {
+            place_id: place.place_id,
+            formatted_address: place.formatted_address,
+            lat: place.lat,
+            lng: place.lng,
+            neighborhood: place.neighborhood,
+          },
+        });
+        if (cancelled) return;
+        type Resp = { ok: boolean; inside_coverage: boolean; zone: { id: string; name: string } | null };
+        const res = (data ?? null) as Resp | null;
+        if (error || !res?.ok) {
+          setCoverage({ kind: "error", message: "No pudimos validar la dirección. Probá nuevamente o escribinos por WhatsApp." });
+          return;
+        }
+        if (res.inside_coverage && res.zone) {
+          setCoverage({ kind: "ok", zone_id: res.zone.id, zone_name: res.zone.name });
+        } else {
+          setCoverage({ kind: "outside" });
+        }
+      } catch {
+        if (!cancelled) setCoverage({ kind: "error", message: "No pudimos validar la dirección. Probá nuevamente o escribinos por WhatsApp." });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [place]);
+
   async function submit() {
-    const candidate = {
-      service_id: form.service_id,
-      vehicle_type: form.vehicle_type,
-      address: form.address,
-      neighborhood,
+    const contact = contactSchema.safeParse({
       customer_name: form.customer_name,
       customer_phone: form.customer_phone,
       customer_email: form.customer_email,
-    };
-    const result = formSchema.safeParse(candidate);
-    if (!result.success) {
-      const errs: Record<string, string> = {};
-      result.error.issues.forEach((i) => { if (i.path[0]) errs[i.path[0] as string] = i.message; });
-      setErrors(errs);
+    });
+    const errs: Record<string, string> = {};
+    if (!contact.success) contact.error.issues.forEach((i) => { if (i.path[0]) errs[i.path[0] as string] = i.message; });
+    if (!form.service_id) errs.service_id = "Elegí un servicio";
+    if (!form.vehicle_code) errs.vehicle_code = "Elegí el tamaño de tu vehículo";
+    if (!place) errs.address = "Seleccioná una dirección de la lista para validar la zona.";
+    if (Object.keys(errs).length > 0) { setErrors(errs); return; }
+    if (coverage.kind !== "ok") {
+      toast.error("Necesitamos confirmar tu zona de cobertura antes de reservar.");
       return;
     }
+
+    const vehicle_type = VEHICLE_CODE_TO_TYPE[form.vehicle_code];
+    if (!vehicle_type) { toast.error("Tipo de vehículo inválido."); return; }
 
     setSubmitting(true);
     const noteParts: string[] = [];
@@ -463,9 +454,15 @@ function BookingForm({
       customer_name: form.customer_name.trim(),
       customer_phone: form.customer_phone.trim(),
       customer_email: form.customer_email.trim() || null,
-      address: form.address.trim(),
-      neighborhood: neighborhood.trim(),
-      vehicle_type: form.vehicle_type,
+      address: place!.formatted_address,
+      formatted_address: place!.formatted_address,
+      place_id: place!.place_id,
+      address_lat: place!.lat,
+      address_lng: place!.lng,
+      neighborhood: coverage.zone_name,
+      coverage_zone_id: coverage.zone_id,
+      coverage_zone_name: coverage.zone_name,
+      vehicle_type,
       service_id: form.service_id,
       scheduled_date: date,
       scheduled_time: time,
@@ -475,15 +472,19 @@ function BookingForm({
     };
 
     const { data, error } = await supabase.functions.invoke("create-website-booking", { body: payload });
-    type Resp = { ok: boolean; customer_message?: string; checkout_url?: string | null; summary?: any; booking_status?: string };
+    type Resp = { ok: boolean; status?: string; customer_message?: string; checkout_url?: string | null; summary?: any; booking_status?: string };
     const res = (data ?? null) as Resp | null;
 
     if (error || !res?.ok) {
       setSubmitting(false);
-      const msg = res?.customer_message ?? "No pudimos crear la reserva. Probá de nuevo o escribinos por WhatsApp.";
-      toast.error(msg, {
-        action: { label: "WhatsApp", onClick: () => window.open(WHATSAPP_URL, "_blank") },
-      });
+      const status = res?.status ?? "";
+      const friendly =
+        status === "outside_coverage" ? "Esa dirección está fuera de nuestra cobertura actual." :
+        status === "slot_full" || status === "slot_not_found" || status === "service_does_not_fit_slot"
+          ? "Ese horario ya no está disponible para el servicio elegido. Elegí otro horario." :
+        status === "invalid_extra" ? "Hay un extra inválido. Actualizá la página e intentá nuevamente." :
+        (res?.customer_message ?? "No pudimos crear la reserva. Probá nuevamente o escribinos por WhatsApp.");
+      toast.error(friendly, { action: { label: "WhatsApp", onClick: () => window.open(WHATSAPP_URL, "_blank") } });
       return;
     }
 
@@ -496,15 +497,14 @@ function BookingForm({
 
   const requiredOk =
     !!form.service_id &&
-    !!form.vehicle_type &&
-    form.address.trim().length >= 4 &&
-    neighborhood.trim().length >= 2 &&
+    !!form.vehicle_code &&
+    !!place &&
+    coverage.kind === "ok" &&
     form.customer_name.trim().length >= 2 &&
     form.customer_phone.trim().length >= 6;
 
   return (
     <div className="flex flex-col">
-      {/* Header */}
       <div className="sticky top-0 z-10 bg-background border-b px-5 py-4">
         <div className="flex items-center justify-between gap-2">
           <button onClick={onBack} className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
@@ -512,9 +512,7 @@ function BookingForm({
           </button>
         </div>
         <h2 className="mt-2 text-lg font-semibold">Completá tu reserva</h2>
-        <p className="text-sm text-muted-foreground capitalize">
-          {formatDayLong(date)} · {time} hs
-        </p>
+        <p className="text-sm text-muted-foreground capitalize">{formatDayLong(date)} · {time} hs</p>
       </div>
 
       <div className="px-5 py-4 space-y-6">
@@ -528,12 +526,9 @@ function BookingForm({
                 const active = form.service_id === s.id;
                 return (
                   <button
-                    key={s.id} type="button"
-                    onClick={() => update("service_id", s.id)}
-                    className={cn(
-                      "w-full text-left rounded-xl border p-3 transition-colors",
-                      active ? "border-primary border-2 bg-primary/5" : "border-border hover:bg-muted/50",
-                    )}
+                    key={s.id} type="button" onClick={() => update("service_id", s.id)}
+                    className={cn("w-full text-left rounded-xl border p-3 transition-colors",
+                      active ? "border-primary border-2 bg-primary/5" : "border-border hover:bg-muted/50")}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -552,85 +547,109 @@ function BookingForm({
 
         {/* Vehículo */}
         <Section title="Tamaño del vehículo">
-          <div className="grid gap-2 sm:grid-cols-3">
-            {VEHICLE_OPTIONS.map((v) => {
-              const active = form.vehicle_type === v.value;
-              return (
-                <button
-                  key={v.value} type="button"
-                  onClick={() => update("vehicle_type", v.value)}
-                  className={cn(
-                    "rounded-xl border p-3 text-left transition-colors",
-                    active ? "border-primary border-2 bg-primary/5" : "border-border hover:bg-muted/50",
-                  )}
-                >
-                  <div className="font-medium text-sm">{v.label}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{v.hint}</div>
-                </button>
-              );
-            })}
-          </div>
+          {pricingLoading ? (
+            <div className="text-sm text-muted-foreground">Cargando…</div>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-3">
+              {vehicles.map((v) => {
+                const active = form.vehicle_code === v.code;
+                const hint = v.amount > 0 ? `+ ${formatARS(v.amount)}` : "Sin cargo";
+                return (
+                  <button
+                    key={v.id} type="button" onClick={() => update("vehicle_code", v.code)}
+                    className={cn("rounded-xl border p-3 text-left transition-colors",
+                      active ? "border-primary border-2 bg-primary/5" : "border-border hover:bg-muted/50")}
+                  >
+                    <div className="font-medium text-sm">{v.name}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{hint}</div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <FieldError msg={errors.vehicle_code} />
         </Section>
 
         {/* Extras */}
         <Section title="Extras opcionales" subtitle="Sumá los que necesites">
-          <div className="space-y-2">
-            {EXTRAS.map((e) => {
-              const active = form.extras.includes(e.key);
-              return (
-                <label
-                  key={e.key}
-                  className={cn(
-                    "flex items-center justify-between gap-3 rounded-xl border p-3 cursor-pointer transition-colors",
-                    active ? "border-primary border-2 bg-primary/5" : "border-border hover:bg-muted/50",
-                  )}
-                >
-                  <div className="flex items-center gap-3">
-                    <Checkbox checked={active} onCheckedChange={() => toggleExtra(e.key)} />
-                    <span className="text-sm font-medium">{e.label}</span>
-                  </div>
-                  <span className="text-sm font-semibold">{formatARS(e.price)}</span>
-                </label>
-              );
-            })}
-          </div>
-        </Section>
-
-        {/* Dirección */}
-        <Section title="Dirección">
-          <Input
-            placeholder="Ej: Av. Corrientes 1234, CABA"
-            value={form.address}
-            onChange={(e) => update("address", e.target.value)}
-          />
-          <FieldError msg={errors.address} />
-        </Section>
-
-        {/* Zona */}
-        <Section title="Barrio / Zona">
-          <Select
-            value={form.neighborhood_choice}
-            onValueChange={(v) => update("neighborhood_choice", v)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Seleccioná tu barrio o zona" />
-            </SelectTrigger>
-            <SelectContent>
-              {areas.map((a) => (
-                <SelectItem key={a.id} value={a.name}>{a.name}</SelectItem>
-              ))}
-              <SelectItem value={OTHER_AREA}>Otra zona</SelectItem>
-            </SelectContent>
-          </Select>
-          {form.neighborhood_choice === OTHER_AREA && (
-            <Input
-              className="mt-2"
-              placeholder="Escribí tu barrio o zona"
-              value={form.neighborhood_other}
-              onChange={(e) => update("neighborhood_other", e.target.value)}
-            />
+          {pricingLoading ? (
+            <div className="text-sm text-muted-foreground">Cargando…</div>
+          ) : (
+            <div className="space-y-2">
+              {extras.map((e) => {
+                const active = form.extras.includes(e.code);
+                return (
+                  <label key={e.id}
+                    className={cn("flex items-center justify-between gap-3 rounded-xl border p-3 cursor-pointer transition-colors",
+                      active ? "border-primary border-2 bg-primary/5" : "border-border hover:bg-muted/50")}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Checkbox checked={active} onCheckedChange={() => toggleExtra(e.code)} />
+                      <span className="text-sm font-medium">{e.name}</span>
+                    </div>
+                    <span className="text-sm font-semibold">{formatARS(e.amount)}</span>
+                  </label>
+                );
+              })}
+            </div>
           )}
-          <FieldError msg={errors.neighborhood} />
+        </Section>
+
+        {/* Dirección con Google Places + cobertura */}
+        <Section title="Dirección" subtitle="Seleccioná tu dirección desde Google Maps. Validamos automáticamente si está dentro de la zona de cobertura.">
+          <PlacesAutocomplete
+            value={form.address}
+            onChange={(v) => { update("address", v); }}
+            onSelect={(p) => {
+              setPlace(p);
+              if (p) update("address", p.formatted_address);
+            }}
+            placeholder="Ej: Av. Maipú 1234, Tigre"
+          />
+          {!place && form.address.trim().length > 0 && (
+            <p className="text-xs text-muted-foreground mt-1">Seleccioná una dirección de la lista para validar la zona.</p>
+          )}
+          <FieldError msg={errors.address} />
+
+          {/* Coverage feedback */}
+          {place && (
+            <div className="mt-2">
+              {coverage.kind === "validating" && (
+                <div className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Validando zona…
+                </div>
+              )}
+              {coverage.kind === "ok" && (
+                <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 border border-emerald-200">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Zona cubierta: {coverage.zone_name}
+                </div>
+              )}
+              {coverage.kind === "outside" && (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive space-y-2">
+                  <div className="flex items-start gap-2">
+                    <ShieldAlert className="h-4 w-4 mt-0.5 shrink-0" />
+                    <span>{COVERAGE_COPY}</span>
+                  </div>
+                  <a href={WHATSAPP_URL} target="_blank" rel="noreferrer"
+                    className="inline-flex items-center gap-1 underline underline-offset-4">
+                    <MessageCircle className="h-3 w-3" /> Consultanos por WhatsApp
+                  </a>
+                </div>
+              )}
+              {coverage.kind === "error" && (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive space-y-2">
+                  <div className="flex items-start gap-2">
+                    <MapPin className="h-4 w-4 mt-0.5 shrink-0" />
+                    <span>{coverage.message}</span>
+                  </div>
+                  <a href={WHATSAPP_URL} target="_blank" rel="noreferrer"
+                    className="inline-flex items-center gap-1 underline underline-offset-4">
+                    <MessageCircle className="h-3 w-3" /> Escribinos por WhatsApp
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
         </Section>
 
         {/* Contacto */}
@@ -656,12 +675,7 @@ function BookingForm({
 
         {/* Notas */}
         <Section title="Notas adicionales">
-          <Textarea
-            value={form.notes}
-            onChange={(e) => update("notes", e.target.value)}
-            placeholder="Acceso, color del auto, instrucciones..."
-            rows={3}
-          />
+          <Textarea value={form.notes} onChange={(e) => update("notes", e.target.value)} placeholder="Acceso, color del auto, instrucciones..." rows={3} />
           <label className="mt-3 flex items-center gap-2 text-sm cursor-pointer">
             <Checkbox checked={form.whatsapp_reminders} onCheckedChange={(v) => update("whatsapp_reminders", !!v)} />
             Recibir recordatorios por WhatsApp
@@ -669,21 +683,13 @@ function BookingForm({
         </Section>
 
         {/* Kipper */}
-        <label
-          className={cn(
-            "block rounded-xl border p-3 cursor-pointer transition-colors",
-            form.kipper_quote ? "border-primary border-2 bg-primary/5" : "border-border hover:bg-muted/50",
-          )}
-        >
+        <label className={cn("block rounded-xl border p-3 cursor-pointer transition-colors",
+          form.kipper_quote ? "border-primary border-2 bg-primary/5" : "border-border hover:bg-muted/50")}>
           <div className="flex items-start gap-3">
             <Checkbox checked={form.kipper_quote} onCheckedChange={(v) => update("kipper_quote", !!v)} className="mt-0.5" />
             <div>
-              <div className="text-sm font-medium">
-                Quiero recibir una cotización de seguro con Kipper Seguros y acceder a beneficios exclusivos.
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                Sin compromiso. Te contactamos para ofrecerte descuentos especiales en Washero.
-              </div>
+              <div className="text-sm font-medium">Quiero recibir una cotización de seguro con Kipper Seguros y acceder a beneficios exclusivos.</div>
+              <div className="text-xs text-muted-foreground mt-1">Sin compromiso. Te contactamos para ofrecerte descuentos especiales en Washero.</div>
             </div>
           </div>
         </label>
@@ -694,13 +700,9 @@ function BookingForm({
             {PAYMENTS.map((p) => {
               const active = form.payment_method === p.value;
               return (
-                <button
-                  key={p.value} type="button"
-                  onClick={() => update("payment_method", p.value as FormState["payment_method"])}
-                  className={cn(
-                    "rounded-xl border p-3 text-left transition-colors",
-                    active ? "border-primary border-2 bg-primary/5" : "border-border hover:bg-muted/50",
-                  )}
+                <button key={p.value} type="button" onClick={() => update("payment_method", p.value as FormState["payment_method"])}
+                  className={cn("rounded-xl border p-3 text-left transition-colors",
+                    active ? "border-primary border-2 bg-primary/5" : "border-border hover:bg-muted/50")}
                 >
                   <div className="font-medium text-sm">{p.label}</div>
                   <div className="text-xs text-muted-foreground mt-0.5">{p.hint}</div>
@@ -718,27 +720,15 @@ function BookingForm({
           <div className="border-t pt-1.5 flex justify-between font-semibold text-base">
             <span>Total</span><span>{formatARS(total)}</span>
           </div>
-          <p className="text-[10px] text-muted-foreground pt-1">
-            El precio final se confirma del lado del servidor.
-          </p>
+          <p className="text-[10px] text-muted-foreground pt-1">El precio final se confirma del lado del servidor.</p>
         </div>
       </div>
 
-      {/* Sticky CTA */}
       <div className="sticky bottom-0 bg-background border-t px-5 py-3">
-        <Button
-          className="w-full"
-          size="lg"
-          disabled={!requiredOk || submitting}
-          onClick={submit}
-        >
-          {submitting ? (
-            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando…</>
-          ) : form.payment_method === "MercadoPago" ? (
-            <>Pagar con Mercado Pago →</>
-          ) : (
-            <>Confirmar reserva →</>
-          )}
+        <Button className="w-full" size="lg" disabled={!requiredOk || submitting} onClick={submit}>
+          {submitting ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando…</>)
+            : form.payment_method === "MercadoPago" ? (<>Pagar con Mercado Pago →</>)
+            : (<>Confirmar reserva →</>)}
         </Button>
       </div>
     </div>
