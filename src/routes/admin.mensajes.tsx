@@ -4,6 +4,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, RefreshCw, MessageSquare, Phone, AlertTriangle, CheckCircle2, ArrowRight, Sparkles, AlertCircle, Calendar as CalendarIcon, ClipboardList } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  ADMIN_PAYMENT_METHODS,
+  ADMIN_VEHICLE_TYPES,
+  invokeCreateAdminBooking,
+} from "@/lib/admin-booking";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -508,57 +513,37 @@ function ApproveDialog({
       ) ?? (services.data ?? [])[0];
       if (!svc) throw new Error("No hay servicios activos");
 
-      // Find or create customer
-      let customerId: string | null = null;
-      const { data: existing } = await supabase
-        .from("customers").select("id").eq("phone", form.customer_phone).maybeSingle();
-      if (existing) {
-        customerId = existing.id;
-        await supabase.from("customers").update({
-          full_name: form.customer_name,
-          address: form.address,
-          neighborhood: form.neighborhood,
-        }).eq("id", existing.id);
-      } else {
-        const { data: created } = await supabase.from("customers").insert({
-          full_name: form.customer_name,
-          phone: form.customer_phone,
-          address: form.address,
-          neighborhood: form.neighborhood,
-        }).select("id").maybeSingle();
-        customerId = created?.id ?? null;
-      }
+      const time = form.preferred_time.length === 5
+        ? `${form.preferred_time}:00`
+        : form.preferred_time;
+      const notes = [bookingRequest.is_test ? "[TEST]" : null, form.notes || null]
+        .filter(Boolean)
+        .join(" ") || null;
 
-      const { data: booking, error: bErr } = await supabase.from("bookings").insert({
-        customer_id: customerId,
-        customer_name: form.customer_name,
-        customer_phone: form.customer_phone,
-        address: form.address,
-        neighborhood: form.neighborhood,
-        vehicle_type: form.vehicle_type,
+      const res = await invokeCreateAdminBooking({
+        customer_name: form.customer_name.trim(),
+        customer_phone: form.customer_phone.trim(),
+        address: form.address.trim(),
+        neighborhood: form.neighborhood.trim(),
+        vehicle_type: form.vehicle_type.trim(),
         service_id: svc.id,
         service_name: svc.name,
-        price: svc.base_price,
-        duration_minutes: svc.duration_minutes,
         scheduled_date: form.preferred_date,
-        scheduled_time: form.preferred_time,
+        scheduled_time: time,
         payment_method: form.payment_method,
         payment_status: "pending",
         booking_status: "confirmed",
         booking_source: "botmaker",
-        notes: [bookingRequest.is_test ? "[TEST]" : null, form.notes || null].filter(Boolean).join(" ") || null,
-      }).select("id").single();
-      if (bErr) throw bErr;
-
-      await supabase.from("booking_requests")
-        .update({ status: "converted", linked_booking_id: booking.id })
-        .eq("id", bookingRequest.id);
-
-      await supabase.from("botmaker_conversations")
-        .update({ linked_booking_id: booking.id })
-        .eq("id", conversationId);
-
-      return booking;
+        notes,
+        selected_extras: [],
+        is_test: !!bookingRequest.is_test,
+        booking_request_id: bookingRequest.id,
+        conversation_id: conversationId,
+      });
+      if (!res.ok) {
+        throw new Error(res.customer_message ?? "No pudimos crear la reserva.");
+      }
+      return res;
     },
     onSuccess: () => {
       toast.success("Reserva creada");
@@ -591,7 +576,7 @@ function ApproveDialog({
             <Select value={form.vehicle_type} onValueChange={(v) => setForm({ ...form, vehicle_type: v })}>
               <SelectTrigger><SelectValue placeholder="Vehículo" /></SelectTrigger>
               <SelectContent>
-                {["Auto","SUV","Pick-up"].map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                {ADMIN_VEHICLE_TYPES.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -609,7 +594,9 @@ function ApproveDialog({
             <Select value={form.payment_method} onValueChange={(v) => setForm({ ...form, payment_method: v })}>
               <SelectTrigger><SelectValue placeholder="Pago" /></SelectTrigger>
               <SelectContent>
-                {["Pagar después","MercadoPago","Transferencia"].map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                {ADMIN_PAYMENT_METHODS.map((v) => (
+                  <SelectItem key={v} value={v}>{v === "MercadoPago" ? "Mercado Pago" : v}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

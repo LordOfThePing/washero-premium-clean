@@ -57,6 +57,11 @@ import {
   paymentStatusLabels,
   formatPrice,
 } from "@/lib/booking-badges";
+import {
+  ADMIN_PAYMENT_METHODS,
+  ADMIN_VEHICLE_TYPES,
+  invokeCreateAdminBooking,
+} from "@/lib/admin-booking";
 
 // ===========================================================================
 // Types
@@ -616,6 +621,7 @@ export function BookingEditForm({
           slots={slots.data ?? []}
           slotWarning={slotWarning}
           onServiceChange={onServiceChange}
+          mode="edit"
         />
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>
@@ -677,8 +683,8 @@ export function BookingCreateForm({
     const match = slots.data.find(
       (s) => s.start_time.slice(0, 5) === form.scheduled_time.slice(0, 5),
     );
-    if (!match) return "Este horario no está marcado como disponible. Podés guardar igual como admin.";
-    if (!match.active) return "Este slot está inactivo. Podés guardar igual como admin.";
+    if (!match) return "Este horario no está en el calendario. Crear la reserva puede fallar si el slot no existe.";
+    if (!match.active) return "Este slot está inactivo. La reserva puede ser rechazada.";
     return null;
   }, [slots.data, form.scheduled_time]);
 
@@ -706,9 +712,10 @@ export function BookingCreateForm({
       ) {
         throw new Error("Completá los datos obligatorios.");
       }
-      const customerId = await upsertCustomerByPhone(form);
-      const { error } = await supabase.from("bookings").insert({
-        customer_id: customerId,
+      const time = form.scheduled_time.length === 5
+        ? `${form.scheduled_time}:00`
+        : form.scheduled_time;
+      const res = await invokeCreateAdminBooking({
         customer_name: form.customer_name.trim(),
         customer_phone: form.customer_phone.trim(),
         customer_email: form.customer_email?.trim() || null,
@@ -718,19 +725,25 @@ export function BookingCreateForm({
         service_id: form.service_id,
         service_name: form.service_name,
         scheduled_date: form.scheduled_date,
-        scheduled_time: form.scheduled_time,
-        duration_minutes: form.duration_minutes,
-        price: form.price,
+        scheduled_time: time,
         payment_method: form.payment_method,
         payment_status: form.payment_status,
         booking_status: form.booking_status,
         booking_source: "admin",
         notes: form.notes?.trim() || null,
+        selected_extras: [],
       });
-      if (error) throw error;
+      if (!res.ok) {
+        throw new Error(res.customer_message ?? "No pudimos crear la reserva.");
+      }
+      return res;
     },
-    onSuccess: () => {
-      toast.success("Reserva creada.");
+    onSuccess: (res) => {
+      toast.success(
+        res.price != null
+          ? `Reserva creada · ${formatPrice(res.price)}`
+          : "Reserva creada.",
+      );
       onCreated();
     },
     onError: (e: Error) => toast.error(e.message || "No pudimos crear la reserva."),
@@ -756,6 +769,7 @@ export function BookingCreateForm({
           slots={slots.data ?? []}
           slotWarning={slotWarning}
           onServiceChange={onServiceChange}
+          mode="create"
         />
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>
@@ -783,6 +797,7 @@ export function BookingFormFields({
   slots,
   slotWarning,
   onServiceChange,
+  mode = "edit",
 }: {
   form: Booking;
   update: (p: Partial<Booking>) => void;
@@ -791,7 +806,9 @@ export function BookingFormFields({
   slots: AvailabilitySlot[];
   slotWarning: string | null;
   onServiceChange: (id: string) => void;
+  mode?: "create" | "edit";
 }) {
+  const isCreate = mode === "create";
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       <Field label="Nombre">
@@ -845,7 +862,7 @@ export function BookingFormFields({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {["Auto", "SUV", "Camioneta", "Moto"].map((v) => (
+            {ADMIN_VEHICLE_TYPES.map((v) => (
               <SelectItem key={v} value={v}>
                 {v}
               </SelectItem>
@@ -906,32 +923,43 @@ export function BookingFormFields({
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" /> {slotWarning}
         </div>
       )}
-      <Field label="Duración (min)">
-        <Input
-          type="number"
-          min={15}
-          step={15}
-          value={form.duration_minutes}
-          onChange={(e) => update({ duration_minutes: Number(e.target.value) })}
-        />
-      </Field>
-      <Field label="Precio">
-        <Input
-          type="number"
-          min={0}
-          value={form.price}
-          onChange={(e) => update({ price: Number(e.target.value) })}
-        />
-      </Field>
+      {!isCreate && (
+        <Field label="Duración (min)">
+          <Input
+            type="number"
+            min={15}
+            step={15}
+            value={form.duration_minutes}
+            onChange={(e) => update({ duration_minutes: Number(e.target.value) })}
+          />
+        </Field>
+      )}
+      {isCreate ? (
+        <Field label="Precio" className="sm:col-span-2">
+          <p className="text-sm text-muted-foreground rounded-md border bg-muted/30 px-3 py-2">
+            Se calcula automáticamente al crear (servicio + vehículo + extras).
+            {form.price > 0 ? ` Vista previa local: ${formatPrice(form.price)}.` : ""}
+          </p>
+        </Field>
+      ) : (
+        <Field label="Precio">
+          <Input
+            type="number"
+            min={0}
+            value={form.price}
+            onChange={(e) => update({ price: Number(e.target.value) })}
+          />
+        </Field>
+      )}
       <Field label="Método de pago">
         <Select value={form.payment_method} onValueChange={(v) => update({ payment_method: v })}>
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {["Pagar después", "Efectivo", "Transferencia", "Mercado Pago"].map((v) => (
+            {ADMIN_PAYMENT_METHODS.map((v) => (
               <SelectItem key={v} value={v}>
-                {v}
+                {v === "MercadoPago" ? "Mercado Pago" : v}
               </SelectItem>
             ))}
           </SelectContent>

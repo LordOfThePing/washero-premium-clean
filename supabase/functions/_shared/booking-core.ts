@@ -22,7 +22,7 @@ export type CoreBookingInput = {
   payment_method: string;
   notes?: string | null;
   selected_extras?: string[];
-  source: "website" | "botmaker";
+  source: "website" | "botmaker" | "admin";
   is_test?: boolean;
   // Optional location fields (Google Places)
   place_id?: string | null;
@@ -30,7 +30,10 @@ export type CoreBookingInput = {
   address_lat?: number | null;
   address_lng?: number | null;
   // Coverage policy
-  enforce_coverage?: boolean; // website=true, botmaker=false
+  enforce_coverage?: boolean; // website=true, botmaker/admin=false unless coords provided
+  /** Admin / approval paths only — must match bookings check constraints */
+  requested_booking_status?: string;
+  requested_payment_status?: string;
 };
 
 export type CoreResult =
@@ -288,10 +291,26 @@ export async function tryCreateBooking(
   if (input.is_test) notes_parts.push("[TEST]");
   const notes = notes_parts.length ? notes_parts.join(" | ") : null;
 
-  let booking_status: "pending" | "confirmed" | "needs_review" =
-    input.source === "botmaker" ? "confirmed" : (inside_coverage ? "pending" : "needs_review");
-  if (vehicle_type === "Otro") booking_status = "needs_review";
+  const allowedStatuses = new Set([
+    "pending", "confirmed", "in_progress", "completed", "cancelled", "needs_review",
+  ]);
+  const allowedPaymentStatuses = new Set(["pending", "paid", "failed", "refunded", "cancelled"]);
+
+  let booking_status: "pending" | "confirmed" | "needs_review" | "in_progress" | "completed" | "cancelled";
+  if (input.source === "admin" && input.requested_booking_status && allowedStatuses.has(input.requested_booking_status)) {
+    booking_status = input.requested_booking_status as typeof booking_status;
+  } else if (input.source === "botmaker") {
+    booking_status = "confirmed";
+  } else {
+    booking_status = inside_coverage ? "pending" : "needs_review";
+  }
+  if (vehicle_type === "Otro" && input.source !== "admin") booking_status = "needs_review";
   if (input.source === "botmaker" && !inside_coverage) booking_status = "needs_review";
+
+  let payment_status = "pending";
+  if (input.requested_payment_status && allowedPaymentStatuses.has(input.requested_payment_status)) {
+    payment_status = input.requested_payment_status;
+  }
 
   const location_validation_status = inside_coverage
     ? `validated_${cov.match_type}`
@@ -306,7 +325,7 @@ export async function tryCreateBooking(
     duration_minutes: service.duration_minutes,
     price: total_price,
     payment_method,
-    payment_status: "pending",
+    payment_status,
     booking_status,
     booking_source: input.source,
     notes,
