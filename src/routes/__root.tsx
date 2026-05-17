@@ -86,11 +86,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { title: "Washero — Lavado de autos a domicilio en Zona Norte" },
       { name: "description", content: "Reservá tu lavado de auto a domicilio en Zona Norte. Vamos a tu casa, barrio o empresa." },
       { name: "author", content: "Washero" },
-      { property: "og:title", content: "Washero — Lavado de autos a domicilio" },
-      { property: "og:description", content: "Reservá tu lavado online en menos de 1 minuto." },
+      { property: "og:title", content: "Washero — Lavado de autos a domicilio en Zona Norte" },
+      { property: "og:description", content: "Reservá tu lavado de auto a domicilio en Zona Norte. Vamos a tu casa, barrio o empresa." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Washero — Lavado de autos a domicilio en Zona Norte" },
+      { name: "twitter:description", content: "Reservá tu lavado de auto a domicilio en Zona Norte. Vamos a tu casa, barrio o empresa." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/771ce0ca-ea37-47cc-ab45-6b8f8ad41a7f/id-preview-aeea652d--eaf76d90-af72-4cd6-aeb4-45e60da8f2a6.lovable.app-1778971734206.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/771ce0ca-ea37-47cc-ab45-6b8f8ad41a7f/id-preview-aeea652d--eaf76d90-af72-4cd6-aeb4-45e60da8f2a6.lovable.app-1778971734206.png" },
     ],
     links: [
       {
