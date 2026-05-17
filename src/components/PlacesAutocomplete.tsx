@@ -3,28 +3,152 @@ import { Loader2, MapPin, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_PUBLIC_KEY as string | undefined;
+function readMapsKey(): string | undefined {
+  const raw = import.meta.env.VITE_GOOGLE_MAPS_PUBLIC_KEY;
+  if (typeof raw !== "string") return undefined;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+const MAPS_KEY = readMapsKey();
+const LOAD_TIMEOUT_MS = 8000;
+
+type LoadFailure = "no_key" | "script_failed" | "timeout" | "places_missing";
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   interface Window { google?: any; __washeroMapsLoading?: Promise<void> }
 }
 
+function hasPlacesLibrary(): boolean {
+  return Boolean(window.google?.maps?.places);
+}
+
+function findExistingMapsScript(): HTMLScriptElement | null {
+  return document.querySelector<HTMLScriptElement>(
+    'script[src*="maps.googleapis.com/maps/api/js"]',
+  );
+}
+
+function waitForPlaces(deadlineMs: number): Promise<void> {
+  if (hasPlacesLibrary()) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + deadlineMs;
+    const tick = () => {
+      if (hasPlacesLibrary()) {
+        resolve();
+        return;
+      }
+      if (Date.now() >= deadline) {
+        reject(new Error("places_missing"));
+        return;
+      }
+      window.setTimeout(tick, 50);
+    };
+    tick();
+  });
+}
+
 function loadMapsApi(): Promise<void> {
   if (typeof window === "undefined") return Promise.reject(new Error("ssr"));
-  if (window.google?.maps?.places) return Promise.resolve();
+  if (hasPlacesLibrary()) return Promise.resolve();
   if (window.__washeroMapsLoading) return window.__washeroMapsLoading;
-  if (!MAPS_KEY) return Promise.reject(new Error("no_key"));
+
+  if (!MAPS_KEY) {
+    console.error("[PlacesAutocomplete] Missing VITE_GOOGLE_MAPS_PUBLIC_KEY");
+    return Promise.reject(new Error("no_key"));
+  }
+
   window.__washeroMapsLoading = new Promise<void>((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = `https://maps.googleapis.com/maps/api/js?key=${MAPS_KEY}&libraries=places&language=es&region=AR&loading=async`;
-    s.async = true;
-    s.defer = true;
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error("script_failed"));
-    document.head.appendChild(s);
+    let settled = false;
+
+    const finish = (err?: LoadFailure) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      if (err) {
+        window.__washeroMapsLoading = undefined;
+        reject(new Error(err));
+        return;
+      }
+      resolve();
+    };
+
+    const afterScriptEvent = () => {
+      waitForPlaces(LOAD_TIMEOUT_MS)
+        .then(() => {
+          if (!hasPlacesLibrary()) {
+            console.error("[PlacesAutocomplete] Places library missing after script load");
+            finish("places_missing");
+            return;
+          }
+          finish();
+        })
+        .catch(() => {
+          console.error("[PlacesAutocomplete] Places library missing after script load");
+          finish("places_missing");
+        });
+    };
+
+    const timeoutId = window.setTimeout(() => {
+      console.error("[PlacesAutocomplete] Google Maps script load timed out");
+      finish("timeout");
+    }, LOAD_TIMEOUT_MS);
+
+    const existing = findExistingMapsScript();
+    if (existing) {
+      if (hasPlacesLibrary()) {
+        finish();
+        return;
+      }
+      existing.addEventListener("load", afterScriptEvent, { once: true });
+      existing.addEventListener(
+        "error",
+        () => {
+          console.error("[PlacesAutocomplete] Google Maps script failed to load");
+          finish("script_failed");
+        },
+        { once: true },
+      );
+      // Script may already be loaded (no load event will fire).
+      if (existing.getAttribute("data-washero-maps-ready") === "true" || existing.readyState === "complete") {
+        afterScriptEvent();
+      }
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(MAPS_KEY)}&libraries=places&language=es&region=AR`;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      script.setAttribute("data-washero-maps-ready", "true");
+      afterScriptEvent();
+    };
+    script.onerror = () => {
+      console.error("[PlacesAutocomplete] Google Maps script failed to load");
+      finish("script_failed");
+    };
+    document.head.appendChild(script);
   });
+
   return window.__washeroMapsLoading;
+}
+
+const ERROR_MESSAGES: Record<LoadFailure, string> = {
+  no_key: "Falta configurar Google Maps.",
+  script_failed: "No pudimos cargar Google Maps. Revisá tu conexión e intentá de nuevo.",
+  timeout: "No pudimos cargar Google Maps. Tardó demasiado en cargar. Intentá de nuevo.",
+  places_missing:
+    "No pudimos cargar Google Maps. Revisá que Maps JavaScript API y Places API estén habilitadas.",
+};
+
+function parseLoadFailure(err: unknown): LoadFailure {
+  const code = err instanceof Error ? err.message : "";
+  if (code === "no_key" || code === "script_failed" || code === "timeout" || code === "places_missing") {
+    return code;
+  }
+  return "script_failed";
 }
 
 export type PlaceSelection = {
@@ -51,56 +175,121 @@ export function PlacesAutocomplete({
   const inputRef = useRef<HTMLInputElement | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const acRef = useRef<any>(null);
-  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "selected" | "error">(MAPS_KEY ? "loading" : "error");
+  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "selected" | "error">(
+    MAPS_KEY ? "loading" : "error",
+  );
+  const [errorKind, setErrorKind] = useState<LoadFailure | null>(MAPS_KEY ? null : "no_key");
 
   useEffect(() => {
-    if (!MAPS_KEY) return;
+    if (!MAPS_KEY) {
+      console.error("[PlacesAutocomplete] Missing VITE_GOOGLE_MAPS_PUBLIC_KEY");
+      setErrorKind("no_key");
+      setStatus("error");
+      return;
+    }
+
     let cancelled = false;
+
+    const attachAutocomplete = (): boolean => {
+      const input = inputRef.current;
+      if (!input || !window.google?.maps?.places) return false;
+      if (acRef.current) return true;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ac = new (window.google.maps.places as any).Autocomplete(input, {
+        componentRestrictions: { country: "ar" },
+        fields: ["place_id", "formatted_address", "geometry", "address_components"],
+        types: ["address"],
+      });
+      ac.addListener("place_changed", () => {
+        const p = ac.getPlace();
+        if (!p?.place_id || !p.geometry?.location) {
+          onSelect(null);
+          setStatus("ready");
+          return;
+        }
+        // Try to extract a neighborhood-like component
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const comps: any[] = p.address_components ?? [];
+        const findType = (t: string) => comps.find((c) => c.types?.includes(t))?.long_name ?? null;
+        const neighborhood =
+          findType("sublocality_level_1") ||
+          findType("sublocality") ||
+          findType("neighborhood") ||
+          findType("locality") ||
+          findType("administrative_area_level_2") ||
+          null;
+        const sel: PlaceSelection = {
+          place_id: p.place_id,
+          formatted_address: p.formatted_address ?? "",
+          lat: p.geometry.location.lat(),
+          lng: p.geometry.location.lng(),
+          neighborhood,
+        };
+        onChange(sel.formatted_address);
+        onSelect(sel);
+        setStatus("selected");
+      });
+      acRef.current = ac;
+      return true;
+    };
+
+    const fail = (kind: LoadFailure) => {
+      if (cancelled) return;
+      setErrorKind(kind);
+      setStatus("error");
+    };
+
     loadMapsApi()
       .then(() => {
-        if (cancelled || !inputRef.current || !window.google?.maps?.places) return;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const ac = new (window.google.maps.places as any).Autocomplete(inputRef.current, {
-          componentRestrictions: { country: "ar" },
-          fields: ["place_id", "formatted_address", "geometry", "address_components"],
-          types: ["address"],
-        });
-        ac.addListener("place_changed", () => {
-          const p = ac.getPlace();
-          if (!p?.place_id || !p.geometry?.location) {
-            onSelect(null);
+        if (cancelled) return;
+        if (!window.google?.maps?.places) {
+          console.error("[PlacesAutocomplete] Places library missing after load");
+          fail("places_missing");
+          return;
+        }
+        if (attachAutocomplete()) {
+          setStatus("ready");
+          return;
+        }
+        // Input ref can lag behind dialog mount; retry briefly before failing.
+        let attempts = 0;
+        const retry = () => {
+          if (cancelled) return;
+          if (attachAutocomplete()) {
             setStatus("ready");
             return;
           }
-          // Try to extract a neighborhood-like component
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const comps: any[] = p.address_components ?? [];
-          const findType = (t: string) => comps.find((c) => c.types?.includes(t))?.long_name ?? null;
-          const neighborhood =
-            findType("sublocality_level_1") ||
-            findType("sublocality") ||
-            findType("neighborhood") ||
-            findType("locality") ||
-            findType("administrative_area_level_2") ||
-            null;
-          const sel: PlaceSelection = {
-            place_id: p.place_id,
-            formatted_address: p.formatted_address ?? "",
-            lat: p.geometry.location.lat(),
-            lng: p.geometry.location.lng(),
-            neighborhood,
-          };
-          onChange(sel.formatted_address);
-          onSelect(sel);
-          setStatus("selected");
-        });
-        acRef.current = ac;
-        setStatus("ready");
+          attempts += 1;
+          if (attempts >= 20) {
+            console.error("[PlacesAutocomplete] Address input not available for autocomplete");
+            fail("script_failed");
+            return;
+          }
+          window.setTimeout(retry, 50);
+        };
+        retry();
       })
-      .catch(() => setStatus("error"));
-    return () => { cancelled = true; };
+      .catch((err) => {
+        if (cancelled) return;
+        const kind = parseLoadFailure(err);
+        if (kind === "timeout") {
+          console.error("[PlacesAutocomplete] Google Maps script load timed out");
+        } else if (kind === "script_failed") {
+          console.error("[PlacesAutocomplete] Google Maps script failed to load");
+        } else if (kind === "places_missing") {
+          console.error("[PlacesAutocomplete] Places library missing");
+        }
+        fail(kind);
+      });
+
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const errorMessage = errorKind ? ERROR_MESSAGES[errorKind] : ERROR_MESSAGES.script_failed;
 
   return (
     <div className="space-y-1.5">
@@ -121,16 +310,30 @@ export function PlacesAutocomplete({
           autoComplete="off"
         />
       </div>
-      <div className={cn(
-        "flex items-center gap-1 text-xs",
-        status === "selected" && "text-emerald-600",
-        status === "error" && "text-destructive",
-        (status === "loading" || status === "ready" || status === "idle") && "text-muted-foreground",
-      )}>
-        {status === "loading" && (<><Loader2 className="h-3 w-3 animate-spin" /> Cargando buscador de direcciones…</>)}
-        {status === "ready" && (<>Empezá a escribir y elegí una sugerencia.</>)}
-        {status === "selected" && (<><CheckCircle2 className="h-3 w-3" /> Dirección seleccionada.</>)}
-        {status === "error" && (<><AlertCircle className="h-3 w-3" /> No pudimos cargar el buscador. Revisá la conexión.</>)}
+      <div
+        className={cn(
+          "flex items-center gap-1 text-xs",
+          status === "selected" && "text-emerald-600",
+          status === "error" && "text-destructive",
+          (status === "loading" || status === "ready" || status === "idle") && "text-muted-foreground",
+        )}
+      >
+        {status === "loading" && (
+          <>
+            <Loader2 className="h-3 w-3 animate-spin" /> Cargando buscador de direcciones…
+          </>
+        )}
+        {status === "ready" && <>Empezá a escribir y elegí una sugerencia.</>}
+        {status === "selected" && (
+          <>
+            <CheckCircle2 className="h-3 w-3" /> Dirección seleccionada.
+          </>
+        )}
+        {status === "error" && (
+          <>
+            <AlertCircle className="h-3 w-3" /> {errorMessage}
+          </>
+        )}
       </div>
     </div>
   );
