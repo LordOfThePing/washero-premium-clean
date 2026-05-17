@@ -19,6 +19,11 @@ import { cn } from "@/lib/utils";
 const WHATSAPP_NUMBER = "5491176247835";
 const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUMBER}`;
 
+/** Google Places dropdown is portaled to document.body, outside Radix DialogContent. */
+function isGooglePlacesDropdownTarget(target: EventTarget | null) {
+  return target instanceof Element && !!target.closest(".pac-container");
+}
+
 const COVERAGE_COPY =
   "Por ahora Washero solo trabaja en Maschwitz, Escobar, Benavídez, Garín, Dique Luján, Tigre y Nordelta.";
 
@@ -222,8 +227,16 @@ function ReservarPage() {
         </SheetContent>
       </Sheet>
 
-      <Dialog open={bookingOpen} onOpenChange={setBookingOpen}>
-        <DialogContent className="max-w-[620px] max-h-[90vh] overflow-y-auto p-0">
+      <Dialog open={bookingOpen} onOpenChange={setBookingOpen} modal={false}>
+        <DialogContent
+          className="max-w-[620px] max-h-[90vh] overflow-y-auto p-0 z-[60]"
+          onPointerDownOutside={(e) => {
+            if (isGooglePlacesDropdownTarget(e.target)) e.preventDefault();
+          }}
+          onInteractOutside={(e) => {
+            if (isGooglePlacesDropdownTarget(e.target)) e.preventDefault();
+          }}
+        >
           {selectedDate && selectedTime && (
             <BookingForm
               services={services.data ?? []}

@@ -175,6 +175,7 @@ export function PlacesAutocomplete({
   const inputRef = useRef<HTMLInputElement | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const acRef = useRef<any>(null);
+  const pacBumpRef = useRef<(() => void) | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "selected" | "error">(
     MAPS_KEY ? "loading" : "error",
   );
@@ -201,6 +202,17 @@ export function PlacesAutocomplete({
         fields: ["place_id", "formatted_address", "geometry", "address_components"],
         types: ["address"],
       });
+      // Keep dropdown above modals (CSS handles z-index; this covers late-mounted containers).
+      const bumpPacZIndex = () => {
+        document.querySelectorAll<HTMLElement>(".pac-container").forEach((el) => {
+          el.style.zIndex = "999999";
+          el.style.pointerEvents = "auto";
+        });
+      };
+      pacBumpRef.current = bumpPacZIndex;
+      input.addEventListener("focus", bumpPacZIndex);
+      input.addEventListener("input", bumpPacZIndex);
+
       ac.addListener("place_changed", () => {
         const p = ac.getPlace();
         if (!p?.place_id || !p.geometry?.location) {
@@ -285,6 +297,13 @@ export function PlacesAutocomplete({
 
     return () => {
       cancelled = true;
+      const input = inputRef.current;
+      const bump = pacBumpRef.current;
+      if (input && bump) {
+        input.removeEventListener("focus", bump);
+        input.removeEventListener("input", bump);
+      }
+      pacBumpRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
