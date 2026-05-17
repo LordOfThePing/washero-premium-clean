@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Loader2,
@@ -14,6 +15,8 @@ import {
   XCircle,
   AlertTriangle,
   Pencil,
+  FileText,
+  Printer,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -62,6 +65,11 @@ import {
   ADMIN_VEHICLE_TYPES,
   invokeCreateAdminBooking,
 } from "@/lib/admin-booking";
+import {
+  fetchInvoiceForBooking,
+  fmtInvoiceDate,
+  generateInvoiceForBooking,
+} from "@/lib/invoices";
 
 // ===========================================================================
 // Types
@@ -265,6 +273,14 @@ function useLatestPayment(bookingId: string) {
   });
 }
 
+function useInvoiceForBooking(bookingId: string) {
+  return useQuery({
+    queryKey: ["admin", "booking-invoice", bookingId],
+    enabled: !!bookingId,
+    queryFn: () => fetchInvoiceForBooking(bookingId),
+  });
+}
+
 const MANUAL_PAYMENT_STATUSES = [
   { value: "paid", label: "Marcar como pagado" },
   { value: "pending", label: "Marcar como pendiente" },
@@ -287,8 +303,20 @@ export function BookingDetail({
 }) {
   const qc = useQueryClient();
   const latestPayment = useLatestPayment(booking.id);
+  const invoiceQuery = useInvoiceForBooking(booking.id);
   const [pendingManual, setPendingManual] = useState<string | null>(null);
   const [showRaw, setShowRaw] = useState(false);
+
+  const invalidatePaymentQueries = () => {
+    qc.invalidateQueries({ queryKey: ["admin", "bookings"] });
+    qc.invalidateQueries({ queryKey: ["admin", "calendar"] });
+    qc.invalidateQueries({ queryKey: ["admin", "metrics"] });
+    qc.invalidateQueries({ queryKey: ["admin", "booking-payment", booking.id] });
+    qc.invalidateQueries({ queryKey: ["admin", "booking-invoice", booking.id] });
+    qc.invalidateQueries({ queryKey: ["admin", "mp-payment-counts"] });
+    qc.invalidateQueries({ queryKey: ["admin", "mp-latest-payment"] });
+    qc.invalidateQueries({ queryKey: ["facturas"] });
+  };
 
   const manualPay = useMutation({
     mutationFn: async (newStatus: string) => {
@@ -317,18 +345,45 @@ export function BookingDetail({
         direction: "internal",
         message_text: `Pago actualizado manualmente por admin: ${newStatus}`,
       });
+
+      let invoiceCreated: boolean | null = null;
+      if (newStatus === "paid") {
+        const inv = await generateInvoiceForBooking(booking.id);
+        if (!inv.ok) throw new Error(inv.error);
+        invoiceCreated = inv.created;
+      }
+      return { newStatus, invoiceCreated };
     },
-    onSuccess: (_d, newStatus) => {
-      toast.success(`Pago marcado como ${paymentStatusLabels[newStatus] ?? newStatus}.`);
-      qc.invalidateQueries({ queryKey: ["admin", "bookings"] });
-      qc.invalidateQueries({ queryKey: ["admin", "calendar"] });
-      qc.invalidateQueries({ queryKey: ["admin", "metrics"] });
-      qc.invalidateQueries({ queryKey: ["admin", "booking-payment", booking.id] });
-      qc.invalidateQueries({ queryKey: ["admin", "mp-payment-counts"] });
-      qc.invalidateQueries({ queryKey: ["admin", "mp-latest-payment"] });
+    onSuccess: ({ newStatus, invoiceCreated }) => {
+      if (newStatus === "paid") {
+        toast.success(
+          invoiceCreated
+            ? "Pago marcado como pagado. Factura generada."
+            : "Pago actualizado. La factura ya existía.",
+        );
+      } else {
+        toast.success(`Pago marcado como ${paymentStatusLabels[newStatus] ?? newStatus}.`);
+      }
+      invalidatePaymentQueries();
       booking.payment_status = newStatus;
     },
-    onError: () => toast.error("No pudimos actualizar el estado del pago."),
+    onError: (e: Error) =>
+      toast.error(e.message || "No pudimos actualizar el estado del pago."),
+  });
+
+  const generateInvoice = useMutation({
+    mutationFn: async () => {
+      const inv = await generateInvoiceForBooking(booking.id);
+      if (!inv.ok) throw new Error(inv.error);
+      return inv;
+    },
+    onSuccess: (inv) => {
+      toast.success(
+        inv.created ? "Factura generada." : "La factura ya existía para esta reserva.",
+      );
+      invalidatePaymentQueries();
+    },
+    onError: (e: Error) => toast.error(e.message || "No pudimos generar la factura."),
   });
 
   const lp = latestPayment.data;
@@ -449,6 +504,61 @@ export function BookingDetail({
             </>
           ) : (
             <p className="text-muted-foreground">Sin registros de pago todavía.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-2 border-t pt-3">
+        <p className="text-xs font-medium text-muted-foreground">Factura / comprobante</p>
+        <div className="rounded-md border bg-muted/30 p-2 text-xs space-y-2">
+          {invoiceQuery.isLoading ? (
+            <p className="text-muted-foreground">Cargando factura…</p>
+          ) : invoiceQuery.data ? (
+            <>
+              <p>
+                <span className="font-mono font-medium">{invoiceQuery.data.invoice_number}</span>
+                <span className="text-muted-foreground"> · </span>
+                {fmtInvoiceDate(invoiceQuery.data.issued_at)}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" asChild>
+                  <Link
+                    to="/admin/facturas/$invoiceId"
+                    params={{ invoiceId: invoiceQuery.data.id }}
+                  >
+                    <FileText className="mr-1 h-3.5 w-3.5" /> Ver factura
+                  </Link>
+                </Button>
+                <Button size="sm" variant="outline" asChild>
+                  <Link
+                    to="/admin/facturas/$invoiceId"
+                    params={{ invoiceId: invoiceQuery.data.id }}
+                    search={{ print: "1" }}
+                  >
+                    <Printer className="mr-1 h-3.5 w-3.5" /> Imprimir factura
+                  </Link>
+                </Button>
+              </div>
+            </>
+          ) : booking.payment_status === "paid" ? (
+            <div className="space-y-2">
+              <p className="text-muted-foreground">Pago confirmado sin comprobante emitido.</p>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={generateInvoice.isPending}
+                onClick={() => generateInvoice.mutate()}
+              >
+                {generateInvoice.isPending && (
+                  <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                )}
+                Generar factura
+              </Button>
+            </div>
+          ) : (
+            <p className="text-muted-foreground">
+              La factura se genera al marcar el pago como pagado.
+            </p>
           )}
         </div>
       </div>

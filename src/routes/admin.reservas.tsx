@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { z } from "zod";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Search } from "lucide-react";
 
@@ -46,7 +47,12 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { Calendar as CalIcon } from "lucide-react";
 
+const reservasSearchSchema = z.object({
+  booking: z.string().uuid().optional(),
+});
+
 export const Route = createFileRoute("/admin/reservas")({
+  validateSearch: reservasSearchSchema,
   component: AdminReservas,
 });
 
@@ -60,6 +66,7 @@ const addDaysIso = (d: number) => {
 
 function AdminReservas() {
   const qc = useQueryClient();
+  const urlSearch = Route.useSearch();
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState<DateFilter>("future");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -109,6 +116,12 @@ function AdminReservas() {
         .some((v) => v.toLowerCase().includes(term)),
     );
   }, [bookingsQuery.data, search]);
+
+  useEffect(() => {
+    if (!urlSearch.booking) return;
+    const found = (bookingsQuery.data ?? []).find((b) => b.id === urlSearch.booking);
+    if (found) setSelected(found);
+  }, [urlSearch.booking, bookingsQuery.data]);
 
   const onMutate = () => {
     qc.invalidateQueries({ queryKey: ["admin", "bookings"] });

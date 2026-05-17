@@ -52,7 +52,12 @@ export function AdminSidebar() {
 
   const renderItems = (items: NavItem[]) =>
     items.map((item) => {
-      const active = item.to === "/admin" ? pathname === "/admin" : pathname === item.to;
+      const active =
+        item.to === "/admin"
+          ? pathname === "/admin"
+          : item.to === "/admin/facturas"
+            ? pathname === item.to || pathname.startsWith("/admin/facturas/")
+            : pathname === item.to;
       return (
         <SidebarMenuItem key={item.title + item.to}>
           <SidebarMenuButton asChild isActive={active}>

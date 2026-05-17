@@ -158,3 +158,15 @@
   cursor: pointer;
   touch-action: manipulation;
 }
+
+@media print {
+  [data-slot="sidebar"],
+  header,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+}
