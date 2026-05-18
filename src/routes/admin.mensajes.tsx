@@ -6,13 +6,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { ConversationDetail, InvalidEventsPanel } from "@/components/admin/mensajes-detail";
 import {
   badgeLabel,
+  buildAssignmentMap,
   conversationNeedsAttention,
+  extractConversationAssignment,
   formatInboxWhen,
   getConversationBadges,
   matchesInboxFilter,
   matchesSearch,
+  normalizeAssignment,
+  stripConversationRow,
   type BookingRequestRow,
   type BotmakerConversation,
+  type BotmakerConversationRow,
   type ConversationAssignment,
   type InboxBadge,
   type InboxFilter,
@@ -45,35 +50,63 @@ function MensajesPage() {
   const qc = useQueryClient();
   const isMobile = useIsMobile();
 
-  const conversations = useQuery({
+  const inbox = useQuery({
     queryKey: ["botmaker", "conversations"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const nested = await supabase
         .from("botmaker_conversations")
-        .select("*")
+        .select("*, conversation_assignments(*)")
         .order("last_message_at", { ascending: false, nullsFirst: false })
         .limit(250);
-      if (error) throw error;
-      return data as BotmakerConversation[];
+
+      if (!nested.error && nested.data) {
+        return (nested.data as BotmakerConversationRow[]).map((row) => ({
+          conversation: stripConversationRow(row),
+          assignment: extractConversationAssignment(row),
+        }));
+      }
+
+      const [convRes, assignRes] = await Promise.all([
+        supabase
+          .from("botmaker_conversations")
+          .select("*")
+          .order("last_message_at", { ascending: false, nullsFirst: false })
+          .limit(250),
+        supabase.from("conversation_assignments").select("*"),
+      ]);
+      if (convRes.error) throw convRes.error;
+      if (assignRes.error) throw assignRes.error;
+
+      const assignmentMap = buildAssignmentMap(
+        (assignRes.data ?? []).map((a) => normalizeAssignment(a)).filter((a): a is ConversationAssignment => !!a),
+      );
+
+      return (convRes.data ?? []).map((row) => ({
+        conversation: row as BotmakerConversation,
+        assignment: assignmentMap.get(row.id),
+      }));
     },
   });
 
-  const assignments = useQuery({
-    queryKey: ["botmaker", "assignments"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("conversation_assignments").select("*");
-      if (error) throw error;
-      return (data ?? []) as ConversationAssignment[];
-    },
-  });
+  const conversations = useMemo(
+    () => inbox.data?.map((row) => row.conversation) ?? [],
+    [inbox.data],
+  );
+  const assignmentMap = useMemo(() => {
+    const m = new Map<string, ConversationAssignment>();
+    for (const row of inbox.data ?? []) {
+      if (row.assignment) m.set(row.conversation.id, row.assignment);
+    }
+    return m;
+  }, [inbox.data]);
 
   const bookingRequests = useQuery({
-    queryKey: ["botmaker", "booking-requests-map", conversations.data?.length ?? 0],
-    enabled: (conversations.data?.length ?? 0) > 0,
+    queryKey: ["botmaker", "booking-requests-map", conversations.length],
+    enabled: conversations.length > 0,
     queryFn: async () => {
       const ids = [
         ...new Set(
-          (conversations.data ?? [])
+          conversations
             .map((c) => c.linked_booking_request_id)
             .filter((id): id is string => !!id),
         ),
@@ -132,16 +165,10 @@ function MensajesPage() {
     },
   });
 
-  const assignmentMap = useMemo(() => {
-    const m = new Map<string, ConversationAssignment>();
-    for (const a of assignments.data ?? []) m.set(a.botmaker_conversation_id, a);
-    return m;
-  }, [assignments.data]);
-
   const brMap = bookingRequests.data ?? {};
 
   const enriched = useMemo(() => {
-    return (conversations.data ?? []).map((c) => {
+    return conversations.map((c) => {
       const br = c.linked_booking_request_id ? brMap[c.linked_booking_request_id] : undefined;
       const assignment = assignmentMap.get(c.id);
       return {
@@ -151,7 +178,7 @@ function MensajesPage() {
         badges: getConversationBadges(c, assignment, br),
       };
     });
-  }, [conversations.data, brMap, assignmentMap]);
+  }, [conversations, brMap, assignmentMap]);
 
   const filtered = useMemo(() => {
     return enriched.filter(({ c, br, assignment }) => {
@@ -162,10 +189,9 @@ function MensajesPage() {
     });
   }, [enriched, filter, search]);
 
-  const selected =
-    enriched.find((e) => e.c.id === selectedId)?.c ??
-    (conversations.data ?? []).find((c) => c.id === selectedId) ??
-    null;
+  const selectedEntry = enriched.find((e) => e.c.id === selectedId);
+  const selected = selectedEntry?.c ?? null;
+  const selectedAssignment = selectedEntry?.assignment;
 
   const showList = !isMobile || !selectedId;
   const showDetail = !isMobile || !!selectedId;
@@ -252,8 +278,8 @@ function MensajesPage() {
             <ConversationList
               items={filtered}
               selectedId={selectedId}
-              isLoading={conversations.isLoading || assignments.isLoading}
-              isError={conversations.isError}
+              isLoading={inbox.isLoading}
+              isError={inbox.isError}
               onSelect={setSelectedId}
             />
           )}
@@ -261,8 +287,9 @@ function MensajesPage() {
             <div>
               {selected ? (
                 <ConversationDetail
+                  key={selected.id}
                   conversation={selected}
-                  assignment={assignmentMap.get(selected.id)}
+                  assignment={selectedAssignment}
                   bookingRequest={
                     selected.linked_booking_request_id
                       ? brMap[selected.linked_booking_request_id]
@@ -297,11 +324,15 @@ function BadgePill({ badge }: { badge: InboxBadge }) {
   const variant =
     badge === "requiere_humano"
       ? "destructive"
-      : badge === "auto_reservada" || badge === "convertida"
-        ? "default"
-        : badge === "test"
+      : badge === "en_progreso"
+        ? "secondary"
+        : badge === "resuelto"
           ? "outline"
-          : "secondary";
+          : badge === "auto_reservada" || badge === "convertida"
+            ? "default"
+            : badge === "test"
+              ? "outline"
+              : "secondary";
   return (
     <Badge variant={variant} className="text-[10px] font-normal">
       {badgeLabel(badge)}

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -30,6 +30,8 @@ import {
   isSummaryText,
   parseSummaryDebug,
   timelineBody,
+  normalizeAssignment,
+  type AssignmentStatus,
   type BookingRequestRow,
   type BotmakerConversation,
   type BotmakerEvent,
@@ -146,8 +148,12 @@ export function ConversationDetail({
   onBack?: () => void;
 }) {
   const [approveOpen, setApproveOpen] = useState(false);
-  const [noteDraft, setNoteDraft] = useState(assignment?.notes ?? "");
+  const [noteDraft, setNoteDraft] = useState(() => assignment?.notes ?? "");
   const qc = useQueryClient();
+
+  useEffect(() => {
+    setNoteDraft(assignment?.notes ?? "");
+  }, [conversation.id, assignment?.notes, assignment?.status, assignment?.updated_at]);
 
   const messages = useQuery({
     queryKey: ["botmaker", "messages", conversation.id],
@@ -238,21 +244,35 @@ export function ConversationDetail({
   });
 
   const saveAssignment = useMutation({
-    mutationFn: async (patch: { status?: string; notes?: string }) => {
-      const { error } = await supabase.from("conversation_assignments").upsert(
-        {
-          botmaker_conversation_id: conversation.id,
-          status: patch.status ?? assignment?.status ?? "open",
-          notes: patch.notes ?? assignment?.notes ?? null,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "botmaker_conversation_id" },
-      );
+    mutationFn: async (patch: { status?: AssignmentStatus; notes?: string }) => {
+      const payload = {
+        botmaker_conversation_id: conversation.id,
+        status: patch.status ?? assignment?.status ?? "open",
+        notes: patch.notes !== undefined ? patch.notes : (assignment?.notes ?? null),
+        updated_at: new Date().toISOString(),
+      };
+      const { data, error } = await supabase
+        .from("conversation_assignments")
+        .upsert(payload, { onConflict: "botmaker_conversation_id" })
+        .select("*")
+        .single();
       if (error) throw error;
+      const saved = normalizeAssignment(data);
+      if (!saved) throw new Error("Respuesta de asignación inválida");
+      return saved;
     },
-    onSuccess: () => {
+    onSuccess: (saved) => {
       toast.success("Estado actualizado");
-      qc.invalidateQueries({ queryKey: ["botmaker", "assignments"] });
+      qc.setQueryData<{ conversation: BotmakerConversation; assignment?: ConversationAssignment }[]>(
+        ["botmaker", "conversations"],
+        (prev) => {
+          if (!prev) return prev;
+          return prev.map((row) =>
+            row.conversation.id === conversation.id ? { ...row, assignment: saved } : row,
+          );
+        },
+      );
+      qc.invalidateQueries({ queryKey: ["botmaker", "conversations"] });
     },
     onError: (e: Error) => toast.error(e.message ?? "Error al guardar"),
   });
@@ -420,14 +440,17 @@ function HandoffPanel({
   onSaveNote: () => void;
   isPending: boolean;
 }) {
+  const status = assignment?.status;
   const statusLabel =
-    assignment?.status === "in_progress"
+    status === "in_progress"
       ? "En progreso"
-      : assignment?.status === "resolved"
+      : status === "resolved"
         ? "Resuelto"
-        : assignment?.status === "open"
+        : status === "open"
           ? "Requiere humano"
           : "Sin asignar";
+  const activeBtn = (s: AssignmentStatus) =>
+    status === s ? "border-primary bg-primary/10" : undefined;
   return (
     <div className="rounded-md border border-border/60 bg-muted/30 p-3 space-y-2">
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -439,13 +462,31 @@ function HandoffPanel({
         </Badge>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="outline" disabled={isPending} onClick={onMarkOpen}>
+        <Button
+          size="sm"
+          variant="outline"
+          className={activeBtn("open")}
+          disabled={isPending}
+          onClick={onMarkOpen}
+        >
           Requiere humano
         </Button>
-        <Button size="sm" variant="outline" disabled={isPending} onClick={onMarkProgress}>
+        <Button
+          size="sm"
+          variant="outline"
+          className={activeBtn("in_progress")}
+          disabled={isPending}
+          onClick={onMarkProgress}
+        >
           En progreso
         </Button>
-        <Button size="sm" variant="outline" disabled={isPending} onClick={onMarkResolved}>
+        <Button
+          size="sm"
+          variant="outline"
+          className={activeBtn("resolved")}
+          disabled={isPending}
+          onClick={onMarkResolved}
+        >
           Resuelto
         </Button>
       </div>

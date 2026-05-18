@@ -379,6 +379,13 @@ export type Database = {
             referencedRelation: "customers"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "conversation_assignments_botmaker_conversation_id_fkey"
+            columns: ["id"]
+            isOneToOne: false
+            referencedRelation: "conversation_assignments"
+            referencedColumns: ["botmaker_conversation_id"]
+          },
         ]
       }
       botmaker_events: {

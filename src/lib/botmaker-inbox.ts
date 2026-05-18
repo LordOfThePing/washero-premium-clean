@@ -1,3 +1,8 @@
+export type InboxConversationRow = {
+  conversation: BotmakerConversation;
+  assignment?: ConversationAssignment;
+};
+
 export type BotmakerConversation = {
   id: string;
   botmaker_conversation_id: string | null;
@@ -13,10 +18,12 @@ export type BotmakerConversation = {
   raw_payload: Record<string, unknown> | null;
 };
 
+export type AssignmentStatus = "open" | "in_progress" | "resolved";
+
 export type ConversationAssignment = {
   id: string;
   botmaker_conversation_id: string;
-  status: "open" | "in_progress" | "resolved";
+  status: AssignmentStatus;
   assigned_to: string | null;
   notes: string | null;
   created_at: string;
@@ -54,10 +61,67 @@ export type InboxBadge =
   | "nuevo"
   | "bot_activo"
   | "requiere_humano"
+  | "en_progreso"
+  | "resuelto"
   | "solicitud_reserva"
   | "auto_reservada"
   | "convertida"
   | "test";
+
+/** Nested row from `botmaker_conversations` + `conversation_assignments(*)`. */
+export type BotmakerConversationRow = BotmakerConversation & {
+  conversation_assignments?:
+    | ConversationAssignment
+    | ConversationAssignment[]
+    | null;
+};
+
+export function normalizeAssignmentStatus(status: string | null | undefined): AssignmentStatus | null {
+  if (status === "open" || status === "in_progress" || status === "resolved") return status;
+  return null;
+}
+
+export function normalizeAssignment(raw: unknown): ConversationAssignment | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const row = raw as Record<string, unknown>;
+  const conversationId = row.botmaker_conversation_id;
+  if (typeof conversationId !== "string" || !conversationId) return undefined;
+  const status = normalizeAssignmentStatus(String(row.status ?? "")) ?? "open";
+  return {
+    id: String(row.id ?? ""),
+    botmaker_conversation_id: conversationId,
+    status,
+    assigned_to: (row.assigned_to as string | null) ?? null,
+    notes: (row.notes as string | null) ?? null,
+    created_at: String(row.created_at ?? ""),
+    updated_at: String(row.updated_at ?? ""),
+  };
+}
+
+export function extractConversationAssignment(
+  row: BotmakerConversationRow,
+): ConversationAssignment | undefined {
+  const rel = row.conversation_assignments;
+  if (!rel) return undefined;
+  if (Array.isArray(rel)) return normalizeAssignment(rel[0]);
+  return normalizeAssignment(rel);
+}
+
+export function stripConversationRow(row: BotmakerConversationRow): BotmakerConversation {
+  const { conversation_assignments: _rel, ...conversation } = row;
+  return conversation;
+}
+
+export function buildAssignmentMap(
+  assignments: ConversationAssignment[],
+): Map<string, ConversationAssignment> {
+  const m = new Map<string, ConversationAssignment>();
+  for (const raw of assignments) {
+    const a = normalizeAssignment(raw);
+    if (a) m.set(a.botmaker_conversation_id, a);
+  }
+  return m;
+}
 
 export function isTestConversation(c: BotmakerConversation) {
   return c.raw_payload?.is_test === true;
@@ -117,20 +181,25 @@ export function getConversationBadges(
     badges.push("solicitud_reserva");
   }
 
-  const human =
-    assignment?.status === "open" ||
-    assignment?.status === "in_progress" ||
-    (!!br && !c.linked_booking_id && br.status !== "converted");
-  if (human) badges.push("requiere_humano");
+  if (assignment?.status === "open") badges.push("requiere_humano");
+  if (assignment?.status === "in_progress") badges.push("en_progreso");
+  if (assignment?.status === "resolved") badges.push("resuelto");
 
+  const inferredHuman =
+    !assignment && !!br && !c.linked_booking_id && br.status !== "converted";
+  if (inferredHuman) badges.push("requiere_humano");
+
+  const hasHandoff = badges.some((b) =>
+    ["requiere_humano", "en_progreso", "resuelto"].includes(b),
+  );
   const hasBookingState = badges.some((b) =>
     ["auto_reservada", "solicitud_reserva", "convertida"].includes(b),
   );
-  if (!hasBookingState && !human) {
+  if (!hasBookingState && !hasHandoff && !inferredHuman) {
     const ts = c.last_message_at ? Date.parse(c.last_message_at) : 0;
     if (ts && Date.now() - ts < 48 * 60 * 60 * 1000) badges.push("nuevo");
     if (c.last_sender_type === "bot") badges.push("bot_activo");
-  } else if (c.last_sender_type === "bot" && !human) {
+  } else if (c.last_sender_type === "bot" && !hasHandoff && !inferredHuman) {
     badges.push("bot_activo");
   }
 
@@ -141,6 +210,8 @@ const BADGE_LABELS: Record<InboxBadge, string> = {
   nuevo: "nuevo",
   bot_activo: "bot activo",
   requiere_humano: "requiere humano",
+  en_progreso: "en progreso",
+  resuelto: "resuelto",
   solicitud_reserva: "solicitud de reserva",
   auto_reservada: "auto-reservada",
   convertida: "convertida",
@@ -164,7 +235,7 @@ export function matchesInboxFilter(
       return (
         assignment?.status === "open" ||
         assignment?.status === "in_progress" ||
-        (!!br && !c.linked_booking_id && br.status !== "converted")
+        (!assignment && !!br && !c.linked_booking_id && br.status !== "converted")
       );
     case "booking_request":
       return !!c.linked_booking_request_id && !c.linked_booking_id;
