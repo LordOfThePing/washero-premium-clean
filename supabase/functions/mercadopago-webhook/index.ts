@@ -1,6 +1,7 @@
 // Supabase Edge Function: mercadopago-webhook
 // Receives Mercado Pago notifications and updates payments + bookings.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import { schedulePaymentConfirmedWhatsApp } from "../_shared/whatsapp-automation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -171,6 +172,7 @@ Deno.serve(async (req) => {
     try {
       const { error: invErr } = await admin.rpc("generate_invoice_for_booking", { _booking_id: externalRef });
       if (invErr) console.error("mercadopago-webhook: invoice generation failed", invErr);
+      else schedulePaymentConfirmedWhatsApp(admin, externalRef);
     } catch (e) {
       console.error("mercadopago-webhook: invoice exception", e);
     }

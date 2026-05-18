@@ -1,5 +1,6 @@
 // Operator-safe booking status updates (no price/customer/date changes).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import { schedulePaymentConfirmedWhatsApp } from "../_shared/whatsapp-automation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -191,6 +192,7 @@ Deno.serve(async (req) => {
     } else if (invId) {
       invoice_id = String(invId);
       invoice_created = true;
+      schedulePaymentConfirmedWhatsApp(admin, bookingId);
     }
   }
 

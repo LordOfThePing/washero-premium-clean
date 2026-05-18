@@ -72,6 +72,8 @@ import {
   generateInvoiceForBooking,
 } from "@/lib/invoices";
 import { OperatorAssignmentFields } from "@/components/admin/OperatorAssignmentFields";
+import { BookingWhatsAppActions } from "@/components/admin/BookingWhatsAppActions";
+import { sendBotmakerMessage } from "@/lib/botmaker-notifications";
 
 // ===========================================================================
 // Types
@@ -367,6 +369,14 @@ export function BookingDetail({
             ? "Pago marcado como pagado. Factura generada."
             : "Pago actualizado. La factura ya existía.",
         );
+        void sendBotmakerMessage({
+          booking_id: booking.id,
+          template_key: "payment_confirmed",
+        }).then((r) => {
+          if (!r.ok && r.error !== "duplicate_template") {
+            console.warn("[admin] payment WhatsApp", r.error);
+          }
+        });
       } else {
         toast.success(`Pago marcado como ${paymentStatusLabels[newStatus] ?? newStatus}.`);
       }
@@ -388,6 +398,12 @@ export function BookingDetail({
         inv.created ? "Factura generada." : "La factura ya existía para esta reserva.",
       );
       invalidatePaymentQueries();
+      if (booking.payment_status === "paid") {
+        void sendBotmakerMessage({
+          booking_id: booking.id,
+          template_key: "payment_confirmed",
+        });
+      }
     },
     onError: (e: Error) => toast.error(e.message || "No pudimos generar la factura."),
   });
@@ -470,6 +486,8 @@ export function BookingDetail({
       </div>
 
       <OperatorAssignmentFields booking={booking} />
+
+      <BookingWhatsAppActions booking={booking} />
 
       <div className="space-y-2 border-t pt-3">
         <p className="text-xs font-medium text-muted-foreground">Pago</p>

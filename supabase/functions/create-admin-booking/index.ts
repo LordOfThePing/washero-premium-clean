@@ -6,6 +6,10 @@ import {
   normalizePaymentMethod,
   normalizeVehicleType,
 } from "../_shared/admin-booking-api.ts";
+import {
+  scheduleBookingCreatedWhatsApp,
+  schedulePaymentConfirmedWhatsApp,
+} from "../_shared/whatsapp-automation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -156,6 +160,13 @@ Deno.serve(async (req) => {
     await admin.from("botmaker_conversations").update({
       linked_booking_id: bookingId,
     }).eq("id", body.conversation_id);
+  }
+
+  scheduleBookingCreatedWhatsApp(admin, bookingId, {
+    skipSources: ["botmaker"],
+  });
+  if ((body.payment_status ?? "pending") === "paid") {
+    schedulePaymentConfirmedWhatsApp(admin, bookingId);
   }
 
   return json({

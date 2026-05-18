@@ -32,3 +32,9 @@ verify_jwt = true
 
 [functions.validate-address-location]
 verify_jwt = false
+
+[functions.send-botmaker-message]
+verify_jwt = true
+
+[functions.send-booking-reminders]
+verify_jwt = true

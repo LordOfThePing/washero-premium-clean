@@ -2,6 +2,7 @@
 // Secure server-side booking creation; uses shared booking-core helper.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { tryCreateBooking } from "../_shared/booking-core.ts";
+import { scheduleBookingCreatedWhatsApp } from "../_shared/whatsapp-automation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -103,6 +104,7 @@ Deno.serve(async (req) => {
   }
 
   const { booking, service } = result;
+  scheduleBookingCreatedWhatsApp(admin, booking.id);
   const baseSummary = {
     service_name: booking.service_name,
     scheduled_date: booking.scheduled_date,

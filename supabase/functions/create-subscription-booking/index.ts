@@ -5,6 +5,7 @@ import {
   coreFailureResponse,
   normalizeVehicleType,
 } from "../_shared/admin-booking-api.ts";
+import { scheduleBookingCreatedWhatsApp } from "../_shared/whatsapp-automation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -271,6 +272,8 @@ Deno.serve(async (req) => {
       customer_message: "No pudimos finalizar la reserva de suscripción.",
     }, 500);
   }
+
+  scheduleBookingCreatedWhatsApp(admin, bookingId);
 
   return json({
     ok: true,
