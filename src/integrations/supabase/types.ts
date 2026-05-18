@@ -476,6 +476,44 @@ export type Database = {
           },
         ]
       }
+      conversation_assignments: {
+        Row: {
+          assigned_to: string | null
+          botmaker_conversation_id: string
+          created_at: string
+          id: string
+          notes: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          botmaker_conversation_id: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_to?: string | null
+          botmaker_conversation_id?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_assignments_botmaker_conversation_id_fkey"
+            columns: ["botmaker_conversation_id"]
+            isOneToOne: true
+            referencedRelation: "botmaker_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       communication_logs: {
         Row: {
           booking_id: string | null
