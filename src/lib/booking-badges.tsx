@@ -19,7 +19,14 @@ export const PAYMENT_STATUSES = [
 ] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
-export const BOOKING_SOURCES = ["website", "admin", "botmaker", "manual"] as const;
+export const BOOKING_SOURCES = [
+  "website",
+  "admin",
+  "botmaker",
+  "manual",
+  "subscription",
+  "admin_subscription",
+] as const;
 export type BookingSource = (typeof BOOKING_SOURCES)[number];
 
 export const bookingStatusLabels: Record<string, string> = {
@@ -44,6 +51,8 @@ export const bookingSourceLabels: Record<string, string> = {
   admin: "Admin",
   botmaker: "Botmaker",
   manual: "Manual",
+  subscription: "Suscripción",
+  admin_subscription: "Suscripción",
 };
 
 const statusColor: Record<string, string> = {

@@ -21,6 +21,7 @@ import {
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -93,6 +94,7 @@ export type Booking = {
   payment_status: string;
   booking_status: string;
   booking_source: string;
+  customer_subscription_id?: string | null;
   price: number;
   notes: string | null;
   created_at: string;
@@ -402,6 +404,13 @@ export function BookingDetail({
         <DialogDescription className="flex flex-wrap items-center gap-2">
           <PaymentStatusBadge value={booking.payment_status} />
           <BookingSourceBadge value={booking.booking_source} />
+          {(booking.booking_source === "admin_subscription" ||
+            booking.booking_source === "subscription" ||
+            booking.customer_subscription_id) && (
+            <Badge variant="secondary" className="bg-violet-100 text-violet-900 dark:bg-violet-500/15 dark:text-violet-300">
+              Suscripción
+            </Badge>
+          )}
           <span className="text-xs">{booking.payment_method}</span>
         </DialogDescription>
       </DialogHeader>

@@ -59,6 +59,7 @@ import {
   BookingSourceBadge,
   formatPrice,
 } from "@/lib/booking-badges";
+import { CustomerSubscriptionCard } from "@/components/admin/CustomerSubscriptionCard";
 
 export const Route = createFileRoute("/admin/clientes")({
   component: ClientesPage,
@@ -621,6 +622,8 @@ function CustomerDetail({
           </div>
         )}
       </div>
+
+      <CustomerSubscriptionCard customerId={customer.id} />
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">

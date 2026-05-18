@@ -188,6 +188,7 @@ export type Database = {
           coverage_zone_id: string | null
           coverage_zone_name: string | null
           created_at: string
+          customer_subscription_id: string | null
           customer_email: string | null
           customer_id: string | null
           customer_name: string
@@ -210,6 +211,7 @@ export type Database = {
           selected_extras: Json
           service_id: string | null
           service_name: string
+          subscription_usage_id: string | null
           updated_at: string
           vehicle_surcharge: number
           vehicle_type: string
@@ -223,6 +225,7 @@ export type Database = {
           coverage_zone_id?: string | null
           coverage_zone_name?: string | null
           created_at?: string
+          customer_subscription_id?: string | null
           customer_email?: string | null
           customer_id?: string | null
           customer_name: string
@@ -245,6 +248,7 @@ export type Database = {
           selected_extras?: Json
           service_id?: string | null
           service_name: string
+          subscription_usage_id?: string | null
           updated_at?: string
           vehicle_surcharge?: number
           vehicle_type: string
@@ -258,6 +262,7 @@ export type Database = {
           coverage_zone_id?: string | null
           coverage_zone_name?: string | null
           created_at?: string
+          customer_subscription_id?: string | null
           customer_email?: string | null
           customer_id?: string | null
           customer_name?: string
@@ -280,6 +285,7 @@ export type Database = {
           selected_extras?: Json
           service_id?: string | null
           service_name?: string
+          subscription_usage_id?: string | null
           updated_at?: string
           vehicle_surcharge?: number
           vehicle_type?: string
@@ -927,6 +933,147 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      customer_subscriptions: {
+        Row: {
+          billing_day: number | null
+          created_at: string
+          current_period_end: string
+          current_period_start: string
+          customer_id: string
+          id: string
+          notes: string | null
+          plan_id: string
+          start_date: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          billing_day?: number | null
+          created_at?: string
+          current_period_end: string
+          current_period_start: string
+          customer_id: string
+          id?: string
+          notes?: string | null
+          plan_id: string
+          start_date?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          billing_day?: number | null
+          created_at?: string
+          current_period_end?: string
+          current_period_start?: string
+          customer_id?: string
+          id?: string
+          notes?: string | null
+          plan_id?: string
+          start_date?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_subscriptions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscription_plans: {
+        Row: {
+          active: boolean
+          allowed_service_ids: string[]
+          created_at: string
+          description: string | null
+          display_order: number
+          id: string
+          monthly_price: number
+          name: string
+          updated_at: string
+          washes_per_month: number
+        }
+        Insert: {
+          active?: boolean
+          allowed_service_ids?: string[]
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          id?: string
+          monthly_price?: number
+          name: string
+          updated_at?: string
+          washes_per_month?: number
+        }
+        Update: {
+          active?: boolean
+          allowed_service_ids?: string[]
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          id?: string
+          monthly_price?: number
+          name?: string
+          updated_at?: string
+          washes_per_month?: number
+        }
+        Relationships: []
+      }
+      subscription_usages: {
+        Row: {
+          booking_id: string
+          created_at: string
+          customer_subscription_id: string
+          id: string
+          period_end: string
+          period_start: string
+          used_at: string
+        }
+        Insert: {
+          booking_id: string
+          created_at?: string
+          customer_subscription_id: string
+          id?: string
+          period_end: string
+          period_start: string
+          used_at?: string
+        }
+        Update: {
+          booking_id?: string
+          created_at?: string
+          customer_subscription_id?: string
+          id?: string
+          period_end?: string
+          period_start?: string
+          used_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_usages_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: true
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_usages_customer_subscription_id_fkey"
+            columns: ["customer_subscription_id"]
+            isOneToOne: false
+            referencedRelation: "customer_subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       service_areas: {
         Row: {
