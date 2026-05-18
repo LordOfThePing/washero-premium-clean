@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { Logo } from "@/components/brand/Logo";
 
+const WA_URL = "https://wa.me/5491176247835";
+
 const navLinks = [
   { label: "Inicio", to: "/" as const },
   { label: "Reservar lavado", to: "/reservar" as const },
@@ -32,7 +34,7 @@ export function PublicNavbar() {
 
         <div className="hidden items-center gap-2 md:flex">
           <Button variant="ghost" size="sm" asChild>
-            <a href="#" aria-label="WhatsApp">
+            <a href={WA_URL} target="_blank" rel="noreferrer" aria-label="WhatsApp">
               <MessageCircle className="h-4 w-4" />
               WhatsApp
             </a>
@@ -66,7 +68,7 @@ export function PublicNavbar() {
                   <Link to="/reservar">Reservar lavado</Link>
                 </Button>
                 <Button variant="outline" asChild>
-                  <a href="#">
+                  <a href={WA_URL} target="_blank" rel="noreferrer">
                     <MessageCircle className="h-4 w-4" />
                     WhatsApp
                   </a>

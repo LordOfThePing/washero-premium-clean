@@ -87,9 +87,13 @@ Deno.serve(async (req) => {
     console.warn("mercadopago-webhook: log insert failed", e);
   }
 
-  if (!paymentId || !["payment", "payment.updated", "payment.created"].includes(topic) && topic !== "payment") {
-    // We only act on payment notifications. Acknowledge anything else.
-    return ok({ ok: true, ignored: true, topic });
+  if (!paymentId) {
+    return ok({ ok: true, ignored: true, reason: "no_payment_id", topic });
+  }
+
+  const paymentTopics = new Set(["payment", "payment.updated", "payment.created"]);
+  if (topic && !paymentTopics.has(topic)) {
+    return ok({ ok: true, ignored: true, topic, reason: "unknown_topic" });
   }
 
   // Fetch the payment from MP to get authoritative status
