@@ -1,6 +1,7 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   FileText,
   Loader2,
@@ -45,6 +46,7 @@ export const Route = createFileRoute("/admin/facturas")({
 type StatusFilter = "all" | "issued" | "void" | "cancelled" | "pending";
 
 function FacturasPage() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [dateFrom, setDateFrom] = useState("");
@@ -203,32 +205,7 @@ function FacturasPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end flex-wrap gap-1">
-                        <Button size="sm" variant="outline" asChild>
-                          <Link
-                            to="/admin/facturas/$invoiceId"
-                            params={{ invoiceId: inv.id }}
-                          >
-                            Ver
-                          </Link>
-                        </Button>
-                        <Button size="sm" variant="ghost" asChild>
-                          <Link
-                            to="/admin/facturas/$invoiceId"
-                            params={{ invoiceId: inv.id }}
-                            search={{ print: "1" }}
-                          >
-                            <Printer className="h-3.5 w-3.5" />
-                          </Link>
-                        </Button>
-                        {inv.booking_id && (
-                          <Button size="sm" variant="ghost" asChild>
-                            <Link to="/admin/reservas" search={{ booking: inv.booking_id }}>
-                              <ClipboardList className="h-3.5 w-3.5" />
-                            </Link>
-                          </Button>
-                        )}
-                      </div>
+                      <InvoiceRowActions inv={inv} navigate={navigate} />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -237,6 +214,74 @@ function FacturasPage() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function InvoiceRowActions({
+  inv,
+  navigate,
+}: {
+  inv: Invoice;
+  navigate: ReturnType<typeof useNavigate>;
+}) {
+  const canOpen = !!inv.id;
+
+  const openInvoice = (print: boolean) => {
+    if (!inv.id) {
+      console.error("[facturas] missing invoice id", inv);
+      toast.error("No se puede abrir el comprobante: falta el id.");
+      return;
+    }
+    navigate({
+      to: "/admin/facturas/$invoiceId",
+      params: { invoiceId: inv.id },
+      search: print ? { print: "1" } : {},
+    });
+  };
+
+  const openBooking = () => {
+    if (!inv.booking_id) {
+      toast.error("Este comprobante no tiene reserva vinculada.");
+      return;
+    }
+    navigate({
+      to: "/admin/reservas",
+      search: { booking: inv.booking_id },
+    });
+  };
+
+  return (
+    <div className="flex justify-end flex-wrap gap-1">
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={!canOpen}
+        onClick={() => openInvoice(false)}
+      >
+        Ver
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        disabled={!canOpen}
+        title="Imprimir"
+        onClick={() => openInvoice(true)}
+      >
+        <Printer className="h-3.5 w-3.5" />
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        disabled={!inv.booking_id}
+        title="Ver reserva"
+        onClick={openBooking}
+      >
+        <ClipboardList className="h-3.5 w-3.5" />
+      </Button>
     </div>
   );
 }

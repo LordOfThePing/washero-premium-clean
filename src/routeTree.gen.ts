@@ -33,7 +33,7 @@ import { Route as AdminBotmakerRouteImport } from './routes/admin.botmaker'
 import { Route as AdminAppConfigRouteImport } from './routes/admin.app-config'
 import { Route as PublicReservarRouteImport } from './routes/_public.reservar'
 import { Route as PublicGraciasRouteImport } from './routes/_public.gracias'
-import { Route as AdminFacturasInvoiceIdRouteImport } from './routes/admin.facturas.$invoiceId'
+import { Route as AdminFacturasInvoiceIdRouteImport } from './routes/admin.facturas_.$invoiceId'
 
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
@@ -155,9 +155,9 @@ const PublicGraciasRoute = PublicGraciasRouteImport.update({
   getParentRoute: () => PublicRoute,
 } as any)
 const AdminFacturasInvoiceIdRoute = AdminFacturasInvoiceIdRouteImport.update({
-  id: '/$invoiceId',
-  path: '/$invoiceId',
-  getParentRoute: () => AdminFacturasRoute,
+  id: '/facturas_/$invoiceId',
+  path: '/facturas/$invoiceId',
+  getParentRoute: () => AdminRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -172,7 +172,7 @@ export interface FileRoutesByFullPath {
   '/admin/configuracion': typeof AdminConfiguracionRoute
   '/admin/disponibilidad': typeof AdminDisponibilidadRoute
   '/admin/early-access': typeof AdminEarlyAccessRoute
-  '/admin/facturas': typeof AdminFacturasRouteWithChildren
+  '/admin/facturas': typeof AdminFacturasRoute
   '/admin/finanzas': typeof AdminFinanzasRoute
   '/admin/leads-kipper': typeof AdminLeadsKipperRoute
   '/admin/login': typeof AdminLoginRoute
@@ -196,7 +196,7 @@ export interface FileRoutesByTo {
   '/admin/configuracion': typeof AdminConfiguracionRoute
   '/admin/disponibilidad': typeof AdminDisponibilidadRoute
   '/admin/early-access': typeof AdminEarlyAccessRoute
-  '/admin/facturas': typeof AdminFacturasRouteWithChildren
+  '/admin/facturas': typeof AdminFacturasRoute
   '/admin/finanzas': typeof AdminFinanzasRoute
   '/admin/leads-kipper': typeof AdminLeadsKipperRoute
   '/admin/login': typeof AdminLoginRoute
@@ -224,7 +224,7 @@ export interface FileRoutesById {
   '/admin/configuracion': typeof AdminConfiguracionRoute
   '/admin/disponibilidad': typeof AdminDisponibilidadRoute
   '/admin/early-access': typeof AdminEarlyAccessRoute
-  '/admin/facturas': typeof AdminFacturasRouteWithChildren
+  '/admin/facturas': typeof AdminFacturasRoute
   '/admin/finanzas': typeof AdminFinanzasRoute
   '/admin/leads-kipper': typeof AdminLeadsKipperRoute
   '/admin/login': typeof AdminLoginRoute
@@ -237,7 +237,7 @@ export interface FileRoutesById {
   '/admin/whatsapp-config': typeof AdminWhatsappConfigRoute
   '/_public/': typeof PublicIndexRoute
   '/admin/': typeof AdminIndexRoute
-  '/admin/facturas/$invoiceId': typeof AdminFacturasInvoiceIdRoute
+  '/admin/facturas_/$invoiceId': typeof AdminFacturasInvoiceIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -317,7 +317,7 @@ export interface FileRouteTypes {
     | '/admin/whatsapp-config'
     | '/_public/'
     | '/admin/'
-    | '/admin/facturas/$invoiceId'
+    | '/admin/facturas_/$invoiceId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -495,12 +495,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PublicGraciasRouteImport
       parentRoute: typeof PublicRoute
     }
-    '/admin/facturas/$invoiceId': {
-      id: '/admin/facturas/$invoiceId'
-      path: '/$invoiceId'
+    '/admin/facturas_/$invoiceId': {
+      id: '/admin/facturas_/$invoiceId'
+      path: '/facturas/$invoiceId'
       fullPath: '/admin/facturas/$invoiceId'
       preLoaderRoute: typeof AdminFacturasInvoiceIdRouteImport
-      parentRoute: typeof AdminFacturasRoute
+      parentRoute: typeof AdminRoute
     }
   }
 }
@@ -520,18 +520,6 @@ const PublicRouteChildren: PublicRouteChildren = {
 const PublicRouteWithChildren =
   PublicRoute._addFileChildren(PublicRouteChildren)
 
-interface AdminFacturasRouteChildren {
-  AdminFacturasInvoiceIdRoute: typeof AdminFacturasInvoiceIdRoute
-}
-
-const AdminFacturasRouteChildren: AdminFacturasRouteChildren = {
-  AdminFacturasInvoiceIdRoute: AdminFacturasInvoiceIdRoute,
-}
-
-const AdminFacturasRouteWithChildren = AdminFacturasRoute._addFileChildren(
-  AdminFacturasRouteChildren,
-)
-
 interface AdminRouteChildren {
   AdminAppConfigRoute: typeof AdminAppConfigRoute
   AdminBotmakerRoute: typeof AdminBotmakerRoute
@@ -540,7 +528,7 @@ interface AdminRouteChildren {
   AdminConfiguracionRoute: typeof AdminConfiguracionRoute
   AdminDisponibilidadRoute: typeof AdminDisponibilidadRoute
   AdminEarlyAccessRoute: typeof AdminEarlyAccessRoute
-  AdminFacturasRoute: typeof AdminFacturasRouteWithChildren
+  AdminFacturasRoute: typeof AdminFacturasRoute
   AdminFinanzasRoute: typeof AdminFinanzasRoute
   AdminLeadsKipperRoute: typeof AdminLeadsKipperRoute
   AdminLoginRoute: typeof AdminLoginRoute
@@ -552,6 +540,7 @@ interface AdminRouteChildren {
   AdminSuscripcionesRoute: typeof AdminSuscripcionesRoute
   AdminWhatsappConfigRoute: typeof AdminWhatsappConfigRoute
   AdminIndexRoute: typeof AdminIndexRoute
+  AdminFacturasInvoiceIdRoute: typeof AdminFacturasInvoiceIdRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
@@ -562,7 +551,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminConfiguracionRoute: AdminConfiguracionRoute,
   AdminDisponibilidadRoute: AdminDisponibilidadRoute,
   AdminEarlyAccessRoute: AdminEarlyAccessRoute,
-  AdminFacturasRoute: AdminFacturasRouteWithChildren,
+  AdminFacturasRoute: AdminFacturasRoute,
   AdminFinanzasRoute: AdminFinanzasRoute,
   AdminLeadsKipperRoute: AdminLeadsKipperRoute,
   AdminLoginRoute: AdminLoginRoute,
@@ -574,6 +563,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminSuscripcionesRoute: AdminSuscripcionesRoute,
   AdminWhatsappConfigRoute: AdminWhatsappConfigRoute,
   AdminIndexRoute: AdminIndexRoute,
+  AdminFacturasInvoiceIdRoute: AdminFacturasInvoiceIdRoute,
 }
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
