@@ -165,6 +165,9 @@ where email = '${userEmail}';`;
           >
             Cerrar sesión
           </Button>
+          <Button asChild variant="outline">
+            <Link to="/operator/login">App operador</Link>
+          </Button>
           <Button asChild variant="ghost">
             <Link to="/">Volver al inicio</Link>
           </Button>

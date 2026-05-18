@@ -44,7 +44,8 @@ export function useAdminAuth(): AdminAuthState {
       }
       const { profile, error } = await fetchMyAdminProfile();
       if (!active) return;
-      if (profile && profile.active) {
+      const adminRoles = ["owner", "admin"];
+      if (profile && profile.active && adminRoles.includes(profile.role)) {
         setState({ status: "admin", session, isAdmin: true, profile, rpcError: null });
       } else {
         setState({ status: "not_admin", session, isAdmin: false, profile: null, rpcError: error });

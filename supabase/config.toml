@@ -9,6 +9,9 @@ verify_jwt = true
 [functions.create-subscription-booking]
 verify_jwt = true
 
+[functions.operator-update-booking]
+verify_jwt = true
+
 [functions.mercadopago-webhook]
 verify_jwt = false
 

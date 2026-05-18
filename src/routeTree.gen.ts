@@ -9,10 +9,17 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as OperatorRouteImport } from './routes/operator'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as PublicRouteImport } from './routes/_public'
+import { Route as OperatorIndexRouteImport } from './routes/operator.index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as PublicIndexRouteImport } from './routes/_public.index'
+import { Route as OperatorSemanaRouteImport } from './routes/operator.semana'
+import { Route as OperatorPerfilRouteImport } from './routes/operator.perfil'
+import { Route as OperatorPendientesRouteImport } from './routes/operator.pendientes'
+import { Route as OperatorLoginRouteImport } from './routes/operator.login'
+import { Route as OperatorHoyRouteImport } from './routes/operator.hoy'
 import { Route as AdminWhatsappConfigRouteImport } from './routes/admin.whatsapp-config'
 import { Route as AdminSuscripcionesRouteImport } from './routes/admin.suscripciones'
 import { Route as AdminReservasRouteImport } from './routes/admin.reservas'
@@ -33,8 +40,14 @@ import { Route as AdminBotmakerRouteImport } from './routes/admin.botmaker'
 import { Route as AdminAppConfigRouteImport } from './routes/admin.app-config'
 import { Route as PublicReservarRouteImport } from './routes/_public.reservar'
 import { Route as PublicGraciasRouteImport } from './routes/_public.gracias'
+import { Route as OperatorReservaBookingIdRouteImport } from './routes/operator.reserva.$bookingId'
 import { Route as AdminFacturasInvoiceIdRouteImport } from './routes/admin.facturas_.$invoiceId'
 
+const OperatorRoute = OperatorRouteImport.update({
+  id: '/operator',
+  path: '/operator',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
@@ -43,6 +56,11 @@ const AdminRoute = AdminRouteImport.update({
 const PublicRoute = PublicRouteImport.update({
   id: '/_public',
   getParentRoute: () => rootRouteImport,
+} as any)
+const OperatorIndexRoute = OperatorIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => OperatorRoute,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
@@ -53,6 +71,31 @@ const PublicIndexRoute = PublicIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => PublicRoute,
+} as any)
+const OperatorSemanaRoute = OperatorSemanaRouteImport.update({
+  id: '/semana',
+  path: '/semana',
+  getParentRoute: () => OperatorRoute,
+} as any)
+const OperatorPerfilRoute = OperatorPerfilRouteImport.update({
+  id: '/perfil',
+  path: '/perfil',
+  getParentRoute: () => OperatorRoute,
+} as any)
+const OperatorPendientesRoute = OperatorPendientesRouteImport.update({
+  id: '/pendientes',
+  path: '/pendientes',
+  getParentRoute: () => OperatorRoute,
+} as any)
+const OperatorLoginRoute = OperatorLoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => OperatorRoute,
+} as any)
+const OperatorHoyRoute = OperatorHoyRouteImport.update({
+  id: '/hoy',
+  path: '/hoy',
+  getParentRoute: () => OperatorRoute,
 } as any)
 const AdminWhatsappConfigRoute = AdminWhatsappConfigRouteImport.update({
   id: '/whatsapp-config',
@@ -154,6 +197,12 @@ const PublicGraciasRoute = PublicGraciasRouteImport.update({
   path: '/gracias',
   getParentRoute: () => PublicRoute,
 } as any)
+const OperatorReservaBookingIdRoute =
+  OperatorReservaBookingIdRouteImport.update({
+    id: '/reserva/$bookingId',
+    path: '/reserva/$bookingId',
+    getParentRoute: () => OperatorRoute,
+  } as any)
 const AdminFacturasInvoiceIdRoute = AdminFacturasInvoiceIdRouteImport.update({
   id: '/facturas_/$invoiceId',
   path: '/facturas/$invoiceId',
@@ -163,6 +212,7 @@ const AdminFacturasInvoiceIdRoute = AdminFacturasInvoiceIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof PublicIndexRoute
   '/admin': typeof AdminRouteWithChildren
+  '/operator': typeof OperatorRouteWithChildren
   '/gracias': typeof PublicGraciasRoute
   '/reservar': typeof PublicReservarRoute
   '/admin/app-config': typeof AdminAppConfigRoute
@@ -183,8 +233,15 @@ export interface FileRoutesByFullPath {
   '/admin/reservas': typeof AdminReservasRoute
   '/admin/suscripciones': typeof AdminSuscripcionesRoute
   '/admin/whatsapp-config': typeof AdminWhatsappConfigRoute
+  '/operator/hoy': typeof OperatorHoyRoute
+  '/operator/login': typeof OperatorLoginRoute
+  '/operator/pendientes': typeof OperatorPendientesRoute
+  '/operator/perfil': typeof OperatorPerfilRoute
+  '/operator/semana': typeof OperatorSemanaRoute
   '/admin/': typeof AdminIndexRoute
+  '/operator/': typeof OperatorIndexRoute
   '/admin/facturas/$invoiceId': typeof AdminFacturasInvoiceIdRoute
+  '/operator/reserva/$bookingId': typeof OperatorReservaBookingIdRoute
 }
 export interface FileRoutesByTo {
   '/gracias': typeof PublicGraciasRoute
@@ -207,14 +264,22 @@ export interface FileRoutesByTo {
   '/admin/reservas': typeof AdminReservasRoute
   '/admin/suscripciones': typeof AdminSuscripcionesRoute
   '/admin/whatsapp-config': typeof AdminWhatsappConfigRoute
+  '/operator/hoy': typeof OperatorHoyRoute
+  '/operator/login': typeof OperatorLoginRoute
+  '/operator/pendientes': typeof OperatorPendientesRoute
+  '/operator/perfil': typeof OperatorPerfilRoute
+  '/operator/semana': typeof OperatorSemanaRoute
   '/': typeof PublicIndexRoute
   '/admin': typeof AdminIndexRoute
+  '/operator': typeof OperatorIndexRoute
   '/admin/facturas/$invoiceId': typeof AdminFacturasInvoiceIdRoute
+  '/operator/reserva/$bookingId': typeof OperatorReservaBookingIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_public': typeof PublicRouteWithChildren
   '/admin': typeof AdminRouteWithChildren
+  '/operator': typeof OperatorRouteWithChildren
   '/_public/gracias': typeof PublicGraciasRoute
   '/_public/reservar': typeof PublicReservarRoute
   '/admin/app-config': typeof AdminAppConfigRoute
@@ -235,15 +300,23 @@ export interface FileRoutesById {
   '/admin/reservas': typeof AdminReservasRoute
   '/admin/suscripciones': typeof AdminSuscripcionesRoute
   '/admin/whatsapp-config': typeof AdminWhatsappConfigRoute
+  '/operator/hoy': typeof OperatorHoyRoute
+  '/operator/login': typeof OperatorLoginRoute
+  '/operator/pendientes': typeof OperatorPendientesRoute
+  '/operator/perfil': typeof OperatorPerfilRoute
+  '/operator/semana': typeof OperatorSemanaRoute
   '/_public/': typeof PublicIndexRoute
   '/admin/': typeof AdminIndexRoute
+  '/operator/': typeof OperatorIndexRoute
   '/admin/facturas_/$invoiceId': typeof AdminFacturasInvoiceIdRoute
+  '/operator/reserva/$bookingId': typeof OperatorReservaBookingIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/admin'
+    | '/operator'
     | '/gracias'
     | '/reservar'
     | '/admin/app-config'
@@ -264,8 +337,15 @@ export interface FileRouteTypes {
     | '/admin/reservas'
     | '/admin/suscripciones'
     | '/admin/whatsapp-config'
+    | '/operator/hoy'
+    | '/operator/login'
+    | '/operator/pendientes'
+    | '/operator/perfil'
+    | '/operator/semana'
     | '/admin/'
+    | '/operator/'
     | '/admin/facturas/$invoiceId'
+    | '/operator/reserva/$bookingId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/gracias'
@@ -288,13 +368,21 @@ export interface FileRouteTypes {
     | '/admin/reservas'
     | '/admin/suscripciones'
     | '/admin/whatsapp-config'
+    | '/operator/hoy'
+    | '/operator/login'
+    | '/operator/pendientes'
+    | '/operator/perfil'
+    | '/operator/semana'
     | '/'
     | '/admin'
+    | '/operator'
     | '/admin/facturas/$invoiceId'
+    | '/operator/reserva/$bookingId'
   id:
     | '__root__'
     | '/_public'
     | '/admin'
+    | '/operator'
     | '/_public/gracias'
     | '/_public/reservar'
     | '/admin/app-config'
@@ -315,18 +403,33 @@ export interface FileRouteTypes {
     | '/admin/reservas'
     | '/admin/suscripciones'
     | '/admin/whatsapp-config'
+    | '/operator/hoy'
+    | '/operator/login'
+    | '/operator/pendientes'
+    | '/operator/perfil'
+    | '/operator/semana'
     | '/_public/'
     | '/admin/'
+    | '/operator/'
     | '/admin/facturas_/$invoiceId'
+    | '/operator/reserva/$bookingId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   PublicRoute: typeof PublicRouteWithChildren
   AdminRoute: typeof AdminRouteWithChildren
+  OperatorRoute: typeof OperatorRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/operator': {
+      id: '/operator'
+      path: '/operator'
+      fullPath: '/operator'
+      preLoaderRoute: typeof OperatorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin': {
       id: '/admin'
       path: '/admin'
@@ -341,6 +444,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PublicRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/operator/': {
+      id: '/operator/'
+      path: '/'
+      fullPath: '/operator/'
+      preLoaderRoute: typeof OperatorIndexRouteImport
+      parentRoute: typeof OperatorRoute
+    }
     '/admin/': {
       id: '/admin/'
       path: '/'
@@ -354,6 +464,41 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof PublicIndexRouteImport
       parentRoute: typeof PublicRoute
+    }
+    '/operator/semana': {
+      id: '/operator/semana'
+      path: '/semana'
+      fullPath: '/operator/semana'
+      preLoaderRoute: typeof OperatorSemanaRouteImport
+      parentRoute: typeof OperatorRoute
+    }
+    '/operator/perfil': {
+      id: '/operator/perfil'
+      path: '/perfil'
+      fullPath: '/operator/perfil'
+      preLoaderRoute: typeof OperatorPerfilRouteImport
+      parentRoute: typeof OperatorRoute
+    }
+    '/operator/pendientes': {
+      id: '/operator/pendientes'
+      path: '/pendientes'
+      fullPath: '/operator/pendientes'
+      preLoaderRoute: typeof OperatorPendientesRouteImport
+      parentRoute: typeof OperatorRoute
+    }
+    '/operator/login': {
+      id: '/operator/login'
+      path: '/login'
+      fullPath: '/operator/login'
+      preLoaderRoute: typeof OperatorLoginRouteImport
+      parentRoute: typeof OperatorRoute
+    }
+    '/operator/hoy': {
+      id: '/operator/hoy'
+      path: '/hoy'
+      fullPath: '/operator/hoy'
+      preLoaderRoute: typeof OperatorHoyRouteImport
+      parentRoute: typeof OperatorRoute
     }
     '/admin/whatsapp-config': {
       id: '/admin/whatsapp-config'
@@ -495,6 +640,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PublicGraciasRouteImport
       parentRoute: typeof PublicRoute
     }
+    '/operator/reserva/$bookingId': {
+      id: '/operator/reserva/$bookingId'
+      path: '/reserva/$bookingId'
+      fullPath: '/operator/reserva/$bookingId'
+      preLoaderRoute: typeof OperatorReservaBookingIdRouteImport
+      parentRoute: typeof OperatorRoute
+    }
     '/admin/facturas_/$invoiceId': {
       id: '/admin/facturas_/$invoiceId'
       path: '/facturas/$invoiceId'
@@ -568,9 +720,34 @@ const AdminRouteChildren: AdminRouteChildren = {
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
+interface OperatorRouteChildren {
+  OperatorHoyRoute: typeof OperatorHoyRoute
+  OperatorLoginRoute: typeof OperatorLoginRoute
+  OperatorPendientesRoute: typeof OperatorPendientesRoute
+  OperatorPerfilRoute: typeof OperatorPerfilRoute
+  OperatorSemanaRoute: typeof OperatorSemanaRoute
+  OperatorIndexRoute: typeof OperatorIndexRoute
+  OperatorReservaBookingIdRoute: typeof OperatorReservaBookingIdRoute
+}
+
+const OperatorRouteChildren: OperatorRouteChildren = {
+  OperatorHoyRoute: OperatorHoyRoute,
+  OperatorLoginRoute: OperatorLoginRoute,
+  OperatorPendientesRoute: OperatorPendientesRoute,
+  OperatorPerfilRoute: OperatorPerfilRoute,
+  OperatorSemanaRoute: OperatorSemanaRoute,
+  OperatorIndexRoute: OperatorIndexRoute,
+  OperatorReservaBookingIdRoute: OperatorReservaBookingIdRoute,
+}
+
+const OperatorRouteWithChildren = OperatorRoute._addFileChildren(
+  OperatorRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   PublicRoute: PublicRouteWithChildren,
   AdminRoute: AdminRouteWithChildren,
+  OperatorRoute: OperatorRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

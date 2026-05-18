@@ -71,6 +71,7 @@ import {
   fmtInvoiceDate,
   generateInvoiceForBooking,
 } from "@/lib/invoices";
+import { OperatorAssignmentFields } from "@/components/admin/OperatorAssignmentFields";
 
 // ===========================================================================
 // Types
@@ -95,6 +96,9 @@ export type Booking = {
   booking_status: string;
   booking_source: string;
   customer_subscription_id?: string | null;
+  assigned_operator_id?: string | null;
+  assigned_vehicle_label?: string | null;
+  operator_notes?: string | null;
   price: number;
   notes: string | null;
   created_at: string;
@@ -464,6 +468,8 @@ export function BookingDetail({
           {new Date(booking.updated_at).toLocaleString("es-AR")}
         </div>
       </div>
+
+      <OperatorAssignmentFields booking={booking} />
 
       <div className="space-y-2 border-t pt-3">
         <p className="text-xs font-medium text-muted-foreground">Pago</p>

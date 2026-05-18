@@ -183,6 +183,9 @@ export type Database = {
           address: string
           address_lat: number | null
           address_lng: number | null
+          assigned_operator_id: string | null
+          assigned_vehicle_label: string | null
+          operator_notes: string | null
           booking_source: string
           booking_status: string
           coverage_zone_id: string | null
@@ -1199,6 +1202,17 @@ export type Database = {
         }[]
       }
       is_admin: { Args: never; Returns: boolean }
+      is_operator: { Args: never; Returns: boolean }
+      get_my_operator_profile: {
+        Args: never
+        Returns: {
+          staff_id: string
+          user_id: string
+          email: string
+          role: string
+          active: boolean
+        }[]
+      }
       next_invoice_number: { Args: never; Returns: string }
     }
     Enums: {
