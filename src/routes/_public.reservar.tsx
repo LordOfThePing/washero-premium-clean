@@ -8,12 +8,7 @@ const parseFlag = (value: unknown) => {
   return normalized === "true" || normalized === "1" || normalized === "yes";
 };
 
-const DEV_FORCE_ADDRESS_FIRST = import.meta.env.DEV;
-
-const ADDRESS_FIRST_ENABLED =
-  DEV_FORCE_ADDRESS_FIRST ||
-  parseFlag(import.meta.env.VITE_ADDRESS_FIRST_BOOKING) ||
-  parseFlag(import.meta.env.VITE_ADDRESS_FIRST_ENABLED);
+const ADDRESS_FIRST_ENABLED = true;
 
 if (import.meta.env.DEV) {
   console.log("[Reservar] Address-first flags", {
