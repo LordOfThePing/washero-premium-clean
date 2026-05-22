@@ -37,6 +37,29 @@ function addDays(iso: string, days: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
+const PUBLIC_MIN_LEAD_MINUTES = 120;
+
+function slotStartUtcMsFromBuenosAires(dateIso: string, timeHHMM: string) {
+  const [y, m, d] = dateIso.split("-").map(Number);
+  const [hh, mm] = String(timeHHMM).slice(0, 5).split(":").map(Number);
+  if (
+    !Number.isFinite(y) ||
+    !Number.isFinite(m) ||
+    !Number.isFinite(d) ||
+    !Number.isFinite(hh) ||
+    !Number.isFinite(mm)
+  ) {
+    return null;
+  }
+  return Date.UTC(y, m - 1, d, hh + 3, mm, 0, 0);
+}
+
+function isSlotTooSoonForPublic(dateIso: string, timeHHMM: string, nowMs = Date.now()) {
+  const slotMs = slotStartUtcMsFromBuenosAires(dateIso, timeHHMM);
+  if (slotMs == null) return true;
+  return slotMs < nowMs + PUBLIC_MIN_LEAD_MINUTES * 60_000;
+}
+
 type Payload = {
   address_lat?: number;
   address_lng?: number;
@@ -77,16 +100,26 @@ Deno.serve(async (req) => {
   if (dateFrom < today) dateFrom = today;
   if (dateTo < dateFrom) dateTo = addDays(dateFrom, 13);
 
-  let durationMinutes = typeof body.duration_minutes === "number" ? body.duration_minutes : 60;
-  if (body.service_id) {
-    const { data: svc } = await admin
+  const serviceId = (body.service_id ?? "").trim();
+  let durationMinutes: number | null =
+    typeof body.duration_minutes === "number" && body.duration_minutes > 0
+      ? Math.round(body.duration_minutes)
+      : null;
+
+  if (serviceId) {
+    const { data: svc, error: svcErr } = await admin
       .from("services")
       .select("duration_minutes, active")
-      .eq("id", body.service_id)
+      .eq("id", serviceId)
       .maybeSingle();
-    if (svc?.active && typeof svc.duration_minutes === "number") {
-      durationMinutes = svc.duration_minutes;
+    if (svcErr || !svc?.active || typeof svc.duration_minutes !== "number" || svc.duration_minutes <= 0) {
+      return json({ ok: false, error: "invalid_service" }, 400);
     }
+    durationMinutes = svc.duration_minutes;
+  }
+
+  if (durationMinutes == null || durationMinutes <= 0) {
+    return json({ ok: false, error: "missing_duration" }, 400);
   }
 
   const { data: slots, error: slotErr } = await admin
@@ -140,6 +173,7 @@ Deno.serve(async (req) => {
   }
 
   const daysMap = new Map<string, ScoredLogisticSlot[]>();
+  const nowMs = Date.now();
 
   for (const raw of slots ?? []) {
     const slot: SlotRow = {
@@ -150,6 +184,7 @@ Deno.serve(async (req) => {
       capacity: (raw.capacity as number) ?? 1,
     };
 
+    if (isSlotTooSoonForPublic(slot.date, slot.start_time, nowMs)) continue;
     if (!serviceFitsSlot(slot, durationMinutes)) continue;
 
     const onDate = bookingsByDate.get(slot.date) ?? [];

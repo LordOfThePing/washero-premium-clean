@@ -27,6 +27,7 @@ import {
   fetchAvailability,
   fetchPricing,
   fetchServices,
+  filterTooSoonSlots,
   formatARS,
   formatDayLong,
   isoFromDate,
@@ -46,7 +47,8 @@ export function CalendarFirstFlow() {
 
   const slotsByDate = useMemo(() => {
     const map = new Map<string, PublicSlot[]>();
-    for (const s of availability.data ?? []) {
+    const safeSlots = filterTooSoonSlots(availability.data ?? []);
+    for (const s of safeSlots) {
       if (!map.has(s.date)) map.set(s.date, []);
       map.get(s.date)!.push(s);
     }
@@ -391,6 +393,7 @@ function BookingForm({
       const status = res?.status ?? "";
       const friendly =
         status === "outside_coverage" ? "Esa dirección está fuera de nuestra cobertura actual." :
+        status === "slot_too_soon" ? "Ese horario ya no está disponible. Elegí un horario más adelante." :
         status === "slot_full" || status === "slot_not_found" || status === "service_does_not_fit_slot"
           ? "Ese horario ya no está disponible para el servicio elegido. Elegí otro horario." :
         status === "invalid_extra" ? "Hay un extra inválido. Actualizá la página e intentá nuevamente." :

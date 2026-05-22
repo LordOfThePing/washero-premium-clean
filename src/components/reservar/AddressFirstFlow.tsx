@@ -33,6 +33,7 @@ import {
   fetchLogisticAvailability,
   fetchPricing,
   fetchServices,
+  filterTooSoonSlots,
   formatARS,
   formatDayLong,
   formatDayShort,
@@ -50,7 +51,8 @@ type CoverageState =
 
 type SlotPick = { date: string; time: string; slot_id: string; reason?: string };
 
-const STEPS = ["Dirección", "Horario", "Servicio", "Datos y pago"] as const;
+const STEPS = ["Dirección", "Servicio", "Horario", "Datos y pago"] as const;
+const RECOMMENDED_SCORE_MIN = 70;
 
 export function AddressFirstFlow() {
   const navigate = useNavigate();
@@ -61,14 +63,20 @@ export function AddressFirstFlow() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [pick, setPick] = useState<SlotPick | null>(null);
-  const [showAllSlots, setShowAllSlots] = useState(false);
   const [focusDate, setFocusDate] = useState<string>(() => isoFromDate(new Date()));
+  const [showOtherSlots, setShowOtherSlots] = useState(false);
 
   const services = useQuery({ queryKey: ["services"], queryFn: fetchServices, staleTime: 60_000 });
   const pricing = useQuery({ queryKey: ["pricing_items"], queryFn: fetchPricing, staleTime: 60_000 });
 
+  const selectedService = services.data?.find((s) => s.id === form.service_id);
+
   const logisticEnabled =
-    coverage.kind === "ok" && place?.lat != null && place?.lng != null;
+    coverage.kind === "ok" &&
+    place?.lat != null &&
+    place?.lng != null &&
+    !!form.service_id &&
+    !!selectedService?.duration_minutes;
 
   const logistic = useQuery({
     queryKey: [
@@ -78,6 +86,7 @@ export function AddressFirstFlow() {
       coverage.kind === "ok" ? coverage.zone_id : null,
       coverage.kind === "ok" ? coverage.zone_name : null,
       form.service_id,
+      selectedService?.duration_minutes,
     ],
     queryFn: () =>
       fetchLogisticAvailability({
@@ -85,7 +94,8 @@ export function AddressFirstFlow() {
         address_lng: place!.lng!,
         coverage_zone_id: coverage.kind === "ok" ? coverage.zone_id : null,
         coverage_zone_name: coverage.kind === "ok" ? coverage.zone_name : "",
-        service_id: form.service_id || undefined,
+        service_id: form.service_id,
+        duration_minutes: selectedService!.duration_minutes,
       }),
     enabled: logisticEnabled,
     staleTime: 30_000,
@@ -117,6 +127,10 @@ export function AddressFirstFlow() {
       setForm((f) => ({ ...f, vehicle_code: vehicles[0].code }));
     }
   }, [vehicles, form.vehicle_code]);
+
+  useEffect(() => {
+    setPick(null);
+  }, [form.service_id]);
 
   useEffect(() => {
     if (!place) {
@@ -165,19 +179,47 @@ export function AddressFirstFlow() {
     };
   }, [place]);
 
-  const days = logistic.data ?? [];
-  const datesWithSlots = useMemo(() => new Set(days.map((d) => d.date)), [days]);
+  const days = useMemo(
+    () =>
+      (logistic.data ?? [])
+        .map((day) => ({
+          ...day,
+          recommended_slots: filterTooSoonSlots(day.recommended_slots),
+          other_slots: filterTooSoonSlots(day.other_slots),
+        }))
+        .filter((day) => day.recommended_slots.length > 0 || day.other_slots.length > 0),
+    [logistic.data],
+  );
 
-  const topRecommended = useMemo(() => {
-    const all: LogisticSlot[] = [];
-    for (const d of days) all.push(...d.recommended_slots);
-    return all.sort((a, b) => b.score - a.score || a.date.localeCompare(b.date)).slice(0, 8);
-  }, [days]);
+  useEffect(() => {
+    if (days.length === 0) return;
+    if (!days.some((d) => d.date === focusDate)) {
+      setFocusDate(days[0].date);
+    }
+  }, [days, focusDate]);
+
+  useEffect(() => {
+    setShowOtherSlots(false);
+  }, [focusDate]);
+
+  const daySummaries = useMemo(
+    () =>
+      days.map((day) => {
+        const totalSlots = day.recommended_slots.length + day.other_slots.length;
+        const hasRecommended = day.recommended_slots.some((slot) => slot.score >= RECOMMENDED_SCORE_MIN);
+        return {
+          date: day.date,
+          totalSlots,
+          hasRecommended,
+        };
+      }),
+    [days],
+  );
 
   const focusDay = days.find((d) => d.date === focusDate);
+  const recommendedForFocus = focusDay?.recommended_slots ?? [];
   const otherForFocus = focusDay?.other_slots ?? [];
 
-  const selectedService = services.data?.find((s) => s.id === form.service_id);
   const selectedVehicle = vehicles.find((v) => v.code === form.vehicle_code);
   const vehicleSurcharge = selectedVehicle?.amount ?? 0;
   const extrasTotal = form.extras.reduce(
@@ -210,7 +252,7 @@ export function AddressFirstFlow() {
     });
   }
 
-  function goToSlots() {
+  function goToServiceStep() {
     if (coverage.kind !== "ok" || !place) {
       toast.error("Validá tu dirección dentro de la zona de cobertura.");
       return;
@@ -218,12 +260,25 @@ export function AddressFirstFlow() {
     setStep(1);
   }
 
-  function goToService() {
+  function goToSlotsStep() {
+    if (!form.service_id) {
+      toast.error("Elegí un servicio para ver horarios.");
+      return;
+    }
+    if (!form.vehicle_code) {
+      toast.error("Elegí el tamaño de tu vehículo.");
+      return;
+    }
+    setPick(null);
+    setStep(2);
+  }
+
+  function goToPaymentStep() {
     if (!pick) {
       toast.error("Elegí un horario para continuar.");
       return;
     }
-    setStep(2);
+    setStep(3);
   }
 
   async function submit() {
@@ -300,6 +355,8 @@ export function AddressFirstFlow() {
       const friendly =
         status === "outside_coverage"
           ? "Esa dirección está fuera de nuestra cobertura actual."
+          : status === "slot_too_soon"
+            ? "Ese horario ya no está disponible. Elegí un horario más adelante."
           : status === "slot_full" ||
               status === "slot_not_found" ||
               status === "service_does_not_fit_slot"
@@ -335,7 +392,7 @@ export function AddressFirstFlow() {
       <header className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Reservá tu lavado</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Primero tu dirección, después te sugerimos los mejores horarios para tu zona.
+          Dirección y servicio primero; después te mostramos horarios logísticos para tu zona.
         </p>
         <div className="mt-4 flex gap-1">
           {STEPS.map((label, i) => (
@@ -412,14 +469,14 @@ export function AddressFirstFlow() {
               )}
             </div>
           )}
-          <Button className="w-full" size="lg" disabled={coverage.kind !== "ok"} onClick={goToSlots}>
-            Ver horarios recomendados <ArrowRight className="ml-2 h-4 w-4" />
+          <Button className="w-full" size="lg" disabled={coverage.kind !== "ok"} onClick={goToServiceStep}>
+            Elegir servicio <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         </section>
       )}
 
       {step === 1 && place && coverage.kind === "ok" && (
-        <section className="space-y-4">
+        <section className="space-y-5">
           <div className="rounded-xl border bg-muted/30 p-3 text-sm">
             <p className="flex items-start gap-2 font-medium">
               <MapPin className="h-4 w-4 shrink-0 text-primary" />
@@ -427,111 +484,6 @@ export function AddressFirstFlow() {
             </p>
             <p className="mt-1 text-xs text-muted-foreground">Zona {coverage.zone_name}</p>
           </div>
-
-          {logistic.isLoading ? (
-            <div className="flex justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : logistic.isError ? (
-            <div className="rounded-lg border border-destructive/30 p-3 text-sm text-destructive">
-              No pudimos cargar horarios.{" "}
-              <button type="button" className="underline" onClick={() => logistic.refetch()}>
-                Reintentar
-              </button>
-            </div>
-          ) : (
-            <>
-              <div>
-                <h2 className="flex items-center gap-2 text-base font-semibold">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                  Horarios recomendados cerca de tu zona
-                </h2>
-                {topRecommended.length === 0 ? (
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    No hay recomendaciones especiales; elegí otro horario disponible.
-                  </p>
-                ) : (
-                  <div className="mt-3 space-y-2">
-                    {topRecommended.map((s) => (
-                      <SlotCard
-                        key={`${s.slot_id}-${s.date}`}
-                        slot={s}
-                        selected={pick?.slot_id === s.slot_id}
-                        onSelect={() => selectSlot(s)}
-                        recommended
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2">Elegir día</p>
-                <div className="flex gap-2 overflow-x-auto pb-1">
-                  {Array.from(datesWithSlots)
-                    .sort()
-                    .map((iso) => (
-                      <Button
-                        key={iso}
-                        type="button"
-                        size="sm"
-                        variant={focusDate === iso ? "default" : "outline"}
-                        className="shrink-0"
-                        onClick={() => setFocusDate(iso)}
-                      >
-                        {formatDayShort(iso)}
-                      </Button>
-                    ))}
-                </div>
-              </div>
-
-              <div>
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between text-sm font-medium"
-                  onClick={() => setShowAllSlots((v) => !v)}
-                >
-                  Otros horarios disponibles
-                  {showAllSlots ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </button>
-                {showAllSlots && (
-                  <div className="mt-2 space-y-2">
-                    {otherForFocus.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        No hay más horarios para {formatDayShort(focusDate)}.
-                      </p>
-                    ) : (
-                      otherForFocus.map((s) => (
-                        <SlotCard
-                          key={`${s.slot_id}-other`}
-                          slot={s}
-                          selected={pick?.slot_id === s.slot_id}
-                          onSelect={() => selectSlot(s)}
-                        />
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setStep(0)}>
-              <ArrowLeft className="mr-1 h-4 w-4" /> Dirección
-            </Button>
-            <Button className="flex-1" disabled={!pick} onClick={goToService}>
-              Continuar <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
-        </section>
-      )}
-
-      {step === 2 && pick && (
-        <section className="space-y-5">
-          <p className="text-sm text-muted-foreground capitalize">
-            {formatDayLong(pick.date)} · {pick.time} hs
-          </p>
 
           <FormSection title="Servicio">
             {services.isLoading ? (
@@ -557,6 +509,7 @@ export function AddressFirstFlow() {
                 ))}
               </div>
             )}
+            {errors.service_id && <p className="text-xs text-destructive">{errors.service_id}</p>}
           </FormSection>
 
           <FormSection title="Tamaño del vehículo">
@@ -609,16 +562,206 @@ export function AddressFirstFlow() {
               <span>Total estimado</span>
               <span>{formatARS(total)}</span>
             </div>
-            <p className="text-[10px] text-muted-foreground">Confirmado en el servidor al reservar.</p>
+            {selectedService && (
+              <p className="text-[10px] text-muted-foreground">
+                Duración del servicio: {selectedService.duration_minutes} min (define los horarios disponibles).
+              </p>
+            )}
           </div>
 
           <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setStep(0)}>
+              <ArrowLeft className="mr-1 h-4 w-4" /> Dirección
+            </Button>
+            <Button
+              className="flex-1"
+              disabled={!form.service_id || !form.vehicle_code}
+              onClick={goToSlotsStep}
+            >
+              Ver horarios <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
+        </section>
+      )}
+
+      {step === 2 && place && coverage.kind === "ok" && form.service_id && (
+        <section className="space-y-5">
+          <div className="rounded-xl border bg-muted/30 p-3 text-sm space-y-2">
+            <p className="flex items-start gap-2 font-medium">
+              <MapPin className="h-4 w-4 shrink-0 text-primary" />
+              {place.formatted_address}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {selectedService?.name} · {selectedService?.duration_minutes} min · Zona {coverage.zone_name}
+            </p>
+            <button
+              type="button"
+              className="text-xs font-medium text-primary underline underline-offset-2"
+              onClick={() => setStep(0)}
+            >
+              Cambiar dirección
+            </button>
+          </div>
+
+          {logistic.isLoading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : logistic.isError ? (
+            <div className="rounded-lg border border-destructive/30 p-3 text-sm text-destructive">
+              No pudimos cargar horarios.{" "}
+              <button type="button" className="underline" onClick={() => logistic.refetch()}>
+                Reintentar
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <h2 className="text-base font-semibold">Elegí el día</h2>
+                {daySummaries.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No encontramos horarios disponibles en los próximos días.{" "}
+                    <a href={WHATSAPP_URL} target="_blank" rel="noreferrer" className="underline">
+                      Escribinos por WhatsApp
+                    </a>
+                    .
+                  </p>
+                ) : (
+                  <div className="-mx-1 flex snap-x snap-mandatory gap-2 overflow-x-auto px-1 pb-1">
+                    {daySummaries.map((day) => (
+                      <button
+                        key={day.date}
+                        type="button"
+                        onClick={() => setFocusDate(day.date)}
+                        className={cn(
+                          "min-w-[150px] snap-start rounded-xl border p-3 text-left transition-colors",
+                          focusDate === day.date
+                            ? "border-primary bg-primary/10 ring-1 ring-primary/40"
+                            : "border-border bg-card",
+                        )}
+                      >
+                        <p className="text-sm font-semibold">{formatDayShort(day.date)}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {day.totalSlots} {day.totalSlots === 1 ? "horario" : "horarios"}
+                        </p>
+                        {day.hasRecommended && (
+                          <span className="mt-2 inline-flex rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary">
+                            Recomendado
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {daySummaries.length > 0 && (
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <h2 className="text-base font-semibold">Elegí un horario</h2>
+                    <p className="text-sm text-muted-foreground capitalize">
+                      {focusDay ? formatDayLong(focusDay.date) : ""}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Te sugerimos horarios que ayudan a ordenar la ruta de la camioneta por zona.
+                    </p>
+                  </div>
+
+                  {focusDay ? (
+                    <>
+                      {recommendedForFocus.length > 0 ? (
+                        <div className="space-y-2">
+                          <h3 className="flex items-center gap-2 text-sm font-semibold">
+                            <Sparkles className="h-4 w-4 text-primary" />
+                            Horarios recomendados para tu zona
+                          </h3>
+                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                            {recommendedForFocus.map((s) => (
+                              <SlotCard
+                                key={`${s.slot_id}-${s.date}-recommended`}
+                                slot={s}
+                                selected={pick?.slot_id === s.slot_id}
+                                onSelect={() => selectSlot(s)}
+                                recommended={s.score >= RECOMMENDED_SCORE_MIN}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ) : otherForFocus.length > 0 ? (
+                        <div className="space-y-2">
+                          <h3 className="text-sm font-semibold">Horarios disponibles para tu zona</h3>
+                          <p className="text-xs text-muted-foreground">
+                            Estos son los horarios disponibles para la dirección seleccionada.
+                          </p>
+                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                            {otherForFocus.map((s) => (
+                              <SlotCard
+                                key={`${s.slot_id}-${s.date}-available`}
+                                slot={s}
+                                selected={pick?.slot_id === s.slot_id}
+                                onSelect={() => selectSlot(s)}
+                                recommended={false}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {recommendedForFocus.length > 0 && otherForFocus.length > 0 && (
+                        <div className="space-y-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowOtherSlots((v) => !v)}
+                            className="flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm font-semibold"
+                          >
+                            Otros horarios disponibles
+                            {showOtherSlots ? (
+                              <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                            )}
+                          </button>
+                          {showOtherSlots && (
+                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                              {otherForFocus.map((s) => (
+                                <SlotCard
+                                  key={`${s.slot_id}-${s.date}-other`}
+                                  slot={s}
+                                  selected={pick?.slot_id === s.slot_id}
+                                  onSelect={() => selectSlot(s)}
+                                  recommended={false}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {recommendedForFocus.length === 0 && otherForFocus.length === 0 && (
+                        <p className="text-sm text-muted-foreground">
+                          No hay horarios disponibles para este día. Probá con otra fecha.
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No hay horarios disponibles para este día. Probá con otra fecha.
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="sticky bottom-0 z-10 -mx-4 border-t bg-background/95 px-4 py-3 backdrop-blur">
+            <div className="flex gap-2">
             <Button variant="outline" onClick={() => setStep(1)}>
-              <ArrowLeft className="mr-1 h-4 w-4" /> Horario
+              <ArrowLeft className="mr-1 h-4 w-4" /> Servicio
             </Button>
-            <Button className="flex-1" onClick={() => setStep(3)}>
-              Datos y pago <ArrowRight className="ml-2 h-4 w-4" />
+            <Button className="flex-1" disabled={!pick} onClick={goToPaymentStep}>
+              Continuar <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
+            </div>
           </div>
         </section>
       )}
@@ -717,7 +860,7 @@ export function AddressFirstFlow() {
 
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setStep(2)}>
-              <ArrowLeft className="mr-1 h-4 w-4" /> Volver
+              <ArrowLeft className="mr-1 h-4 w-4" /> Horario
             </Button>
             <Button className="flex-1" size="lg" disabled={submitting} onClick={submit}>
               {submitting ? (
@@ -759,23 +902,19 @@ function SlotCard({
       type="button"
       onClick={onSelect}
       className={cn(
-        "w-full rounded-xl border p-3 text-left transition-colors",
-        selected ? "border-primary border-2 bg-primary/5" : "border-border hover:bg-muted/40",
+        "w-full rounded-xl border p-2.5 text-left transition-colors",
+        selected ? "border-primary border-2 bg-primary/10" : "border-border hover:bg-muted/40",
         recommended && !selected && "border-primary/40",
       )}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="font-semibold text-sm">
-            {formatDayShort(slot.date)} · {slot.start_time}
-          </p>
-          <p className="text-xs text-muted-foreground mt-0.5">{slot.reason}</p>
-        </div>
+      <div className="space-y-1">
+        <p className="text-base font-semibold leading-none">{slot.start_time}</p>
         {recommended && (
-          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+          <span className="inline-flex rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
             Recomendado
           </span>
         )}
+        <p className="truncate text-[10px] text-muted-foreground">{slot.reason}</p>
       </div>
     </button>
   );

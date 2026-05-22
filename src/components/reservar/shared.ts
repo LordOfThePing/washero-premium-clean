@@ -112,6 +112,7 @@ export const MONTHS_ES = [
 ];
 export const WEEKDAYS_ES = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 export const WEEKDAYS_LONG = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+export const PUBLIC_MIN_LEAD_MINUTES = 120;
 
 export function formatARS(v: number) {
   return new Intl.NumberFormat("es-AR", {
@@ -149,6 +150,40 @@ export function addDaysIso(iso: string, days: number) {
   return isoFromDate(d);
 }
 
+function slotStartUtcMsFromBuenosAires(dateIso: string, timeHHMM: string) {
+  const [y, m, d] = dateIso.split("-").map(Number);
+  const [hh, mm] = timeHHMM.slice(0, 5).split(":").map(Number);
+  if (
+    !Number.isFinite(y) ||
+    !Number.isFinite(m) ||
+    !Number.isFinite(d) ||
+    !Number.isFinite(hh) ||
+    !Number.isFinite(mm)
+  ) {
+    return null;
+  }
+  // Buenos Aires is UTC-3; convert local slot time to UTC milliseconds.
+  return Date.UTC(y, m - 1, d, hh + 3, mm, 0, 0);
+}
+
+export function isSlotTooSoonForPublic(
+  dateIso: string,
+  timeHHMM: string,
+  minLeadMinutes = PUBLIC_MIN_LEAD_MINUTES,
+  nowMs = Date.now(),
+) {
+  const slotMs = slotStartUtcMsFromBuenosAires(dateIso, timeHHMM);
+  if (slotMs == null) return true;
+  return slotMs < nowMs + minLeadMinutes * 60_000;
+}
+
+export function filterTooSoonSlots<T extends { date: string; start_time: string }>(
+  slots: T[],
+  minLeadMinutes = PUBLIC_MIN_LEAD_MINUTES,
+) {
+  return slots.filter((slot) => !isSlotTooSoonForPublic(slot.date, slot.start_time, minLeadMinutes));
+}
+
 export async function fetchServices(): Promise<Service[]> {
   const { data, error } = await supabase
     .from("services")
@@ -182,7 +217,8 @@ export async function fetchLogisticAvailability(input: {
   address_lng: number;
   coverage_zone_id: string | null;
   coverage_zone_name: string;
-  service_id?: string;
+  service_id: string;
+  duration_minutes: number;
   date_from?: string;
   date_to?: string;
 }): Promise<LogisticDay[]> {
@@ -193,7 +229,8 @@ export async function fetchLogisticAvailability(input: {
       address_lng: input.address_lng,
       coverage_zone_id: input.coverage_zone_id,
       coverage_zone_name: input.coverage_zone_name,
-      service_id: input.service_id || undefined,
+      service_id: input.service_id,
+      duration_minutes: input.duration_minutes,
       date_from: input.date_from ?? today,
       date_to: input.date_to ?? addDaysIso(today, 13),
     },

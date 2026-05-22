@@ -33,11 +33,34 @@ type Payload = {
   address_lng?: number | null;
 };
 
+const PUBLIC_MIN_LEAD_MINUTES = 120;
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+function slotStartUtcMsFromBuenosAires(dateIso: string, timeHHMM: string) {
+  const [y, m, d] = dateIso.split("-").map(Number);
+  const [hh, mm] = String(timeHHMM).slice(0, 5).split(":").map(Number);
+  if (
+    !Number.isFinite(y) ||
+    !Number.isFinite(m) ||
+    !Number.isFinite(d) ||
+    !Number.isFinite(hh) ||
+    !Number.isFinite(mm)
+  ) {
+    return null;
+  }
+  return Date.UTC(y, m - 1, d, hh + 3, mm, 0, 0);
+}
+
+function isSlotTooSoonForPublic(dateIso: string, timeHHMM: string, nowMs = Date.now()) {
+  const slotMs = slotStartUtcMsFromBuenosAires(dateIso, timeHHMM);
+  if (slotMs == null) return true;
+  return slotMs < nowMs + PUBLIC_MIN_LEAD_MINUTES * 60_000;
 }
 
 Deno.serve(async (req) => {
@@ -55,6 +78,21 @@ Deno.serve(async (req) => {
 
   if (body.customer_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(body.customer_email).trim()))
     return json({ ok: false, status: "invalid_email", customer_message: "Email inválido." }, 400);
+
+  if (
+    typeof body.scheduled_date === "string" &&
+    typeof body.scheduled_time === "string" &&
+    isSlotTooSoonForPublic(body.scheduled_date, body.scheduled_time)
+  ) {
+    return json(
+      {
+        ok: false,
+        status: "slot_too_soon",
+        customer_message: "Ese horario ya no está disponible. Elegí un horario más adelante.",
+      },
+      409,
+    );
+  }
 
   const result = await tryCreateBooking(admin, {
     customer_name: body.customer_name ?? "",
@@ -90,6 +128,7 @@ Deno.serve(async (req) => {
       slot_unavailable: "Ese horario ya no está disponible. Elegí otro día u horario.",
       slot_not_found: "Ese horario ya no está disponible. Elegí otro día u horario.",
       service_does_not_fit_slot: "Ese horario ya no está disponible para el servicio elegido. Elegí otro horario o escribinos por WhatsApp.",
+      slot_too_soon: "Ese horario ya no está disponible. Elegí un horario más adelante.",
       slot_full: "Ese horario ya se completó. Elegí otro día u horario.",
       duplicate: "Ya tenemos una reserva registrada para ese teléfono en ese día y horario.",
       outside_coverage: "Esa dirección está fuera de nuestra zona de cobertura. Escribinos por WhatsApp y vemos cómo ayudarte.",

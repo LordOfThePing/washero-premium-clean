@@ -16,6 +16,28 @@ function json(body: unknown, status = 200) {
 }
 
 function isDate(v: string) { return /^\d{4}-\d{2}-\d{2}$/.test(v); }
+const PUBLIC_MIN_LEAD_MINUTES = 120;
+
+function slotStartUtcMsFromBuenosAires(dateIso: string, timeHHMM: string) {
+  const [y, m, d] = dateIso.split("-").map(Number);
+  const [hh, mm] = String(timeHHMM).slice(0, 5).split(":").map(Number);
+  if (
+    !Number.isFinite(y) ||
+    !Number.isFinite(m) ||
+    !Number.isFinite(d) ||
+    !Number.isFinite(hh) ||
+    !Number.isFinite(mm)
+  ) {
+    return null;
+  }
+  return Date.UTC(y, m - 1, d, hh + 3, mm, 0, 0);
+}
+
+function isSlotTooSoonForPublic(dateIso: string, timeHHMM: string, nowMs = Date.now()) {
+  const slotMs = slotStartUtcMsFromBuenosAires(dateIso, timeHHMM);
+  if (slotMs == null) return true;
+  return slotMs < nowMs + PUBLIC_MIN_LEAD_MINUTES * 60_000;
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -71,7 +93,9 @@ Deno.serve(async (req) => {
     byDate.set(b.scheduled_date as string, arr);
   }
 
-  const out = (slots ?? []).map((s: any) => {
+  const nowMs = Date.now();
+  const out = (slots ?? []).flatMap((s: any) => {
+    if (isSlotTooSoonForPublic(String(s.date), String(s.start_time), nowMs)) return [];
     const sStart = toMin(s.start_time);
     const sEnd = toMin(s.end_time);
     const list = byDate.get(s.date) ?? [];
