@@ -37,6 +37,7 @@ export type PricingItem = {
   description: string | null;
   type: string;
   amount: number;
+  duration_minutes: number;
   display_order: number;
 };
 
@@ -59,6 +60,8 @@ export type LogisticSlot = {
   score: number;
   reason: string;
   nearby_bookings_count: number;
+  same_zone_bookings_count?: number;
+  considered_bookings_count?: number;
   zone_match: boolean;
 };
 
@@ -150,6 +153,35 @@ export function addDaysIso(iso: string, days: number) {
   return isoFromDate(d);
 }
 
+function normalizeText(value: unknown) {
+  return String(value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function inferDurationMinutes(type: string, code: string, name: string, rawDuration: unknown) {
+  const parsed = Number(rawDuration);
+  if (Number.isFinite(parsed) && parsed > 0) return Math.round(parsed);
+
+  const token = `${normalizeText(code)} ${normalizeText(name)}`;
+  if (type === "vehicle_surcharge") {
+    if (token.includes("auto")) return 0;
+    if (token.includes("suv") || token.includes("crossover")) return 10;
+    if (token.includes("pick") || token.includes("camioneta") || token.includes("van")) return 10;
+    return 0;
+  }
+  if (type === "extra") {
+    if (token.includes("encer")) return 10;
+    if (token.includes("detallado") && token.includes("interior") && token.includes("profundo")) return 20;
+    if (token.includes("olor")) return 15;
+    if (token.includes("barro") || token.includes("muy sucio")) return 15;
+    if (token.includes("pelo") && token.includes("mascot")) return 20;
+    return 0;
+  }
+  return Math.max(0, Number.isFinite(parsed) ? Math.round(parsed) : 0);
+}
+
 function slotStartUtcMsFromBuenosAires(dateIso: string, timeHHMM: string) {
   const [y, m, d] = dateIso.split("-").map(Number);
   const [hh, mm] = timeHHMM.slice(0, 5).split(":").map(Number);
@@ -195,13 +227,40 @@ export async function fetchServices(): Promise<Service[]> {
 }
 
 export async function fetchPricing(): Promise<PricingItem[]> {
-  const { data, error } = await supabase
+  const withDuration = await supabase
     .from("pricing_items")
-    .select("id,code,name,description,type,amount,display_order")
+    .select("id,code,name,description,type,amount,duration_minutes,display_order")
     .eq("active", true)
     .order("display_order");
-  if (error) throw error;
-  return (data ?? []) as PricingItem[];
+  let rows: Array<Record<string, unknown>> = [];
+
+  if (!withDuration.error) {
+    rows = (withDuration.data ?? []) as Array<Record<string, unknown>>;
+  } else {
+    const fallback = await supabase
+      .from("pricing_items")
+      .select("id,code,name,description,type,amount,display_order")
+      .eq("active", true)
+      .order("display_order");
+    if (fallback.error) throw fallback.error;
+    rows = (fallback.data ?? []) as Array<Record<string, unknown>>;
+  }
+
+  return rows.map((row) => {
+    const type = String(row.type ?? "");
+    const code = String(row.code ?? "");
+    const name = String(row.name ?? "");
+    return {
+      id: String(row.id ?? ""),
+      code,
+      name,
+      description: (row.description as string | null) ?? null,
+      type,
+      amount: Number(row.amount ?? 0) || 0,
+      duration_minutes: inferDurationMinutes(type, code, name, row.duration_minutes),
+      display_order: Number(row.display_order ?? 0) || 0,
+    };
+  });
 }
 
 export async function fetchAvailability(): Promise<PublicSlot[]> {
@@ -221,6 +280,7 @@ export async function fetchLogisticAvailability(input: {
   duration_minutes: number;
   date_from?: string;
   date_to?: string;
+  debug?: boolean;
 }): Promise<LogisticDay[]> {
   const today = isoFromDate(new Date());
   const { data, error } = await supabase.functions.invoke("get-logistic-availability", {
@@ -233,6 +293,7 @@ export async function fetchLogisticAvailability(input: {
       duration_minutes: input.duration_minutes,
       date_from: input.date_from ?? today,
       date_to: input.date_to ?? addDaysIso(today, 13),
+      debug: !!input.debug,
     },
   });
   if (error) throw error;

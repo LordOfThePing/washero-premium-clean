@@ -69,6 +69,7 @@ type Payload = {
   date_from?: string;
   date_to?: string;
   duration_minutes?: number;
+  debug?: boolean;
 };
 
 Deno.serve(async (req) => {
@@ -101,10 +102,12 @@ Deno.serve(async (req) => {
   if (dateTo < dateFrom) dateTo = addDays(dateFrom, 13);
 
   const serviceId = (body.service_id ?? "").trim();
-  let durationMinutes: number | null =
+  const debugMode = body.debug === true;
+  const requestedDuration =
     typeof body.duration_minutes === "number" && body.duration_minutes > 0
       ? Math.round(body.duration_minutes)
       : null;
+  let serviceDurationMinutes: number | null = null;
 
   if (serviceId) {
     const { data: svc, error: svcErr } = await admin
@@ -115,7 +118,12 @@ Deno.serve(async (req) => {
     if (svcErr || !svc?.active || typeof svc.duration_minutes !== "number" || svc.duration_minutes <= 0) {
       return json({ ok: false, error: "invalid_service" }, 400);
     }
-    durationMinutes = svc.duration_minutes;
+    serviceDurationMinutes = Math.round(svc.duration_minutes);
+  }
+
+  let durationMinutes = requestedDuration ?? serviceDurationMinutes;
+  if (durationMinutes != null && serviceDurationMinutes != null) {
+    durationMinutes = Math.max(durationMinutes, serviceDurationMinutes);
   }
 
   if (durationMinutes == null || durationMinutes <= 0) {
@@ -152,7 +160,10 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "server_error" }, 500);
   }
 
-  const bookingsList = (bookings ?? []) as BookingForLogistics[];
+  const bookingsList = ((bookings ?? []) as BookingForLogistics[]).filter((b) => {
+    const status = String(b.booking_status ?? "").toLowerCase();
+    return status !== "cancelled" && status !== "rejected" && status !== "no_show";
+  });
   const bookingsByDate = new Map<string, BookingOverlapRow[]>();
   const logisticsByDate = new Map<string, BookingForLogistics[]>();
 
@@ -224,11 +235,39 @@ Deno.serve(async (req) => {
     });
   }
 
-  return json({
+  const payload = {
     ok: true,
     date_from: dateFrom,
     date_to: dateTo,
     duration_minutes: durationMinutes,
     days,
-  });
+    ...(debugMode
+      ? {
+          debug: {
+            address_lat: lat,
+            address_lng: lng,
+            coverage_zone_id: body.coverage_zone_id ?? null,
+            coverage_zone_name: body.coverage_zone_name ?? null,
+            considered_bookings_total: bookingsList.length,
+          },
+        }
+      : {}),
+  };
+
+  if (debugMode) {
+    const first = days[0];
+    console.log("[get-logistic-availability][debug]", {
+      address_lat: lat,
+      address_lng: lng,
+      coverage_zone_id: body.coverage_zone_id ?? null,
+      coverage_zone_name: body.coverage_zone_name ?? null,
+      duration_minutes: durationMinutes,
+      days_returned: days.length,
+      first_day: first?.date ?? null,
+      first_recommended: first?.recommended_slots.length ?? 0,
+      first_other: first?.other_slots.length ?? 0,
+    });
+  }
+
+  return json(payload);
 });

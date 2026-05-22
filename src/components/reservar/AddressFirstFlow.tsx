@@ -70,13 +70,36 @@ export function AddressFirstFlow() {
   const pricing = useQuery({ queryKey: ["pricing_items"], queryFn: fetchPricing, staleTime: 60_000 });
 
   const selectedService = services.data?.find((s) => s.id === form.service_id);
+  const vehicleDurationMinutes = useMemo(() => {
+    const item = (pricing.data ?? []).find(
+      (p) => p.type === "vehicle_surcharge" && p.code === form.vehicle_code,
+    );
+    return Math.max(0, item?.duration_minutes ?? 0);
+  }, [pricing.data, form.vehicle_code]);
+  const extrasDurationMinutes = useMemo(
+    () =>
+      form.extras.reduce(
+        (sum, code) =>
+          sum +
+          Math.max(
+            0,
+            (pricing.data ?? []).find((p) => p.type === "extra" && p.code === code)?.duration_minutes ?? 0,
+          ),
+        0,
+      ),
+    [pricing.data, form.extras],
+  );
+  const estimatedDurationMinutes = Math.max(
+    0,
+    (selectedService?.duration_minutes ?? 0) + vehicleDurationMinutes + extrasDurationMinutes,
+  );
 
   const logisticEnabled =
     coverage.kind === "ok" &&
     place?.lat != null &&
     place?.lng != null &&
     !!form.service_id &&
-    !!selectedService?.duration_minutes;
+    estimatedDurationMinutes > 0;
 
   const logistic = useQuery({
     queryKey: [
@@ -86,7 +109,9 @@ export function AddressFirstFlow() {
       coverage.kind === "ok" ? coverage.zone_id : null,
       coverage.kind === "ok" ? coverage.zone_name : null,
       form.service_id,
-      selectedService?.duration_minutes,
+      form.vehicle_code,
+      form.extras.slice().sort().join("|"),
+      estimatedDurationMinutes,
     ],
     queryFn: () =>
       fetchLogisticAvailability({
@@ -95,7 +120,8 @@ export function AddressFirstFlow() {
         coverage_zone_id: coverage.kind === "ok" ? coverage.zone_id : null,
         coverage_zone_name: coverage.kind === "ok" ? coverage.zone_name : "",
         service_id: form.service_id,
-        duration_minutes: selectedService!.duration_minutes,
+        duration_minutes: estimatedDurationMinutes,
+        debug: import.meta.env.DEV,
       }),
     enabled: logisticEnabled,
     staleTime: 30_000,
@@ -130,7 +156,7 @@ export function AddressFirstFlow() {
 
   useEffect(() => {
     setPick(null);
-  }, [form.service_id]);
+  }, [form.service_id, form.vehicle_code, form.extras]);
 
   useEffect(() => {
     if (!place) {
@@ -201,6 +227,22 @@ export function AddressFirstFlow() {
   useEffect(() => {
     setShowOtherSlots(false);
   }, [focusDate]);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || !logistic.data || !place || coverage.kind !== "ok") return;
+    const firstDay = logistic.data[0];
+    console.log("[Reservar][logistic-debug]", {
+      address_lat: place.lat,
+      address_lng: place.lng,
+      coverage_zone_id: coverage.zone_id,
+      coverage_zone_name: coverage.zone_name,
+      duration_minutes: estimatedDurationMinutes,
+      days_returned: logistic.data.length,
+      first_day: firstDay?.date ?? null,
+      first_day_recommended_count: firstDay?.recommended_slots.length ?? 0,
+      first_day_other_count: firstDay?.other_slots.length ?? 0,
+    });
+  }, [coverage, estimatedDurationMinutes, logistic.data, place]);
 
   const daySummaries = useMemo(
     () =>
@@ -357,6 +399,8 @@ export function AddressFirstFlow() {
           ? "Esa dirección está fuera de nuestra cobertura actual."
           : status === "slot_too_soon"
             ? "Ese horario ya no está disponible. Elegí un horario más adelante."
+          : status === "missing_duration" || status === "duration_config_error"
+            ? "No pudimos calcular la duración del servicio. Probá nuevamente."
           : status === "slot_full" ||
               status === "slot_not_found" ||
               status === "service_does_not_fit_slot"
@@ -365,6 +409,11 @@ export function AddressFirstFlow() {
               ? "Hay un extra inválido. Actualizá la página."
               : (res?.customer_message ??
                 "No pudimos crear la reserva. Probá nuevamente o escribinos por WhatsApp.");
+      console.error("[Reservar][create-website-booking]", {
+        error: error ? { message: error.message, name: error.name } : null,
+        status,
+        response: res,
+      });
       toast.error(friendly, {
         action: { label: "WhatsApp", onClick: () => window.open(WHATSAPP_URL, "_blank") },
       });
@@ -526,7 +575,7 @@ export function AddressFirstFlow() {
                 >
                   <div className="font-medium">{v.name}</div>
                   <div className="text-xs text-muted-foreground">
-                    {v.amount > 0 ? `+ ${formatARS(v.amount)}` : "Sin cargo"}
+                    {v.amount > 0 ? `+ ${formatARS(v.amount)}` : "Sin cargo"} · +{v.duration_minutes} min
                   </div>
                 </button>
               ))}
@@ -551,7 +600,10 @@ export function AddressFirstFlow() {
                     />
                     <span className="text-sm">{e.name}</span>
                   </div>
-                  <span className="text-sm font-semibold">{formatARS(e.amount)}</span>
+                  <span className="text-right text-xs font-semibold">
+                    <span className="block text-sm">{formatARS(e.amount)}</span>
+                    <span className="text-muted-foreground">+{e.duration_minutes} min</span>
+                  </span>
                 </label>
               ))}
             </div>
@@ -564,7 +616,7 @@ export function AddressFirstFlow() {
             </div>
             {selectedService && (
               <p className="text-[10px] text-muted-foreground">
-                Duración del servicio: {selectedService.duration_minutes} min (define los horarios disponibles).
+                Duración estimada: {estimatedDurationMinutes} min.
               </p>
             )}
           </div>
@@ -592,7 +644,7 @@ export function AddressFirstFlow() {
               {place.formatted_address}
             </p>
             <p className="text-xs text-muted-foreground">
-              {selectedService?.name} · {selectedService?.duration_minutes} min · Zona {coverage.zone_name}
+              {selectedService?.name} · {estimatedDurationMinutes} min · Zona {coverage.zone_name}
             </p>
             <button
               type="button"
@@ -771,6 +823,7 @@ export function AddressFirstFlow() {
           <div className="rounded-xl border bg-muted/30 p-3 text-sm space-y-1">
             <p className="font-medium capitalize">{formatDayLong(pick.date)} · {pick.time} hs</p>
             <p className="text-muted-foreground">{selectedService?.name} · {formatARS(total)}</p>
+            <p className="text-muted-foreground">Duración estimada: {estimatedDurationMinutes} min</p>
           </div>
 
           <FormSection title="Datos de contacto">

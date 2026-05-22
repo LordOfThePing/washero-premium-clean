@@ -94,26 +94,42 @@ Deno.serve(async (req) => {
     );
   }
 
-  const result = await tryCreateBooking(admin, {
-    customer_name: body.customer_name ?? "",
-    customer_phone: body.customer_phone ?? "",
-    customer_email: body.customer_email ?? null,
-    address: body.address ?? "",
-    neighborhood: body.neighborhood ?? "",
-    vehicle_type: body.vehicle_type ?? "",
-    service_id: body.service_id ?? null,
-    scheduled_date: body.scheduled_date ?? "",
-    scheduled_time: body.scheduled_time ?? "",
-    payment_method: body.payment_method ?? "",
-    notes: body.notes ?? null,
-    selected_extras: body.selected_extras ?? [],
-    place_id: body.place_id ?? null,
-    formatted_address: body.formatted_address ?? null,
-    address_lat: typeof body.address_lat === "number" ? body.address_lat : null,
-    address_lng: typeof body.address_lng === "number" ? body.address_lng : null,
-    enforce_coverage: true, // strict coverage on website
-    source: "website",
-  });
+  let result;
+  try {
+    result = await tryCreateBooking(admin, {
+      customer_name: body.customer_name ?? "",
+      customer_phone: body.customer_phone ?? "",
+      customer_email: body.customer_email ?? null,
+      address: body.address ?? "",
+      neighborhood: body.neighborhood ?? "",
+      vehicle_type: body.vehicle_type ?? "",
+      service_id: body.service_id ?? null,
+      scheduled_date: body.scheduled_date ?? "",
+      scheduled_time: body.scheduled_time ?? "",
+      payment_method: body.payment_method ?? "",
+      notes: body.notes ?? null,
+      selected_extras: body.selected_extras ?? [],
+      place_id: body.place_id ?? null,
+      formatted_address: body.formatted_address ?? null,
+      address_lat: typeof body.address_lat === "number" ? body.address_lat : null,
+      address_lng: typeof body.address_lng === "number" ? body.address_lng : null,
+      enforce_coverage: true, // strict coverage on website
+      source: "website",
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e ?? "unknown_error");
+    console.error("[create-website-booking] booking-core exception", { message: msg });
+    return json(
+      {
+        ok: false,
+        status: /duration_minutes|duration/i.test(msg) ? "duration_config_error" : "server_error",
+        customer_message: /duration_minutes|duration/i.test(msg)
+          ? "No pudimos calcular la duración del servicio. Probá nuevamente."
+          : "No pudimos crear la reserva. Probá de nuevo.",
+      },
+      500,
+    );
+  }
 
   if (!result.ok) {
     const map: Record<string, string> = {

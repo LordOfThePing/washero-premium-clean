@@ -293,6 +293,12 @@ function BookingForm({
 
   const selectedService = services.find((s) => s.id === form.service_id);
   const selectedVehicle = vehicles.find((v) => v.code === form.vehicle_code);
+  const vehicleDuration = Math.max(0, selectedVehicle?.duration_minutes ?? 0);
+  const extrasDuration = form.extras.reduce(
+    (sum, code) => sum + Math.max(0, extras.find((e) => e.code === code)?.duration_minutes ?? 0),
+    0,
+  );
+  const estimatedDuration = Math.max(0, (selectedService?.duration_minutes ?? 0) + vehicleDuration + extrasDuration);
   const vehicleSurcharge = selectedVehicle?.amount ?? 0;
   const extrasTotal = form.extras.reduce((sum, code) => sum + (extras.find((e) => e.code === code)?.amount ?? 0), 0);
   const basePrice = selectedService?.base_price ?? 0;
@@ -394,6 +400,8 @@ function BookingForm({
       const friendly =
         status === "outside_coverage" ? "Esa dirección está fuera de nuestra cobertura actual." :
         status === "slot_too_soon" ? "Ese horario ya no está disponible. Elegí un horario más adelante." :
+        status === "missing_duration" || status === "duration_config_error"
+          ? "No pudimos calcular la duración del servicio. Probá nuevamente." :
         status === "slot_full" || status === "slot_not_found" || status === "service_does_not_fit_slot"
           ? "Ese horario ya no está disponible para el servicio elegido. Elegí otro horario." :
         status === "invalid_extra" ? "Hay un extra inválido. Actualizá la página e intentá nuevamente." :
@@ -631,6 +639,7 @@ function BookingForm({
           <div className="flex justify-between"><span>Servicio base</span><span>{formatARS(basePrice)}</span></div>
           <div className="flex justify-between"><span>Vehículo</span><span>{formatARS(vehicleSurcharge)}</span></div>
           <div className="flex justify-between"><span>Extras</span><span>{formatARS(extrasTotal)}</span></div>
+          <div className="flex justify-between text-muted-foreground"><span>Duración estimada</span><span>{estimatedDuration} min</span></div>
           <div className="border-t pt-1.5 flex justify-between font-semibold text-base">
             <span>Total</span><span>{formatARS(total)}</span>
           </div>

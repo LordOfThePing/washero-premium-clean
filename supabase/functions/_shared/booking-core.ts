@@ -89,36 +89,106 @@ export type CoreResult =
 function isDate(v: string) { return /^\d{4}-\d{2}-\d{2}$/.test(v); }
 function isTime(v: string) { return /^\d{2}:\d{2}(:\d{2})?$/.test(v); }
 function normTime(v: string) { return v.length === 5 ? `${v}:00` : v; }
+function foldText(v: unknown) {
+  return String(v ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
 
-async function loadVehicleSurcharge(admin: SupabaseClient, vehicle_type: string): Promise<number> {
-  const { data } = await admin.from("pricing_items")
-    .select("amount,code,name").eq("type", "vehicle_surcharge").eq("active", true);
-  const fold = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const v = fold(vehicle_type);
-  for (const row of (data ?? []) as any[]) {
-    if (fold(row.code) === v || fold(row.name).includes(v) || v.includes(fold(row.code))) {
-      return Number(row.amount) || 0;
-    }
+function inferDurationMinutes(type: "vehicle_surcharge" | "extra", code: string, name: string, raw: unknown) {
+  const parsed = Number(raw);
+  if (Number.isFinite(parsed) && parsed > 0) return Math.round(parsed);
+  const token = `${foldText(code)} ${foldText(name)}`;
+  if (type === "vehicle_surcharge") {
+    if (token.includes("auto")) return 0;
+    if (token.includes("suv") || token.includes("crossover")) return 10;
+    if (token.includes("pick") || token.includes("camioneta") || token.includes("van")) return 10;
+    return 0;
   }
+  if (token.includes("encer")) return 10;
+  if (token.includes("detallado") && token.includes("interior") && token.includes("profundo")) return 20;
+  if (token.includes("olor")) return 15;
+  if (token.includes("barro") || token.includes("muy sucio")) return 15;
+  if (token.includes("pelo") && token.includes("mascot")) return 20;
   return 0;
 }
 
-async function loadExtras(admin: SupabaseClient, codes: string[]): Promise<{ ok: true; total: number; lines: string[] } | { ok: false; missing: string[] }> {
-  if (!codes.length) return { ok: true, total: 0, lines: [] };
-  const { data } = await admin.from("pricing_items")
-    .select("code,name,amount,active").eq("type", "extra").in("code", codes);
-  const map = new Map<string, { name: string; amount: number; active: boolean }>();
-  for (const r of (data ?? []) as any[]) map.set(r.code, { name: r.name, amount: Number(r.amount) || 0, active: !!r.active });
+async function loadVehicleOption(
+  admin: SupabaseClient,
+  vehicle_type: string,
+): Promise<{ code: string; name: string; amount: number; duration_minutes: number }> {
+  const withDuration = await admin.from("pricing_items")
+    .select("amount,code,name,duration_minutes").eq("type", "vehicle_surcharge").eq("active", true);
+  const rows = !withDuration.error
+    ? (withDuration.data ?? [])
+    : ((await admin.from("pricing_items")
+      .select("amount,code,name")
+      .eq("type", "vehicle_surcharge")
+      .eq("active", true)).data ?? []);
+  const v = foldText(vehicle_type);
+  for (const row of rows as any[]) {
+    if (foldText(row.code) === v || foldText(row.name).includes(v) || v.includes(foldText(row.code))) {
+      return {
+        code: String(row.code ?? ""),
+        name: String(row.name ?? "Vehículo"),
+        amount: Number(row.amount) || 0,
+        duration_minutes: inferDurationMinutes("vehicle_surcharge", String(row.code ?? ""), String(row.name ?? ""), row.duration_minutes),
+      };
+    }
+  }
+  return {
+    code: "default",
+    name: `Vehículo (${vehicle_type})`,
+    amount: 0,
+    duration_minutes: 0,
+  };
+}
+
+async function loadExtras(
+  admin: SupabaseClient,
+  codes: string[],
+): Promise<
+  | {
+      ok: true;
+      total: number;
+      duration_minutes_total: number;
+      items: Array<{ code: string; name: string; amount: number; duration_minutes: number }>;
+    }
+  | { ok: false; missing: string[] }
+> {
+  if (!codes.length) return { ok: true, total: 0, duration_minutes_total: 0, items: [] };
+  const withDuration = await admin.from("pricing_items")
+    .select("code,name,amount,duration_minutes,active").eq("type", "extra").in("code", codes);
+  const rows = !withDuration.error
+    ? (withDuration.data ?? [])
+    : ((await admin.from("pricing_items")
+      .select("code,name,amount,active")
+      .eq("type", "extra")
+      .in("code", codes)).data ?? []);
+  const map = new Map<string, { name: string; amount: number; duration_minutes: number; active: boolean }>();
+  for (const r of rows as any[]) {
+    map.set(String(r.code), {
+      name: String(r.name ?? "Extra"),
+      amount: Number(r.amount) || 0,
+      duration_minutes: inferDurationMinutes("extra", String(r.code ?? ""), String(r.name ?? ""), r.duration_minutes),
+      active: !!r.active,
+    });
+  }
   const missing = codes.filter((c) => !map.get(c) || !map.get(c)!.active);
   if (missing.length) return { ok: false, missing };
-  const lines: string[] = [];
+  const items: Array<{ code: string; name: string; amount: number; duration_minutes: number }> = [];
   let total = 0;
+  let duration_minutes_total = 0;
   for (const c of codes) {
     const e = map.get(c)!;
     total += e.amount;
-    lines.push(`${e.name} (+$${e.amount})`);
+    duration_minutes_total += e.duration_minutes;
+    items.push({
+      code: c,
+      name: e.name,
+      amount: e.amount,
+      duration_minutes: e.duration_minutes,
+    });
   }
-  return { ok: true, total, lines };
+  return { ok: true, total, duration_minutes_total, items };
 }
 
 export async function tryCreateBooking(
@@ -209,8 +279,18 @@ export async function tryCreateBooking(
     const [h, m] = String(t).slice(0, 5).split(":").map(Number);
     return h * 60 + m;
   };
+  const serviceDuration = Math.max(1, Math.round(Number(service.duration_minutes) || 60));
+
+  // Pricing from DB
+  const vehicle = await loadVehicleOption(admin, vehicle_type);
+  const extras = await loadExtras(admin, selected_extras);
+  if (!extras.ok) return { ok: false, reason: "invalid_extra", message: "Hay un extra inválido. Actualizá la página e intentá nuevamente.", http_status: 400 };
+  const extras_total = extras.total;
+  const total_duration_minutes =
+    serviceDuration + vehicle.duration_minutes + extras.duration_minutes_total;
+
   const reqStart = toMin(scheduled_time);
-  const reqEnd = reqStart + (service.duration_minutes ?? 0);
+  const reqEnd = reqStart + total_duration_minutes;
   const slotEnd = toMin((slot as any).end_time);
   if (reqEnd > slotEnd) {
     return { ok: false, reason: "service_does_not_fit_slot", message: "El servicio elegido no entra en el horario seleccionado.", http_status: 409 };
@@ -237,23 +317,33 @@ export async function tryCreateBooking(
     .neq("booking_status", "cancelled").limit(1);
   if (dup && dup.length) return { ok: false, reason: "duplicate", message: "Ya existe una reserva en ese horario para este teléfono.", http_status: 409 };
 
-  // Pricing from DB
-  const surcharge = await loadVehicleSurcharge(admin, vehicle_type);
-  const extras = await loadExtras(admin, selected_extras);
-  if (!extras.ok) return { ok: false, reason: "invalid_extra", message: "Hay un extra inválido. Actualizá la página e intentá nuevamente.", http_status: 400 };
-  const extras_total = extras.total;
+  const surcharge = vehicle.amount;
   const total_price = service.base_price + surcharge + extras_total;
 
   const price_breakdown = {
-    base: { label: service.name, amount: service.base_price },
-    vehicle: { type: vehicle_type, amount: surcharge },
-    extras: extras.lines,
+    service: {
+      name: service.name,
+      amount: service.base_price,
+      duration_minutes: serviceDuration,
+    },
+    vehicle: {
+      code: vehicle.code,
+      name: vehicle.name,
+      amount: surcharge,
+      duration_minutes: vehicle.duration_minutes,
+    },
+    extras: extras.items,
+    subtotal: service.base_price,
+    vehicle_surcharge: surcharge,
     extras_total,
     total: total_price,
+    duration_minutes: total_duration_minutes,
     lines: [
       { label: service.name, amount: service.base_price },
-      ...(surcharge > 0 ? [{ label: `Recargo vehículo (${vehicle_type})`, amount: surcharge }] : []),
-      ...extras.lines.map((l) => ({ label: l, amount: 0 })),
+      ...(surcharge > 0
+        ? [{ label: vehicle.name || `Recargo vehículo (${vehicle_type})`, amount: surcharge }]
+        : []),
+      ...extras.items.map((item) => ({ label: item.name, amount: item.amount })),
     ],
   };
 
@@ -287,7 +377,11 @@ export async function tryCreateBooking(
   const notes_parts: string[] = [];
   if (notes_in) notes_parts.push(notes_in);
   if (vehicle_type && surcharge > 0) notes_parts.push(`Vehículo: ${vehicle_type} (+$${surcharge})`);
-  if (extras.lines.length) notes_parts.push(`Extras: ${extras.lines.join(", ")}`);
+  if (extras.items.length) {
+    notes_parts.push(
+      `Extras: ${extras.items.map((item) => `${item.name} (+$${item.amount})`).join(", ")}`,
+    );
+  }
   if (input.is_test) notes_parts.push("[TEST]");
   const notes = notes_parts.length ? notes_parts.join(" | ") : null;
 
@@ -322,7 +416,7 @@ export async function tryCreateBooking(
     address, neighborhood, vehicle_type,
     service_id: service.id, service_name: service.name,
     scheduled_date, scheduled_time,
-    duration_minutes: service.duration_minutes,
+    duration_minutes: total_duration_minutes,
     price: total_price,
     payment_method,
     payment_status,
