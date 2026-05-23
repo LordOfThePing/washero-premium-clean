@@ -905,6 +905,7 @@ export type Database = {
           code: string
           created_at: string
           description: string | null
+          duration_minutes: number
           display_order: number
           id: string
           name: string
@@ -917,6 +918,7 @@ export type Database = {
           code: string
           created_at?: string
           description?: string | null
+          duration_minutes?: number
           display_order?: number
           id?: string
           name: string
@@ -929,6 +931,7 @@ export type Database = {
           code?: string
           created_at?: string
           description?: string | null
+          duration_minutes?: number
           display_order?: number
           id?: string
           name?: string

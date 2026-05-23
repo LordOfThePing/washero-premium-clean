@@ -64,6 +64,7 @@ type PricingItemRow = {
   name: string;
   description: string | null;
   amount: number;
+  duration_minutes: number;
   active: boolean;
   display_order: number;
   created_at?: string;
@@ -650,6 +651,7 @@ function PricingItemsTable({
                 <TableHead>Nombre</TableHead>
                 <TableHead>Descripción</TableHead>
                 <TableHead>Monto</TableHead>
+                <TableHead>Minutos extra</TableHead>
                 <TableHead>Orden</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
@@ -665,6 +667,7 @@ function PricingItemsTable({
                     <p className="mt-1 text-[11px]">{helperText(item.active, "item")}</p>
                   </TableCell>
                   <TableCell>{formatARS(item.amount)}</TableCell>
+                  <TableCell>{item.duration_minutes} min</TableCell>
                   <TableCell>{item.display_order}</TableCell>
                   <TableCell>
                     <ActiveBadge active={item.active} />
@@ -696,7 +699,7 @@ function PricingItemsTable({
                 </div>
                 <ActiveBadge active={item.active} />
               </div>
-              <p className="font-semibold">{formatARS(item.amount)}</p>
+              <p className="font-semibold">{formatARS(item.amount)} · {item.duration_minutes} min</p>
               {item.description && (
                 <p className="text-sm text-muted-foreground">{item.description}</p>
               )}
@@ -814,7 +817,7 @@ function ServiceForm({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="service-duration">Duración (min) *</Label>
+            <Label htmlFor="service-duration">Duración base (min) *</Label>
             <Input
               id="service-duration"
               type="number"
@@ -858,6 +861,7 @@ function PricingItemForm({
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [amount, setAmount] = useState(String(initial?.amount ?? ""));
+  const [duration, setDuration] = useState(String(initial?.duration_minutes ?? 0));
   const [displayOrder, setDisplayOrder] = useState(String(initial?.display_order ?? 0));
   const [active, setActive] = useState(initial?.active ?? true);
 
@@ -868,6 +872,7 @@ function PricingItemForm({
       const trimmedCode = code.trim();
       const trimmedName = name.trim();
       const parsedAmount = Number(amount);
+      const parsedDuration = Number(duration || 0);
       const parsedOrder = Number(displayOrder || 0);
 
       if (!trimmedCode) throw new Error("El código es obligatorio.");
@@ -875,6 +880,8 @@ function PricingItemForm({
       if (!trimmedName) throw new Error("El nombre es obligatorio.");
       if (!Number.isFinite(parsedAmount) || parsedAmount < 0)
         throw new Error("El monto debe ser mayor o igual a 0.");
+      if (!Number.isFinite(parsedDuration) || parsedDuration < 0)
+        throw new Error("Los minutos extra deben ser mayor o igual a 0.");
       if (!Number.isFinite(parsedOrder)) throw new Error("El orden debe ser numérico.");
 
       const payload = {
@@ -883,6 +890,7 @@ function PricingItemForm({
         name: trimmedName,
         description: description.trim() || null,
         amount: Math.round(parsedAmount),
+        duration_minutes: Math.round(parsedDuration),
         display_order: Math.round(parsedOrder),
         active,
       };
@@ -949,7 +957,7 @@ function PricingItemForm({
             maxLength={500}
           />
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-3">
           <div className="space-y-1">
             <Label htmlFor="pricing-amount">Monto (ARS) *</Label>
             <Input
@@ -958,6 +966,16 @@ function PricingItemForm({
               min={0}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="pricing-duration">Minutos extra</Label>
+            <Input
+              id="pricing-duration"
+              type="number"
+              min={0}
+              value={duration}
+              onChange={(e) => setDuration(e.target.value)}
             />
           </div>
           <div className="space-y-1">

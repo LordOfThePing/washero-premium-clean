@@ -20,6 +20,7 @@ export function InvoicePrintable({
   className?: string;
 }) {
   const lines = parseLineItems(invoice.line_items);
+  const chargedLines = lines.filter((line) => line.amount > 0);
 
   return (
     <article
@@ -83,12 +84,12 @@ export function InvoicePrintable({
             </tr>
           </thead>
           <tbody>
-            {lines.length > 0 ? (
-              lines.map((line, i) => (
+            {chargedLines.length > 0 ? (
+              chargedLines.map((line, i) => (
                 <tr key={i} className="border-b border-border/40">
                   <td className="py-2">{line.label}</td>
                   <td className="py-2 text-right tabular-nums">
-                    {line.amount > 0 ? formatPrice(line.amount) : "—"}
+                    {formatPrice(line.amount)}
                   </td>
                 </tr>
               ))
@@ -125,19 +126,19 @@ export function InvoicePrintable({
       </section>
 
       <footer className="space-y-1 border-t pt-4 text-sm">
-        {(invoice.subtotal ?? 0) > 0 && lines.length > 0 && (
+        {(invoice.subtotal ?? 0) > 0 && chargedLines.length > 0 && (
           <div className="flex justify-between text-muted-foreground">
             <span>Subtotal</span>
             <span className="tabular-nums">{formatPrice(invoice.subtotal ?? 0)}</span>
           </div>
         )}
-        {(invoice.vehicle_surcharge ?? 0) > 0 && lines.length > 0 && (
+        {(invoice.vehicle_surcharge ?? 0) > 0 && chargedLines.length > 0 && (
           <div className="flex justify-between text-muted-foreground">
             <span>Recargo vehículo</span>
             <span className="tabular-nums">{formatPrice(invoice.vehicle_surcharge ?? 0)}</span>
           </div>
         )}
-        {(invoice.extras_total ?? 0) > 0 && lines.length > 0 && (
+        {(invoice.extras_total ?? 0) > 0 && chargedLines.length > 0 && (
           <div className="flex justify-between text-muted-foreground">
             <span>Extras</span>
             <span className="tabular-nums">{formatPrice(invoice.extras_total ?? 0)}</span>
