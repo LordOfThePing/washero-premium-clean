@@ -751,6 +751,7 @@ export type Database = {
           notes: string | null
           payment_method: string | null
           payment_status: string | null
+          public_token: string | null
           scheduled_date: string | null
           scheduled_time: string | null
           service_name: string | null
@@ -777,6 +778,7 @@ export type Database = {
           notes?: string | null
           payment_method?: string | null
           payment_status?: string | null
+          public_token?: string | null
           scheduled_date?: string | null
           scheduled_time?: string | null
           service_name?: string | null
@@ -803,6 +805,7 @@ export type Database = {
           notes?: string | null
           payment_method?: string | null
           payment_status?: string | null
+          public_token?: string | null
           scheduled_date?: string | null
           scheduled_time?: string | null
           service_name?: string | null
@@ -1194,6 +1197,10 @@ export type Database = {
       generate_invoice_for_booking: {
         Args: { _booking_id: string }
         Returns: string
+      }
+      get_public_invoice_by_token: {
+        Args: { _public_token: string }
+        Returns: Json
       }
       get_my_admin_profile: {
         Args: never

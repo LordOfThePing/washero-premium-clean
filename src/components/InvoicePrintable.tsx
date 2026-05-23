@@ -12,6 +12,39 @@ function fmtTime(t: string | null) {
   return t ? t.slice(0, 5) : "—";
 }
 
+function paymentStatusLabel(status: string | null) {
+  if (!status) return "—";
+  if (status === "paid") return "Pagado";
+  if (status === "pending") return "Pendiente";
+  if (status === "failed") return "Fallido";
+  if (status === "refunded") return "Reembolsado";
+  if (status === "cancelled") return "Cancelado";
+  return status;
+}
+
+function invoiceStatusLabel(status: string | null) {
+  if (!status) return "Emitido";
+  if (status === "issued") return "Emitido";
+  if (status === "void") return "Anulado";
+  if (status === "cancelled") return "Cancelado";
+  if (status === "pending") return "Pendiente";
+  return status;
+}
+
+function statusTone(status: string | null) {
+  if (status === "paid" || status === "issued") return "bg-emerald-100 text-emerald-700";
+  if (status === "pending") return "bg-amber-100 text-amber-700";
+  return "bg-slate-200 text-slate-700";
+}
+
+function extractEstimatedDuration(notes: string | null) {
+  if (!notes) return null;
+  const match = notes.match(/duraci[oó]n estimada:\s*(\d+)\s*min/i);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
 export function InvoicePrintable({
   invoice,
   className = "",
@@ -21,64 +54,75 @@ export function InvoicePrintable({
 }) {
   const lines = parseLineItems(invoice.line_items);
   const chargedLines = lines.filter((line) => line.amount > 0);
+  const estimatedDuration = extractEstimatedDuration(invoice.notes);
 
   return (
     <article
-      className={`mx-auto max-w-2xl rounded-lg border bg-card p-6 text-sm shadow-sm print:max-w-none print:border-0 print:shadow-none ${className}`}
+      className={`mx-auto max-w-2xl rounded-2xl border border-orange-100 bg-white p-6 text-sm text-slate-900 shadow-sm print:max-w-none print:border-0 print:shadow-none ${className}`}
     >
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b pb-4">
-        <div>
-          <Logo className="mb-2" />
-          <p className="text-lg font-semibold">Comprobante interno</p>
-          <p className="text-xs text-muted-foreground">
-            Comprobante interno de Washero. No válido como factura fiscal.
-          </p>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-4">
+        <div className="space-y-2">
+          <Logo />
+          <div className="h-1 w-28 rounded-full bg-primary" />
+          <div>
+            <p className="text-lg font-semibold">Comprobante interno</p>
+            <p className="text-xs text-slate-500">No válido como factura fiscal.</p>
+          </div>
         </div>
-        <InvoiceMeta invoice={invoice} />
+        <div className="text-right text-sm">
+          <p className="text-xs uppercase tracking-wide text-slate-500">Comprobante</p>
+          <p className="font-mono text-base font-semibold">{invoice.invoice_number ?? "—"}</p>
+          <p className="text-slate-600">Emitida: {fmtInvoiceDate(invoice.issued_at)}</p>
+          <div className="mt-2 flex justify-end gap-2">
+            <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusTone(invoice.invoice_status)}`}>
+              {invoiceStatusLabel(invoice.invoice_status)}
+            </span>
+            <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusTone(invoice.payment_status)}`}>
+              {paymentStatusLabel(invoice.payment_status)}
+            </span>
+          </div>
+        </div>
       </header>
 
       <section className="mb-5 grid gap-4 sm:grid-cols-2">
-        <div>
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <div className="rounded-lg border border-slate-200 p-3">
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
             Cliente
           </h2>
           <p className="font-medium">{invoice.customer_name ?? "—"}</p>
-          <p className="text-muted-foreground">{invoice.customer_phone ?? "—"}</p>
+          <p className="text-slate-600">{invoice.customer_phone ?? "—"}</p>
           {invoice.customer_email && (
-            <p className="text-muted-foreground">{invoice.customer_email}</p>
+            <p className="text-slate-600">{invoice.customer_email}</p>
           )}
           {invoice.customer_address && (
-            <p className="mt-1 text-muted-foreground">{invoice.customer_address}</p>
+            <p className="mt-1 text-slate-600">{invoice.customer_address}</p>
           )}
         </div>
-        <div>
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <div className="rounded-lg border border-slate-200 p-3">
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
             Reserva
           </h2>
+          <p><span className="text-slate-500">Servicio:</span> {invoice.service_name ?? "—"}</p>
+          <p><span className="text-slate-500">Vehículo:</span> {invoice.vehicle_type ?? "—"}</p>
           <p>
-            <span className="text-muted-foreground">Servicio:</span> {invoice.service_name ?? "—"}
-          </p>
-          <p>
-            <span className="text-muted-foreground">Vehículo:</span> {invoice.vehicle_type ?? "—"}
-          </p>
-          <p>
-            <span className="text-muted-foreground">Fecha:</span> {fmtDate(invoice.scheduled_date)}{" "}
+            <span className="text-slate-500">Fecha:</span> {fmtDate(invoice.scheduled_date)}{" "}
             · {fmtTime(invoice.scheduled_time)}
           </p>
-          <p>
-            <span className="text-muted-foreground">Pago:</span> {invoice.payment_method ?? "—"} (
-            {invoice.payment_status ?? "—"})
-          </p>
+          {estimatedDuration ? (
+            <p><span className="text-slate-500">Duración estimada:</span> {estimatedDuration} min</p>
+          ) : null}
+          <p><span className="text-slate-500">Método de pago:</span> {invoice.payment_method ?? "—"}</p>
+          <p><span className="text-slate-500">Estado de pago:</span> {paymentStatusLabel(invoice.payment_status)}</p>
         </div>
       </section>
 
       <section className="mb-5">
-        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
           Detalle
         </h2>
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b text-left text-xs text-muted-foreground">
+            <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
               <th className="pb-2 font-medium">Concepto</th>
               <th className="pb-2 text-right font-medium">Importe</th>
             </tr>
@@ -86,7 +130,7 @@ export function InvoicePrintable({
           <tbody>
             {chargedLines.length > 0 ? (
               chargedLines.map((line, i) => (
-                <tr key={i} className="border-b border-border/40">
+                <tr key={i} className="border-b border-slate-100">
                   <td className="py-2">{line.label}</td>
                   <td className="py-2 text-right tabular-nums">
                     {formatPrice(line.amount)}
@@ -95,14 +139,14 @@ export function InvoicePrintable({
               ))
             ) : (
               <>
-                <tr className="border-b border-border/40">
+                <tr className="border-b border-slate-100">
                   <td className="py-2">{invoice.service_name ?? "Servicio"}</td>
                   <td className="py-2 text-right tabular-nums">
                     {formatPrice(invoice.subtotal ?? 0)}
                   </td>
                 </tr>
                 {(invoice.vehicle_surcharge ?? 0) > 0 && (
-                  <tr className="border-b border-border/40">
+                  <tr className="border-b border-slate-100">
                     <td className="py-2">
                       Recargo vehículo ({invoice.vehicle_type ?? ""})
                     </td>
@@ -112,7 +156,7 @@ export function InvoicePrintable({
                   </tr>
                 )}
                 {(invoice.extras_total ?? 0) > 0 && (
-                  <tr className="border-b border-border/40">
+                  <tr className="border-b border-slate-100">
                     <td className="py-2">Extras</td>
                     <td className="py-2 text-right tabular-nums">
                       {formatPrice(invoice.extras_total ?? 0)}
@@ -125,21 +169,15 @@ export function InvoicePrintable({
         </table>
       </section>
 
-      <footer className="space-y-1 border-t pt-4 text-sm">
+      <footer className="space-y-1 border-t border-slate-200 pt-4 text-sm">
         {(invoice.subtotal ?? 0) > 0 && chargedLines.length > 0 && (
-          <div className="flex justify-between text-muted-foreground">
+          <div className="flex justify-between text-slate-600">
             <span>Subtotal</span>
             <span className="tabular-nums">{formatPrice(invoice.subtotal ?? 0)}</span>
           </div>
         )}
-        {(invoice.vehicle_surcharge ?? 0) > 0 && chargedLines.length > 0 && (
-          <div className="flex justify-between text-muted-foreground">
-            <span>Recargo vehículo</span>
-            <span className="tabular-nums">{formatPrice(invoice.vehicle_surcharge ?? 0)}</span>
-          </div>
-        )}
         {(invoice.extras_total ?? 0) > 0 && chargedLines.length > 0 && (
-          <div className="flex justify-between text-muted-foreground">
+          <div className="flex justify-between text-slate-600">
             <span>Extras</span>
             <span className="tabular-nums">{formatPrice(invoice.extras_total ?? 0)}</span>
           </div>
@@ -148,21 +186,11 @@ export function InvoicePrintable({
           <span>Total</span>
           <span className="tabular-nums">{formatPrice(invoice.total ?? 0)}</span>
         </div>
-        {invoice.notes && (
-          <p className="pt-2 text-xs text-muted-foreground">
-            <span className="font-medium">Notas:</span> {invoice.notes}
-          </p>
-        )}
+        <div className="pt-3 text-xs text-slate-500">
+          <p>Gracias por elegir Washero.</p>
+          <p>Este comprobante interno no es válido como factura fiscal.</p>
+        </div>
       </footer>
     </article>
-  );
-}
-
-function InvoiceMeta({ invoice }: { invoice: Invoice }) {
-  return (
-    <div className="text-right text-sm">
-      <p className="font-mono text-base font-semibold">{invoice.invoice_number ?? "—"}</p>
-      <p className="text-muted-foreground">Emitida: {fmtInvoiceDate(invoice.issued_at)}</p>
-    </div>
   );
 }

@@ -160,13 +160,28 @@
 }
 
 @media print {
-  [data-slot="sidebar"],
-  header,
-  .print\:hidden {
+  body * {
+    visibility: hidden;
+  }
+
+  .invoice-print-root,
+  .invoice-print-root * {
+    visibility: visible;
+  }
+
+  .invoice-print-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+
+  .no-print {
     display: none !important;
   }
 
-  main {
-    padding: 0 !important;
+  @page {
+    size: A4;
+    margin: 14mm;
   }
 }

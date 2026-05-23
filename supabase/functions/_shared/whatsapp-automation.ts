@@ -22,6 +22,8 @@ export type BookingNotifyRow = {
   booking_source?: string | null;
 };
 
+const CUSTOMER_SITE_ORIGIN = (Deno.env.get("PUBLIC_SITE_URL") ?? "https://washero.ar").replace(/\/+$/, "");
+
 function fmtDate(iso: string) {
   if (!iso) return "—";
   const [y, m, d] = iso.split("-").map(Number);
@@ -78,6 +80,7 @@ export function buildPaymentConfirmedMessage(
   b: Pick<BookingNotifyRow, "customer_name" | "price">,
   invoiceNumber: string | null,
   total: number,
+  customerInvoiceUrl?: string | null,
 ): string {
   const name = firstName(b.customer_name);
   const totalLine = total > 0
@@ -86,11 +89,21 @@ export function buildPaymentConfirmedMessage(
   const receipt = invoiceNumber
     ? `\n*Comprobante interno:* ${invoiceNumber}`
     : "";
+  const linkLine = customerInvoiceUrl
+    ? `\nPodés ver tu comprobante acá: ${customerInvoiceUrl}`
+    : "";
 
   return `Hola ${name} 👋
 Registramos el *pago* de tu lavado Washero.${receipt}${totalLine}
+${linkLine}
 
 Gracias por elegir Washero.`;
+}
+
+export function getCustomerInvoiceUrl(invoice: { public_token?: string | null }) {
+  const token = String(invoice.public_token ?? "").trim();
+  if (!token) return null;
+  return `${CUSTOMER_SITE_ORIGIN}/comprobante/${token}`;
 }
 
 export function buildBookingReminderMessage(b: BookingNotifyRow): string {
@@ -179,16 +192,28 @@ export async function notifyPaymentConfirmed(
     return { ok: false, status: "skipped", error: "duplicate_template" };
   }
 
-  const { data: invoice } = await admin
+  const invoiceWithToken = await admin
     .from("invoices")
-    .select("id, invoice_number, total")
+    .select("id, invoice_number, total, public_token")
     .eq("booking_id", bookingId)
     .maybeSingle();
+  const invoiceBasic = invoiceWithToken.error
+    ? await admin
+        .from("invoices")
+        .select("id, invoice_number, total")
+        .eq("booking_id", bookingId)
+        .maybeSingle()
+    : null;
+  const invoice = (invoiceWithToken.error ? invoiceBasic?.data : invoiceWithToken.data) as
+    | { id?: string; invoice_number?: string | null; total?: number | null; public_token?: string | null }
+    | null;
 
   const total = Number(invoice?.total ?? booking.price ?? 0);
   if (total <= 0 && !invoice?.invoice_number) {
     return null;
   }
+
+  const customerInvoiceUrl = getCustomerInvoiceUrl({ public_token: invoice?.public_token ?? null });
 
   return sendBotmakerWhatsApp(admin, {
     phone: booking.customer_phone,
@@ -200,6 +225,7 @@ export async function notifyPaymentConfirmed(
       booking,
       invoice?.invoice_number ?? null,
       total,
+      customerInvoiceUrl,
     ),
   });
 }

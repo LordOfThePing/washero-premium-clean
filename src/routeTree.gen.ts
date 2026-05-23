@@ -42,6 +42,7 @@ import { Route as PublicReservarRouteImport } from './routes/_public.reservar'
 import { Route as PublicGraciasRouteImport } from './routes/_public.gracias'
 import { Route as OperatorReservaBookingIdRouteImport } from './routes/operator.reserva.$bookingId'
 import { Route as AdminFacturasInvoiceIdRouteImport } from './routes/admin.facturas_.$invoiceId'
+import { Route as PublicComprobantePublicTokenRouteImport } from './routes/_public.comprobante.$publicToken'
 
 const OperatorRoute = OperatorRouteImport.update({
   id: '/operator',
@@ -208,6 +209,12 @@ const AdminFacturasInvoiceIdRoute = AdminFacturasInvoiceIdRouteImport.update({
   path: '/facturas/$invoiceId',
   getParentRoute: () => AdminRoute,
 } as any)
+const PublicComprobantePublicTokenRoute =
+  PublicComprobantePublicTokenRouteImport.update({
+    id: '/comprobante/$publicToken',
+    path: '/comprobante/$publicToken',
+    getParentRoute: () => PublicRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof PublicIndexRoute
@@ -240,6 +247,7 @@ export interface FileRoutesByFullPath {
   '/operator/semana': typeof OperatorSemanaRoute
   '/admin/': typeof AdminIndexRoute
   '/operator/': typeof OperatorIndexRoute
+  '/comprobante/$publicToken': typeof PublicComprobantePublicTokenRoute
   '/admin/facturas/$invoiceId': typeof AdminFacturasInvoiceIdRoute
   '/operator/reserva/$bookingId': typeof OperatorReservaBookingIdRoute
 }
@@ -272,6 +280,7 @@ export interface FileRoutesByTo {
   '/': typeof PublicIndexRoute
   '/admin': typeof AdminIndexRoute
   '/operator': typeof OperatorIndexRoute
+  '/comprobante/$publicToken': typeof PublicComprobantePublicTokenRoute
   '/admin/facturas/$invoiceId': typeof AdminFacturasInvoiceIdRoute
   '/operator/reserva/$bookingId': typeof OperatorReservaBookingIdRoute
 }
@@ -308,6 +317,7 @@ export interface FileRoutesById {
   '/_public/': typeof PublicIndexRoute
   '/admin/': typeof AdminIndexRoute
   '/operator/': typeof OperatorIndexRoute
+  '/_public/comprobante/$publicToken': typeof PublicComprobantePublicTokenRoute
   '/admin/facturas_/$invoiceId': typeof AdminFacturasInvoiceIdRoute
   '/operator/reserva/$bookingId': typeof OperatorReservaBookingIdRoute
 }
@@ -344,6 +354,7 @@ export interface FileRouteTypes {
     | '/operator/semana'
     | '/admin/'
     | '/operator/'
+    | '/comprobante/$publicToken'
     | '/admin/facturas/$invoiceId'
     | '/operator/reserva/$bookingId'
   fileRoutesByTo: FileRoutesByTo
@@ -376,6 +387,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/operator'
+    | '/comprobante/$publicToken'
     | '/admin/facturas/$invoiceId'
     | '/operator/reserva/$bookingId'
   id:
@@ -411,6 +423,7 @@ export interface FileRouteTypes {
     | '/_public/'
     | '/admin/'
     | '/operator/'
+    | '/_public/comprobante/$publicToken'
     | '/admin/facturas_/$invoiceId'
     | '/operator/reserva/$bookingId'
   fileRoutesById: FileRoutesById
@@ -654,6 +667,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminFacturasInvoiceIdRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/_public/comprobante/$publicToken': {
+      id: '/_public/comprobante/$publicToken'
+      path: '/comprobante/$publicToken'
+      fullPath: '/comprobante/$publicToken'
+      preLoaderRoute: typeof PublicComprobantePublicTokenRouteImport
+      parentRoute: typeof PublicRoute
+    }
   }
 }
 
@@ -661,12 +681,14 @@ interface PublicRouteChildren {
   PublicGraciasRoute: typeof PublicGraciasRoute
   PublicReservarRoute: typeof PublicReservarRoute
   PublicIndexRoute: typeof PublicIndexRoute
+  PublicComprobantePublicTokenRoute: typeof PublicComprobantePublicTokenRoute
 }
 
 const PublicRouteChildren: PublicRouteChildren = {
   PublicGraciasRoute: PublicGraciasRoute,
   PublicReservarRoute: PublicReservarRoute,
   PublicIndexRoute: PublicIndexRoute,
+  PublicComprobantePublicTokenRoute: PublicComprobantePublicTokenRoute,
 }
 
 const PublicRouteWithChildren =

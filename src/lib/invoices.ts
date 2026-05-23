@@ -46,6 +46,23 @@ export async function fetchInvoiceById(invoiceId: string): Promise<Invoice | nul
   return data;
 }
 
+export async function fetchPublicInvoiceByToken(publicToken: string): Promise<Invoice | null> {
+  const token = publicToken.trim();
+  if (!token) return null;
+  const { data, error } = await supabase.rpc("get_public_invoice_by_token", {
+    _public_token: token,
+  });
+  if (error) throw error;
+  if (!data || typeof data !== "object") return null;
+  return data as Invoice;
+}
+
+export function getCustomerInvoiceUrl(invoice: { public_token?: string | null }) {
+  const token = String(invoice.public_token ?? "").trim();
+  if (!token) return null;
+  return `https://washero.ar/comprobante/${token}`;
+}
+
 export type GenerateInvoiceResult =
   | { ok: true; invoiceId: string; created: boolean }
   | { ok: false; error: string };

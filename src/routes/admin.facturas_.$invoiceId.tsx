@@ -58,12 +58,12 @@ function InvoiceDetailPage() {
 
   return (
     <div className="space-y-6 print:space-y-0">
-      <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
-        <Button variant="ghost" size="sm" onClick={() => navigate({ to: "/admin/facturas" })}>
+      <div className="no-print flex flex-wrap items-center justify-between gap-3">
+        <Button variant="ghost" size="sm" onClick={() => navigate({ to: "/admin/facturas" })} className="no-print">
           <ArrowLeft className="mr-1 h-4 w-4" /> Facturas
         </Button>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => window.print()}>
+        <div className="no-print flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => window.print()} className="no-print">
             <Printer className="mr-1 h-4 w-4" />
             Imprimir / Descargar PDF
           </Button>
@@ -77,6 +77,7 @@ function InvoiceDetailPage() {
                   search: { booking: inv.booking_id! },
                 })
               }
+              className="no-print"
             >
               <ClipboardList className="mr-1 h-4 w-4" /> Ver reserva
             </Button>
@@ -85,13 +86,15 @@ function InvoiceDetailPage() {
       </div>
 
       {isLegacySparse && (
-        <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 print:hidden dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+        <p className="no-print rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
           Este comprobante fue creado sin datos completos (registro anterior al flujo actual).
           Podés regenerarlo desde la reserva si hace falta.
         </p>
       )}
 
-      <InvoicePrintable invoice={inv} />
+      <div className="invoice-print-root">
+        <InvoicePrintable invoice={inv} />
+      </div>
     </div>
   );
 }
