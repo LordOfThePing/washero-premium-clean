@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
+import type { BookingAttribution } from "@/lib/attribution";
 import {
   COVERAGE_COPY,
   INITIAL_FORM,
@@ -54,7 +55,7 @@ type SlotPick = { date: string; time: string; slot_id: string; reason?: string }
 const STEPS = ["Dirección", "Servicio", "Horario", "Datos y pago"] as const;
 const RECOMMENDED_SCORE_MIN = 70;
 
-export function AddressFirstFlow() {
+export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribution }) {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [place, setPlace] = useState<PlaceSelection | null>(null);
@@ -378,6 +379,14 @@ export function AddressFirstFlow() {
       payment_method: form.payment_method,
       notes: noteParts.join(" · ") || null,
       selected_extras: form.extras,
+      marketing_source: attribution?.marketing_source ?? null,
+      marketing_medium: attribution?.marketing_medium ?? null,
+      marketing_campaign: attribution?.marketing_campaign ?? null,
+      marketing_content: attribution?.marketing_content ?? null,
+      marketing_term: attribution?.marketing_term ?? null,
+      qr_code_slug: attribution?.qr_code_slug ?? null,
+      landing_url: attribution?.landing_url ?? null,
+      referrer_url: attribution?.referrer_url ?? null,
     };
 
     const { data, error } = await supabase.functions.invoke("create-website-booking", { body: payload });

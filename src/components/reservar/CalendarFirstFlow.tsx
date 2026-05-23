@@ -14,6 +14,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { PlacesAutocomplete, type PlaceSelection } from "@/components/PlacesAutocomplete";
 import { cn } from "@/lib/utils";
+import type { BookingAttribution } from "@/lib/attribution";
 import {
   COVERAGE_COPY,
   INITIAL_FORM,
@@ -38,7 +39,7 @@ import {
   type Service,
 } from "@/components/reservar/shared";
 
-export function CalendarFirstFlow() {
+export function CalendarFirstFlow({ attribution }: { attribution?: BookingAttribution }) {
   const navigate = useNavigate();
 
   const services = useQuery({ queryKey: ["services"], queryFn: fetchServices, staleTime: 60_000 });
@@ -145,6 +146,7 @@ export function CalendarFirstFlow() {
               pricingLoading={pricing.isLoading}
               date={selectedDate}
               time={selectedTime}
+              attribution={attribution}
               onBack={backToTimes}
               onClose={() => setBookingOpen(false)}
               onSuccess={(checkoutUrl, summary) => {
@@ -247,7 +249,7 @@ type CoverageState =
   | { kind: "error"; message: string };
 
 function BookingForm({
-  services, servicesLoading, pricing, pricingLoading, date, time, onBack, onClose, onSuccess,
+  services, servicesLoading, pricing, pricingLoading, date, time, attribution, onBack, onClose, onSuccess,
 }: {
   services: Service[];
   servicesLoading: boolean;
@@ -255,6 +257,7 @@ function BookingForm({
   pricingLoading: boolean;
   date: string;
   time: string;
+  attribution?: BookingAttribution;
   onBack: () => void;
   onClose: () => void;
   onSuccess: (checkoutUrl: string | null, summary: any) => void;
@@ -388,6 +391,14 @@ function BookingForm({
       payment_method: form.payment_method,
       notes: noteParts.join(" · ") || null,
       selected_extras: form.extras,
+      marketing_source: attribution?.marketing_source ?? null,
+      marketing_medium: attribution?.marketing_medium ?? null,
+      marketing_campaign: attribution?.marketing_campaign ?? null,
+      marketing_content: attribution?.marketing_content ?? null,
+      marketing_term: attribution?.marketing_term ?? null,
+      qr_code_slug: attribution?.qr_code_slug ?? null,
+      landing_url: attribution?.landing_url ?? null,
+      referrer_url: attribution?.referrer_url ?? null,
     };
 
     const { data, error } = await supabase.functions.invoke("create-website-booking", { body: payload });

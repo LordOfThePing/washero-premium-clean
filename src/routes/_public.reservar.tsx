@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { z } from "zod";
 
 import { AddressFirstFlow } from "@/components/reservar/AddressFirstFlow";
 import { CalendarFirstFlow } from "@/components/reservar/CalendarFirstFlow";
+import { useBookingAttribution } from "@/lib/attribution";
 
 const parseFlag = (value: unknown) => {
   const normalized = String(value ?? "").trim().toLowerCase();
@@ -9,6 +11,15 @@ const parseFlag = (value: unknown) => {
 };
 
 const ADDRESS_FIRST_ENABLED = true;
+
+const searchSchema = z.object({
+  utm_source: z.string().optional(),
+  utm_medium: z.string().optional(),
+  utm_campaign: z.string().optional(),
+  utm_content: z.string().optional(),
+  utm_term: z.string().optional(),
+  qr: z.string().optional(),
+});
 
 if (import.meta.env.DEV) {
   console.log("[Reservar] Address-first flags", {
@@ -19,6 +30,7 @@ if (import.meta.env.DEV) {
 }
 
 export const Route = createFileRoute("/_public/reservar")({
+  validateSearch: searchSchema,
   head: () => ({
     meta: [
       { title: "Reservar lavado — Washero" },
@@ -34,6 +46,9 @@ export const Route = createFileRoute("/_public/reservar")({
 });
 
 function ReservarPage() {
+  const search = Route.useSearch();
+  const attribution = useBookingAttribution(search);
+
   return (
     <>
       {import.meta.env.DEV ? (
@@ -42,7 +57,11 @@ function ReservarPage() {
         </div>
       ) : null}
 
-      {ADDRESS_FIRST_ENABLED ? <AddressFirstFlow /> : <CalendarFirstFlow />}
+      {ADDRESS_FIRST_ENABLED ? (
+        <AddressFirstFlow attribution={attribution} />
+      ) : (
+        <CalendarFirstFlow attribution={attribution} />
+      )}
     </>
   );
 }

@@ -31,6 +31,14 @@ type Payload = {
   formatted_address?: string | null;
   address_lat?: number | null;
   address_lng?: number | null;
+  marketing_source?: string | null;
+  marketing_medium?: string | null;
+  marketing_campaign?: string | null;
+  marketing_content?: string | null;
+  marketing_term?: string | null;
+  qr_code_slug?: string | null;
+  landing_url?: string | null;
+  referrer_url?: string | null;
 };
 
 const PUBLIC_MIN_LEAD_MINUTES = 120;
@@ -113,6 +121,14 @@ Deno.serve(async (req) => {
       formatted_address: body.formatted_address ?? null,
       address_lat: typeof body.address_lat === "number" ? body.address_lat : null,
       address_lng: typeof body.address_lng === "number" ? body.address_lng : null,
+      marketing_source: body.marketing_source ?? null,
+      marketing_medium: body.marketing_medium ?? null,
+      marketing_campaign: body.marketing_campaign ?? null,
+      marketing_content: body.marketing_content ?? null,
+      marketing_term: body.marketing_term ?? null,
+      qr_code_slug: body.qr_code_slug ?? null,
+      landing_url: body.landing_url ?? null,
+      referrer_url: body.referrer_url ?? null,
       enforce_coverage: true, // strict coverage on website
       source: "website",
     });

@@ -31,6 +31,15 @@ export type CoreBookingInput = {
   address_lng?: number | null;
   // Coverage policy
   enforce_coverage?: boolean; // website=true, botmaker/admin=false unless coords provided
+  // Marketing attribution
+  marketing_source?: string | null;
+  marketing_medium?: string | null;
+  marketing_campaign?: string | null;
+  marketing_content?: string | null;
+  marketing_term?: string | null;
+  qr_code_slug?: string | null;
+  landing_url?: string | null;
+  referrer_url?: string | null;
   /** Admin / approval paths only — must match bookings check constraints */
   requested_booking_status?: string;
   requested_payment_status?: string;
@@ -209,6 +218,14 @@ export async function tryCreateBooking(
   const notes_in = input.notes ? String(input.notes).trim() : "";
   const selected_extras = Array.isArray(input.selected_extras) ? input.selected_extras : [];
   const enforce_coverage = !!input.enforce_coverage;
+  const marketing_source = input.marketing_source ? String(input.marketing_source).trim() : null;
+  const marketing_medium = input.marketing_medium ? String(input.marketing_medium).trim() : null;
+  const marketing_campaign = input.marketing_campaign ? String(input.marketing_campaign).trim() : null;
+  const marketing_content = input.marketing_content ? String(input.marketing_content).trim() : null;
+  const marketing_term = input.marketing_term ? String(input.marketing_term).trim() : null;
+  const qr_code_slug = input.qr_code_slug ? String(input.qr_code_slug).trim() : null;
+  const landing_url = input.landing_url ? String(input.landing_url).trim() : null;
+  const referrer_url = input.referrer_url ? String(input.referrer_url).trim() : null;
 
   const missing: string[] = [];
   if (!customer_name) missing.push("customer_name");
@@ -435,6 +452,14 @@ export async function tryCreateBooking(
     selected_extras,
     extras_total,
     price_breakdown,
+    marketing_source,
+    marketing_medium,
+    marketing_campaign,
+    marketing_content,
+    marketing_term,
+    qr_code_slug,
+    landing_url,
+    referrer_url,
   }).select("id,booking_status,price").maybeSingle();
 
   if (insErr || !created) {

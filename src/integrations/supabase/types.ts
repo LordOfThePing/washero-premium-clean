@@ -202,6 +202,11 @@ export type Database = {
           id: string
           location_validation_payload: Json | null
           location_validation_status: string | null
+          marketing_campaign: string | null
+          marketing_content: string | null
+          marketing_medium: string | null
+          marketing_source: string | null
+          marketing_term: string | null
           neighborhood: string
           notes: string | null
           payment_method: string
@@ -209,6 +214,8 @@ export type Database = {
           place_id: string | null
           price: number
           price_breakdown: Json
+          qr_code_slug: string | null
+          referrer_url: string | null
           scheduled_date: string
           scheduled_time: string
           selected_extras: Json
@@ -218,6 +225,7 @@ export type Database = {
           updated_at: string
           vehicle_surcharge: number
           vehicle_type: string
+          landing_url: string | null
         }
         Insert: {
           address: string
@@ -239,6 +247,11 @@ export type Database = {
           id?: string
           location_validation_payload?: Json | null
           location_validation_status?: string | null
+          marketing_campaign?: string | null
+          marketing_content?: string | null
+          marketing_medium?: string | null
+          marketing_source?: string | null
+          marketing_term?: string | null
           neighborhood: string
           notes?: string | null
           payment_method?: string
@@ -246,6 +259,8 @@ export type Database = {
           place_id?: string | null
           price: number
           price_breakdown?: Json
+          qr_code_slug?: string | null
+          referrer_url?: string | null
           scheduled_date: string
           scheduled_time: string
           selected_extras?: Json
@@ -255,6 +270,7 @@ export type Database = {
           updated_at?: string
           vehicle_surcharge?: number
           vehicle_type: string
+          landing_url?: string | null
         }
         Update: {
           address?: string
@@ -276,6 +292,11 @@ export type Database = {
           id?: string
           location_validation_payload?: Json | null
           location_validation_status?: string | null
+          marketing_campaign?: string | null
+          marketing_content?: string | null
+          marketing_medium?: string | null
+          marketing_source?: string | null
+          marketing_term?: string | null
           neighborhood?: string
           notes?: string | null
           payment_method?: string
@@ -283,6 +304,8 @@ export type Database = {
           place_id?: string | null
           price?: number
           price_breakdown?: Json
+          qr_code_slug?: string | null
+          referrer_url?: string | null
           scheduled_date?: string
           scheduled_time?: string
           selected_extras?: Json
@@ -292,6 +315,7 @@ export type Database = {
           updated_at?: string
           vehicle_surcharge?: number
           vehicle_type?: string
+          landing_url?: string | null
         }
         Relationships: [
           {

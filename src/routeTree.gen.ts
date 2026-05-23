@@ -42,6 +42,7 @@ import { Route as PublicReservarRouteImport } from './routes/_public.reservar'
 import { Route as PublicGraciasRouteImport } from './routes/_public.gracias'
 import { Route as OperatorReservaBookingIdRouteImport } from './routes/operator.reserva.$bookingId'
 import { Route as AdminFacturasInvoiceIdRouteImport } from './routes/admin.facturas_.$invoiceId'
+import { Route as PublicQSlugRouteImport } from './routes/_public.q.$slug'
 import { Route as PublicComprobantePublicTokenRouteImport } from './routes/_public.comprobante.$publicToken'
 
 const OperatorRoute = OperatorRouteImport.update({
@@ -209,6 +210,11 @@ const AdminFacturasInvoiceIdRoute = AdminFacturasInvoiceIdRouteImport.update({
   path: '/facturas/$invoiceId',
   getParentRoute: () => AdminRoute,
 } as any)
+const PublicQSlugRoute = PublicQSlugRouteImport.update({
+  id: '/q/$slug',
+  path: '/q/$slug',
+  getParentRoute: () => PublicRoute,
+} as any)
 const PublicComprobantePublicTokenRoute =
   PublicComprobantePublicTokenRouteImport.update({
     id: '/comprobante/$publicToken',
@@ -248,6 +254,7 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AdminIndexRoute
   '/operator/': typeof OperatorIndexRoute
   '/comprobante/$publicToken': typeof PublicComprobantePublicTokenRoute
+  '/q/$slug': typeof PublicQSlugRoute
   '/admin/facturas/$invoiceId': typeof AdminFacturasInvoiceIdRoute
   '/operator/reserva/$bookingId': typeof OperatorReservaBookingIdRoute
 }
@@ -281,6 +288,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminIndexRoute
   '/operator': typeof OperatorIndexRoute
   '/comprobante/$publicToken': typeof PublicComprobantePublicTokenRoute
+  '/q/$slug': typeof PublicQSlugRoute
   '/admin/facturas/$invoiceId': typeof AdminFacturasInvoiceIdRoute
   '/operator/reserva/$bookingId': typeof OperatorReservaBookingIdRoute
 }
@@ -318,6 +326,7 @@ export interface FileRoutesById {
   '/admin/': typeof AdminIndexRoute
   '/operator/': typeof OperatorIndexRoute
   '/_public/comprobante/$publicToken': typeof PublicComprobantePublicTokenRoute
+  '/_public/q/$slug': typeof PublicQSlugRoute
   '/admin/facturas_/$invoiceId': typeof AdminFacturasInvoiceIdRoute
   '/operator/reserva/$bookingId': typeof OperatorReservaBookingIdRoute
 }
@@ -355,6 +364,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/operator/'
     | '/comprobante/$publicToken'
+    | '/q/$slug'
     | '/admin/facturas/$invoiceId'
     | '/operator/reserva/$bookingId'
   fileRoutesByTo: FileRoutesByTo
@@ -388,6 +398,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/operator'
     | '/comprobante/$publicToken'
+    | '/q/$slug'
     | '/admin/facturas/$invoiceId'
     | '/operator/reserva/$bookingId'
   id:
@@ -424,6 +435,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/operator/'
     | '/_public/comprobante/$publicToken'
+    | '/_public/q/$slug'
     | '/admin/facturas_/$invoiceId'
     | '/operator/reserva/$bookingId'
   fileRoutesById: FileRoutesById
@@ -667,6 +679,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminFacturasInvoiceIdRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/_public/q/$slug': {
+      id: '/_public/q/$slug'
+      path: '/q/$slug'
+      fullPath: '/q/$slug'
+      preLoaderRoute: typeof PublicQSlugRouteImport
+      parentRoute: typeof PublicRoute
+    }
     '/_public/comprobante/$publicToken': {
       id: '/_public/comprobante/$publicToken'
       path: '/comprobante/$publicToken'
@@ -682,6 +701,7 @@ interface PublicRouteChildren {
   PublicReservarRoute: typeof PublicReservarRoute
   PublicIndexRoute: typeof PublicIndexRoute
   PublicComprobantePublicTokenRoute: typeof PublicComprobantePublicTokenRoute
+  PublicQSlugRoute: typeof PublicQSlugRoute
 }
 
 const PublicRouteChildren: PublicRouteChildren = {
@@ -689,6 +709,7 @@ const PublicRouteChildren: PublicRouteChildren = {
   PublicReservarRoute: PublicReservarRoute,
   PublicIndexRoute: PublicIndexRoute,
   PublicComprobantePublicTokenRoute: PublicComprobantePublicTokenRoute,
+  PublicQSlugRoute: PublicQSlugRoute,
 }
 
 const PublicRouteWithChildren =

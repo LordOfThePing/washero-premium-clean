@@ -43,6 +43,7 @@ import {
   type DatePreset,
   type DemandBooking,
   type DemandFilters,
+  computeAttributionPerformance,
   computeMetrics,
   computeZonePerformance,
   filterBookings,
@@ -60,7 +61,7 @@ export const Route = createFileRoute("/admin/mapa-demanda")({
 });
 
 const BOOKING_FIELDS =
-  "id,customer_name,customer_phone,service_name,vehicle_type,scheduled_date,scheduled_time,booking_status,payment_status,booking_source,price,coverage_zone_id,coverage_zone_name,address_lat,address_lng,formatted_address,address,neighborhood,created_at";
+  "id,customer_name,customer_phone,service_name,vehicle_type,scheduled_date,scheduled_time,booking_status,payment_status,booking_source,marketing_campaign,qr_code_slug,price,coverage_zone_id,coverage_zone_name,address_lat,address_lng,formatted_address,address,neighborhood,created_at";
 
 function MetricCard({
   label,
@@ -175,6 +176,10 @@ function MapaDemandaPage() {
   const zoneRows = useMemo(
     () => computeZonePerformance(filtered, zonesQuery.data ?? []),
     [filtered, zonesQuery.data],
+  );
+  const attributionRows = useMemo(
+    () => computeAttributionPerformance(filtered),
+    [filtered],
   );
 
   const zoneCounts = useMemo(() => {
@@ -537,6 +542,50 @@ function MapaDemandaPage() {
                 ))}
               </div>
             </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Resumen de atribución (Campaña / QR)</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="p-4">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : attributionRows.length === 0 ? (
+            <p className="p-4 text-sm text-muted-foreground">No hay datos de atribución en este período.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Campaña</TableHead>
+                    <TableHead>QR</TableHead>
+                    <TableHead className="text-right">Reservas</TableHead>
+                    <TableHead className="text-right">Paid</TableHead>
+                    <TableHead className="text-right">Completed</TableHead>
+                    <TableHead className="text-right">Revenue</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {attributionRows.map((row) => (
+                    <TableRow key={`${row.campaign}-${row.qr}`}>
+                      <TableCell>{row.campaign}</TableCell>
+                      <TableCell>{row.qr}</TableCell>
+                      <TableCell className="text-right">{row.bookings}</TableCell>
+                      <TableCell className="text-right">{row.paid}</TableCell>
+                      <TableCell className="text-right">{row.completed}</TableCell>
+                      <TableCell className="text-right font-mono text-xs">
+                        {formatARS(row.revenue)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>

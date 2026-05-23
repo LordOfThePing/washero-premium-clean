@@ -97,6 +97,14 @@ export type Booking = {
   payment_status: string;
   booking_status: string;
   booking_source: string;
+  marketing_source?: string | null;
+  marketing_medium?: string | null;
+  marketing_campaign?: string | null;
+  marketing_content?: string | null;
+  marketing_term?: string | null;
+  qr_code_slug?: string | null;
+  landing_url?: string | null;
+  referrer_url?: string | null;
   customer_subscription_id?: string | null;
   assigned_operator_id?: string | null;
   assigned_vehicle_label?: string | null;
@@ -482,6 +490,31 @@ export function BookingDetail({
         <div className="text-xs text-muted-foreground sm:col-span-2">
           Creada: {new Date(booking.created_at).toLocaleString("es-AR")} · Actualizada:{" "}
           {new Date(booking.updated_at).toLocaleString("es-AR")}
+        </div>
+        <div className="space-y-1 sm:col-span-2">
+          <p className="text-xs font-medium text-muted-foreground">Origen</p>
+          <div className="rounded-md border bg-muted/30 p-2 text-xs">
+            <p>
+              <span className="text-muted-foreground">Fuente:</span>{" "}
+              {booking.marketing_source ?? "—"} ·{" "}
+              <span className="text-muted-foreground">Medio:</span>{" "}
+              {booking.marketing_medium ?? "—"}
+            </p>
+            <p>
+              <span className="text-muted-foreground">Campaña:</span>{" "}
+              {booking.marketing_campaign ?? "—"} ·{" "}
+              <span className="text-muted-foreground">QR:</span>{" "}
+              {booking.qr_code_slug ?? "—"}
+            </p>
+            <p>
+              <span className="text-muted-foreground">Landing:</span>{" "}
+              {booking.landing_url ?? "—"}
+            </p>
+            <p>
+              <span className="text-muted-foreground">Referrer:</span>{" "}
+              {booking.referrer_url ?? "—"}
+            </p>
+          </div>
         </div>
       </div>
 

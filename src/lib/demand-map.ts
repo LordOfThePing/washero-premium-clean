@@ -15,6 +15,8 @@ export type DemandBooking = {
   booking_status: string;
   payment_status: string;
   booking_source: string;
+  marketing_campaign: string | null;
+  qr_code_slug: string | null;
   price: number;
   coverage_zone_id: string | null;
   coverage_zone_name: string | null;
@@ -24,6 +26,15 @@ export type DemandBooking = {
   address: string;
   neighborhood: string;
   created_at: string;
+};
+
+export type AttributionPerformanceRow = {
+  campaign: string;
+  qr: string;
+  bookings: number;
+  paid: number;
+  completed: number;
+  revenue: number;
 };
 
 export type CoverageZoneRow = {
@@ -283,6 +294,35 @@ export function computeZonePerformance(
     if (b.zoneId === NO_ZONE_ID) return -1;
     return b.total - a.total || a.zoneName.localeCompare(b.zoneName, "es");
   });
+}
+
+export function computeAttributionPerformance(bookings: DemandBooking[]): AttributionPerformanceRow[] {
+  const rows = new Map<string, AttributionPerformanceRow>();
+
+  for (const b of bookings) {
+    const campaign = (b.marketing_campaign ?? "sin_campana").trim() || "sin_campana";
+    const qr = (b.qr_code_slug ?? "sin_qr").trim() || "sin_qr";
+    const key = `${campaign}::${qr}`;
+    const row = rows.get(key) ?? {
+      campaign,
+      qr,
+      bookings: 0,
+      paid: 0,
+      completed: 0,
+      revenue: 0,
+    };
+    row.bookings += 1;
+    if (b.payment_status === "paid") {
+      row.paid += 1;
+      row.revenue += Number(b.price ?? 0);
+    }
+    if (b.booking_status === "completed") {
+      row.completed += 1;
+    }
+    rows.set(key, row);
+  }
+
+  return Array.from(rows.values()).sort((a, b) => b.bookings - a.bookings || b.revenue - a.revenue);
 }
 
 export function geoJsonToPaths(geo: unknown): { lat: number; lng: number }[][] {
