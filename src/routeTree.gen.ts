@@ -18,6 +18,7 @@ import { Route as PublicIndexRouteImport } from './routes/_public.index'
 import { Route as OperatorSemanaRouteImport } from './routes/operator.semana'
 import { Route as OperatorPerfilRouteImport } from './routes/operator.perfil'
 import { Route as OperatorPendientesRouteImport } from './routes/operator.pendientes'
+import { Route as OperatorMensajesRouteImport } from './routes/operator.mensajes'
 import { Route as OperatorLoginRouteImport } from './routes/operator.login'
 import { Route as OperatorHoyRouteImport } from './routes/operator.hoy'
 import { Route as AdminWhatsappConfigRouteImport } from './routes/admin.whatsapp-config'
@@ -87,6 +88,11 @@ const OperatorPerfilRoute = OperatorPerfilRouteImport.update({
 const OperatorPendientesRoute = OperatorPendientesRouteImport.update({
   id: '/pendientes',
   path: '/pendientes',
+  getParentRoute: () => OperatorRoute,
+} as any)
+const OperatorMensajesRoute = OperatorMensajesRouteImport.update({
+  id: '/mensajes',
+  path: '/mensajes',
   getParentRoute: () => OperatorRoute,
 } as any)
 const OperatorLoginRoute = OperatorLoginRouteImport.update({
@@ -248,6 +254,7 @@ export interface FileRoutesByFullPath {
   '/admin/whatsapp-config': typeof AdminWhatsappConfigRoute
   '/operator/hoy': typeof OperatorHoyRoute
   '/operator/login': typeof OperatorLoginRoute
+  '/operator/mensajes': typeof OperatorMensajesRoute
   '/operator/pendientes': typeof OperatorPendientesRoute
   '/operator/perfil': typeof OperatorPerfilRoute
   '/operator/semana': typeof OperatorSemanaRoute
@@ -281,6 +288,7 @@ export interface FileRoutesByTo {
   '/admin/whatsapp-config': typeof AdminWhatsappConfigRoute
   '/operator/hoy': typeof OperatorHoyRoute
   '/operator/login': typeof OperatorLoginRoute
+  '/operator/mensajes': typeof OperatorMensajesRoute
   '/operator/pendientes': typeof OperatorPendientesRoute
   '/operator/perfil': typeof OperatorPerfilRoute
   '/operator/semana': typeof OperatorSemanaRoute
@@ -319,6 +327,7 @@ export interface FileRoutesById {
   '/admin/whatsapp-config': typeof AdminWhatsappConfigRoute
   '/operator/hoy': typeof OperatorHoyRoute
   '/operator/login': typeof OperatorLoginRoute
+  '/operator/mensajes': typeof OperatorMensajesRoute
   '/operator/pendientes': typeof OperatorPendientesRoute
   '/operator/perfil': typeof OperatorPerfilRoute
   '/operator/semana': typeof OperatorSemanaRoute
@@ -358,6 +367,7 @@ export interface FileRouteTypes {
     | '/admin/whatsapp-config'
     | '/operator/hoy'
     | '/operator/login'
+    | '/operator/mensajes'
     | '/operator/pendientes'
     | '/operator/perfil'
     | '/operator/semana'
@@ -391,6 +401,7 @@ export interface FileRouteTypes {
     | '/admin/whatsapp-config'
     | '/operator/hoy'
     | '/operator/login'
+    | '/operator/mensajes'
     | '/operator/pendientes'
     | '/operator/perfil'
     | '/operator/semana'
@@ -428,6 +439,7 @@ export interface FileRouteTypes {
     | '/admin/whatsapp-config'
     | '/operator/hoy'
     | '/operator/login'
+    | '/operator/mensajes'
     | '/operator/pendientes'
     | '/operator/perfil'
     | '/operator/semana'
@@ -509,6 +521,13 @@ declare module '@tanstack/react-router' {
       path: '/pendientes'
       fullPath: '/operator/pendientes'
       preLoaderRoute: typeof OperatorPendientesRouteImport
+      parentRoute: typeof OperatorRoute
+    }
+    '/operator/mensajes': {
+      id: '/operator/mensajes'
+      path: '/mensajes'
+      fullPath: '/operator/mensajes'
+      preLoaderRoute: typeof OperatorMensajesRouteImport
       parentRoute: typeof OperatorRoute
     }
     '/operator/login': {
@@ -766,6 +785,7 @@ const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 interface OperatorRouteChildren {
   OperatorHoyRoute: typeof OperatorHoyRoute
   OperatorLoginRoute: typeof OperatorLoginRoute
+  OperatorMensajesRoute: typeof OperatorMensajesRoute
   OperatorPendientesRoute: typeof OperatorPendientesRoute
   OperatorPerfilRoute: typeof OperatorPerfilRoute
   OperatorSemanaRoute: typeof OperatorSemanaRoute
@@ -776,6 +796,7 @@ interface OperatorRouteChildren {
 const OperatorRouteChildren: OperatorRouteChildren = {
   OperatorHoyRoute: OperatorHoyRoute,
   OperatorLoginRoute: OperatorLoginRoute,
+  OperatorMensajesRoute: OperatorMensajesRoute,
   OperatorPendientesRoute: OperatorPendientesRoute,
   OperatorPerfilRoute: OperatorPerfilRoute,
   OperatorSemanaRoute: OperatorSemanaRoute,

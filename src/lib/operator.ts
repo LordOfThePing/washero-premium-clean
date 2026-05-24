@@ -13,10 +13,13 @@ export type OperatorBooking = {
   id: string;
   customer_name: string;
   customer_phone: string;
+  customer_email: string | null;
   service_name: string;
+  service_id: string | null;
   vehicle_type: string;
   scheduled_date: string;
   scheduled_time: string;
+  duration_minutes: number;
   booking_status: string;
   payment_status: string;
   payment_method: string;
@@ -28,12 +31,13 @@ export type OperatorBooking = {
   notes: string | null;
   operator_notes: string | null;
   selected_extras: unknown;
+  price_breakdown: unknown;
   assigned_operator_id: string | null;
   assigned_vehicle_label: string | null;
 };
 
 export const OPERATOR_BOOKING_SELECT =
-  "id,customer_name,customer_phone,service_name,vehicle_type,scheduled_date,scheduled_time,booking_status,payment_status,payment_method,price,address,formatted_address,neighborhood,coverage_zone_name,notes,operator_notes,selected_extras,assigned_operator_id,assigned_vehicle_label";
+  "id,customer_name,customer_phone,customer_email,service_id,service_name,vehicle_type,scheduled_date,scheduled_time,duration_minutes,booking_status,payment_status,payment_method,price,address,formatted_address,neighborhood,coverage_zone_name,notes,operator_notes,selected_extras,price_breakdown,assigned_operator_id,assigned_vehicle_label";
 
 export async function fetchMyOperatorProfile(): Promise<{
   profile: OperatorProfile | null;
@@ -109,7 +113,17 @@ export function whatsappClientUrl(phone: string) {
   return `https://wa.me/${normalized}`;
 }
 
-export type OperatorUpdateAction = "start" | "complete" | "mark_paid" | "report_issue";
+export function todayBuenosAiresIso() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+}
+
+export type OperatorUpdateAction =
+  | "on_the_way"
+  | "arrived"
+  | "start"
+  | "complete"
+  | "mark_paid"
+  | "report_issue";
 
 export type OperatorUpdateResponse = {
   ok: boolean;
@@ -122,6 +136,22 @@ export type OperatorUpdateResponse = {
   already_paid?: boolean;
 };
 
+export type OperatorWhatsappAction =
+  | "operator_on_the_way"
+  | "operator_arrived"
+  | "operator_delayed"
+  | "operator_access_needed"
+  | "operator_wash_completed"
+  | "operator_payment_reminder";
+
+export type OperatorWhatsappResponse = {
+  ok: boolean;
+  status?: string;
+  message?: string;
+  template_key?: string | null;
+  log_id?: string | null;
+};
+
 export async function invokeOperatorUpdateBooking(payload: {
   booking_id: string;
   action: OperatorUpdateAction;
@@ -131,6 +161,18 @@ export async function invokeOperatorUpdateBooking(payload: {
   const { data, error } = await supabase.functions.invoke("operator-update-booking", { body: payload });
   if (error) return { ok: false, status: "server_error", message: error.message };
   return (data ?? { ok: false, status: "server_error" }) as OperatorUpdateResponse;
+}
+
+export async function invokeOperatorSendWhatsapp(payload: {
+  booking_id: string;
+  action_key: OperatorWhatsappAction;
+  eta_minutes?: number | null;
+}): Promise<OperatorWhatsappResponse> {
+  const { data, error } = await supabase.functions.invoke("operator-send-whatsapp-message", {
+    body: payload,
+  });
+  if (error) return { ok: false, status: "server_error", message: error.message };
+  return (data ?? { ok: false, status: "server_error" }) as OperatorWhatsappResponse;
 }
 
 export function statusLabel(status: string) {

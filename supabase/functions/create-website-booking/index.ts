@@ -13,6 +13,8 @@ const corsHeaders = {
 const PROJECT_REF = "domslcbxgqbylmciqrxt";
 const SITE_ORIGIN = Deno.env.get("PUBLIC_SITE_URL") ?? "https://washero-premium-clean.lovable.app";
 const WEBHOOK_URL = `https://${PROJECT_REF}.supabase.co/functions/v1/mercadopago-webhook`;
+const PUSH_INTERNAL_SECRET = Deno.env.get("PUSH_INTERNAL_SECRET") ?? "";
+const SUPABASE_URL_ROOT = Deno.env.get("SUPABASE_URL")!;
 
 type Payload = {
   customer_name?: string;
@@ -69,6 +71,22 @@ function isSlotTooSoonForPublic(dateIso: string, timeHHMM: string, nowMs = Date.
   const slotMs = slotStartUtcMsFromBuenosAires(dateIso, timeHHMM);
   if (slotMs == null) return true;
   return slotMs < nowMs + PUBLIC_MIN_LEAD_MINUTES * 60_000;
+}
+
+async function notifyOperatorPush(bookingId: string, reason: "booking_assigned_today" | "booking_updated_today" | "new_message_today") {
+  if (!PUSH_INTERNAL_SECRET) return;
+  try {
+    await fetch(`${SUPABASE_URL_ROOT}/functions/v1/send-operator-push`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-internal-secret": PUSH_INTERNAL_SECRET,
+      },
+      body: JSON.stringify({ booking_id: bookingId, reason }),
+    });
+  } catch (e) {
+    console.warn("[create-website-booking] send-operator-push", String(e));
+  }
 }
 
 Deno.serve(async (req) => {
@@ -176,6 +194,7 @@ Deno.serve(async (req) => {
 
   const { booking, service } = result;
   scheduleBookingCreatedWhatsApp(admin, booking.id);
+  await notifyOperatorPush(booking.id, "booking_assigned_today");
   const baseSummary = {
     service_name: booking.service_name,
     scheduled_date: booking.scheduled_date,

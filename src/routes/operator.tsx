@@ -6,13 +6,16 @@ import { useOperatorAuth } from "@/hooks/use-operator-auth";
 import { OperatorBottomNav } from "@/components/operator/OperatorBottomNav";
 import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/button";
+import { registerOperatorServiceWorker } from "@/lib/operator-pwa";
 
 export const Route = createFileRoute("/operator")({
   head: () => ({
     meta: [
       { name: "theme-color", content: "#FFA000" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
       { name: "apple-mobile-web-app-title", content: "Washero" },
+      { name: "mobile-web-app-capable", content: "yes" },
     ],
     links: [
       { rel: "manifest", href: "/manifest.webmanifest" },
@@ -22,7 +25,14 @@ export const Route = createFileRoute("/operator")({
   component: OperatorLayout,
 });
 
+function useOperatorPwaRegistration() {
+  useEffect(() => {
+    registerOperatorServiceWorker();
+  }, []);
+}
+
 function OperatorLayout() {
+  useOperatorPwaRegistration();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   if (pathname === "/operator/login") return <Outlet />;
   return <OperatorGuarded />;

@@ -4,24 +4,33 @@ import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { OperatorBookingCard } from "@/components/operator/OperatorBookingCard";
 import { OPERATOR_BOOKING_SELECT, todayIso, type OperatorBooking } from "@/lib/operator";
+import { useOperatorAuth } from "@/hooks/use-operator-auth";
 
 export const Route = createFileRoute("/operator/pendientes")({
   component: OperatorPendientesPage,
 });
 
 function OperatorPendientesPage() {
+  const auth = useOperatorAuth();
+  const myStaffId = auth.status === "operator" ? auth.profile.staff_id : null;
+  const isStrictOperator = auth.status === "operator" && auth.profile.role === "operator";
   const today = todayIso();
 
   const bookings = useQuery({
-    queryKey: ["operator", "pendientes", today],
+    queryKey: ["operator", "pendientes", today, myStaffId, isStrictOperator],
+    enabled: auth.status === "operator",
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from("bookings")
         .select(OPERATOR_BOOKING_SELECT)
         .gte("scheduled_date", today)
         .in("booking_status", ["pending", "needs_review", "confirmed", "in_progress"])
         .order("scheduled_date", { ascending: true })
         .order("scheduled_time", { ascending: true });
+      if (isStrictOperator && myStaffId) {
+        q = q.eq("assigned_operator_id", myStaffId);
+      }
+      const { data, error } = await q;
       if (error) throw error;
       return (data ?? []) as OperatorBooking[];
     },

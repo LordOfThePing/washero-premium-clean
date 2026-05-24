@@ -22,10 +22,27 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const WEBHOOK_SECRET = Deno.env.get("BOTMAKER_WEBHOOK_SECRET") ?? "";
+const PUSH_INTERNAL_SECRET = Deno.env.get("PUSH_INTERNAL_SECRET") ?? "";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false },
 });
+
+async function notifyOperatorPush(bookingId: string, reason: "booking_assigned_today" | "booking_updated_today" | "new_message_today") {
+  if (!PUSH_INTERNAL_SECRET) return;
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/send-operator-push`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-internal-secret": PUSH_INTERNAL_SECRET,
+      },
+      body: JSON.stringify({ booking_id: bookingId, reason }),
+    });
+  } catch (e) {
+    console.warn("[botmaker-webhook] send-operator-push", String(e));
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -129,6 +146,9 @@ Deno.serve(async (req) => {
         channel,
         raw_payload: payload,
       });
+      if (senderType === "user" && convoRow.linked_booking_id) {
+        await notifyOperatorPush(convoRow.linked_booking_id, "new_message_today");
+      }
     }
 
     // Customer sync by phone

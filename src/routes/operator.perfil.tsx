@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useOperatorAuth } from "@/hooks/use-operator-auth";
+import { OperatorNotifications } from "@/components/operator/OperatorNotifications";
+import { OperatorPwaInstallCard } from "@/components/operator/OperatorPwaInstallCard";
 
 export const Route = createFileRoute("/operator/perfil")({
   component: OperatorPerfilPage,
@@ -13,6 +15,7 @@ function OperatorPerfilPage() {
   const navigate = useNavigate();
   const auth = useOperatorAuth();
   const profile = auth.status === "operator" ? auth.profile : null;
+  const userId = auth.status === "operator" ? auth.session.user.id : null;
 
   return (
     <div className="space-y-4">
@@ -34,12 +37,8 @@ function OperatorPerfilPage() {
         </CardContent>
       </Card>
 
-      <Card className="border-dashed">
-        <CardContent className="p-4 text-sm text-muted-foreground">
-          Notificaciones push próximamente. Vas a poder recibir avisos de nuevos lavados en este
-          teléfono.
-        </CardContent>
-      </Card>
+      <OperatorPwaInstallCard />
+      {userId ? <OperatorNotifications userId={userId} /> : null}
 
       <Button
         variant="destructive"

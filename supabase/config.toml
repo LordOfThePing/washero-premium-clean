@@ -41,3 +41,12 @@ verify_jwt = true
 
 [functions.get-logistic-availability]
 verify_jwt = false
+
+[functions.operator-send-whatsapp-message]
+verify_jwt = true
+
+[functions.operator-messages]
+verify_jwt = true
+
+[functions.send-operator-push]
+verify_jwt = false

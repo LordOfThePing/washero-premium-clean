@@ -1,5 +1,5 @@
-const CACHE = "washero-operator-v1";
-const SHELL = ["/operator/hoy", "/operator/login"];
+const CACHE = "washero-operator-v2";
+const SHELL = ["/operator", "/operator/hoy", "/operator/login"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -34,5 +34,41 @@ self.addEventListener("fetch", (event) => {
         return res;
       })
       .catch(() => caches.match(request).then((r) => r || caches.match("/operator/hoy"))),
+  );
+});
+
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = {};
+  }
+  const title = payload.title || "Washero";
+  const body = payload.body || "Tenés una actualización operativa.";
+  const url = payload.url || "/operator/hoy";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: "/icons/icon-192.svg",
+      badge: "/icons/icon-192.svg",
+      data: { url },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const targetUrl = event.notification?.data?.url || "/operator/hoy";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if ("focus" in client && client.url.includes("/operator")) {
+          client.navigate(targetUrl);
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow(targetUrl);
+    }),
   );
 });

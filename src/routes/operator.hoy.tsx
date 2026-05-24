@@ -3,25 +3,33 @@ import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { OperatorBookingCard } from "@/components/operator/OperatorBookingCard";
-import { OperatorInstallPrompt } from "@/components/operator/OperatorInstallPrompt";
 import { OPERATOR_BOOKING_SELECT, todayIso, type OperatorBooking } from "@/lib/operator";
+import { useOperatorAuth } from "@/hooks/use-operator-auth";
 
 export const Route = createFileRoute("/operator/hoy")({
   component: OperatorHoyPage,
 });
 
 function OperatorHoyPage() {
+  const auth = useOperatorAuth();
+  const myStaffId = auth.status === "operator" ? auth.profile.staff_id : null;
+  const isStrictOperator = auth.status === "operator" && auth.profile.role === "operator";
   const today = todayIso();
 
   const bookings = useQuery({
-    queryKey: ["operator", "bookings", today],
+    queryKey: ["operator", "bookings", today, myStaffId, isStrictOperator],
+    enabled: auth.status === "operator",
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from("bookings")
         .select(OPERATOR_BOOKING_SELECT)
         .eq("scheduled_date", today)
         .neq("booking_status", "cancelled")
         .order("scheduled_time", { ascending: true });
+      if (isStrictOperator && myStaffId) {
+        q = q.eq("assigned_operator_id", myStaffId);
+      }
+      const { data, error } = await q;
       if (error) throw error;
       return (data ?? []) as OperatorBooking[];
     },
@@ -32,7 +40,6 @@ function OperatorHoyPage() {
 
   return (
     <div className="space-y-4">
-      <OperatorInstallPrompt />
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Reservas de hoy</h1>
         <p className="text-sm text-muted-foreground">
