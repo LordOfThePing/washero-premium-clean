@@ -1,14 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { Loader2, MessageCircle } from "lucide-react";
-import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { invokeOperatorSendWhatsapp, type OperatorWhatsappAction } from "@/lib/operator";
+import { OperatorWhatsappActions } from "@/components/operator/OperatorWhatsappActions";
 
 type OperatorConversation = {
   conversation_id: string;
@@ -28,15 +27,6 @@ type OperatorMessage = {
   sender_type: string | null;
   message_text: string | null;
 };
-
-const ACTIONS: Array<{ key: OperatorWhatsappAction; label: string }> = [
-  { key: "operator_on_the_way", label: "Estoy en camino" },
-  { key: "operator_arrived", label: "Llegué" },
-  { key: "operator_delayed", label: "Estoy demorado" },
-  { key: "operator_access_needed", label: "Necesito acceso" },
-  { key: "operator_wash_completed", label: "Lavado finalizado" },
-  { key: "operator_payment_reminder", label: "Recordar pago pendiente" },
-];
 
 export const Route = createFileRoute("/operator/mensajes")({
   component: OperatorMensajesPage,
@@ -78,24 +68,6 @@ function OperatorMensajesPage() {
       if (error) throw error;
       return (data?.messages ?? []) as OperatorMessage[];
     },
-  });
-
-  const sendAction = useMutation({
-    mutationFn: async (actionKey: OperatorWhatsappAction) => {
-      if (!selected?.booking_id) throw new Error("Seleccioná una conversación.");
-      const res = await invokeOperatorSendWhatsapp({
-        booking_id: selected.booking_id,
-        action_key: actionKey,
-      });
-      if (!res.ok) throw new Error(res.message ?? "No pudimos enviar el mensaje.");
-      return res;
-    },
-    onSuccess: () => {
-      toast.success("Mensaje enviado.");
-      conversations.refetch();
-      timeline.refetch();
-    },
-    onError: (e: Error) => toast.error(e.message),
   });
 
   return (
@@ -181,21 +153,14 @@ function OperatorMensajesPage() {
                 ))}
               </div>
             )}
-            <div className="grid grid-cols-2 gap-2">
-              {ACTIONS.map((a) => (
-                <Button
-                  key={a.key}
-                  variant="outline"
-                  size="sm"
-                  className="h-9"
-                  disabled={sendAction.isPending}
-                  onClick={() => sendAction.mutate(a.key)}
-                >
-                  <MessageCircle className="mr-1 h-3.5 w-3.5" />
-                  {a.label}
-                </Button>
-              ))}
-            </div>
+            <OperatorWhatsappActions
+              bookingId={selected.booking_id}
+              compact
+              onSent={() => {
+                conversations.refetch();
+                timeline.refetch();
+              }}
+            />
           </CardContent>
         </Card>
       )}

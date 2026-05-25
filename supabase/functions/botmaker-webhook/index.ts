@@ -12,6 +12,11 @@ import {
   pick,
   processBotmakerBookingImpact,
 } from "../_shared/botmaker-booking.ts";
+import {
+  classifyInboundMessage,
+  operatorPushBody,
+  persistInboundRouting,
+} from "../_shared/botmaker-inbound-routing.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,7 +33,10 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false },
 });
 
-async function notifyOperatorPush(bookingId: string, reason: "booking_assigned_today" | "booking_updated_today" | "new_message_today") {
+async function notifyOperatorPush(
+  bookingId: string,
+  opts: { title?: string; body?: string },
+) {
   if (!PUSH_INTERNAL_SECRET) return;
   try {
     await fetch(`${SUPABASE_URL}/functions/v1/send-operator-push`, {
@@ -37,7 +45,13 @@ async function notifyOperatorPush(bookingId: string, reason: "booking_assigned_t
         "Content-Type": "application/json",
         "x-internal-secret": PUSH_INTERNAL_SECRET,
       },
-      body: JSON.stringify({ booking_id: bookingId, reason }),
+      body: JSON.stringify({
+        booking_id: bookingId,
+        reason: "new_message_today",
+        force: true,
+        title: opts.title ?? "Mensaje nuevo de cliente",
+        body: opts.body ?? "Tenés un nuevo mensaje operativo.",
+      }),
     });
   } catch (e) {
     console.warn("[botmaker-webhook] send-operator-push", String(e));
@@ -47,7 +61,7 @@ async function notifyOperatorPush(bookingId: string, reason: "booking_assigned_t
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  let payload: any = {};
+  let payload: Record<string, unknown> = {};
   let raw = "";
   try {
     raw = await req.text();
@@ -67,7 +81,6 @@ Deno.serve(async (req) => {
   const senderType = extractSenderType(payload);
   const eventType = extractEventType(payload);
 
-  // Always log event
   await supabase.from("botmaker_events").insert({
     event_type: eventType,
     channel,
@@ -88,8 +101,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Upsert conversation
-    let convoRow: any = null;
+    let convoRow: Record<string, unknown> | null = null;
     if (conversationId) {
       const { data: existing } = await supabase
         .from("botmaker_conversations")
@@ -132,11 +144,10 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Insert message
     if (convoRow && messageText) {
       await supabase.from("botmaker_messages").insert({
         conversation_id: convoRow.id,
-        botmaker_message_id: pick(payload, ["messageId","message.id","id"]),
+        botmaker_message_id: pick(payload, ["messageId", "message.id", "id"]),
         direction: senderType === "user" ? "inbound" : "outbound",
         sender_type: senderType,
         message_type: "text",
@@ -146,12 +157,37 @@ Deno.serve(async (req) => {
         channel,
         raw_payload: payload,
       });
-      if (senderType === "user" && convoRow.linked_booking_id) {
-        await notifyOperatorPush(convoRow.linked_booking_id, "new_message_today");
+
+      if (senderType === "user") {
+        const routing = await classifyInboundMessage(supabase, { phone, messageText });
+        await persistInboundRouting(
+          supabase,
+          String(convoRow.id),
+          routing,
+          payload,
+        );
+
+        if (
+          routing.routing_type === "operational" &&
+          routing.linked_booking_id &&
+          routing.routing_assigned_operator_id
+        ) {
+          const { data: booking } = await supabase
+            .from("bookings")
+            .select("customer_name,scheduled_time")
+            .eq("id", routing.linked_booking_id)
+            .maybeSingle();
+          await notifyOperatorPush(routing.linked_booking_id, {
+            title: "Mensaje nuevo de cliente",
+            body: operatorPushBody(
+              String(booking?.customer_name ?? name ?? "Cliente"),
+              String(booking?.scheduled_time ?? ""),
+            ),
+          });
+        }
       }
     }
 
-    // Customer sync by phone
     if (convoRow && phone) {
       const { data: cust } = await supabase
         .from("customers")
@@ -166,7 +202,8 @@ Deno.serve(async (req) => {
         }
       } else if (name) {
         const { data: newCust } = await supabase.from("customers").insert({
-          full_name: name, phone,
+          full_name: name,
+          phone,
         }).select("id").maybeSingle();
         if (newCust?.id) {
           await supabase.from("botmaker_conversations")
@@ -176,7 +213,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Booking impact detection: any sender can contain the summary; any valid confirmation triggers auto-book/fallback.
     if (convoRow && messageText && isConfirmation(messageText)) {
       const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
       const { data: msgs } = await supabase
@@ -209,10 +245,10 @@ Deno.serve(async (req) => {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("botmaker-webhook error", e);
-    return new Response(JSON.stringify({ ok: false, error: String(e?.message ?? e) }), {
-      status: 200, // ack to avoid Botmaker retries flooding; we logged the event
+    return new Response(JSON.stringify({ ok: false, error: String((e as Error)?.message ?? e) }), {
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

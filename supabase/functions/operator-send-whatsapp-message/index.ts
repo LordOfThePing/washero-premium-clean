@@ -1,8 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import {
-  normalizeArgentinaWhatsAppPhone,
-  sendBotmakerWhatsApp,
-} from "../_shared/botmaker-outbound.ts";
+  getOperatorTemplate,
+  isOperatorTemplateConfigured,
+  parseOperatorWhatsappAction,
+  type OperatorTemplateVars,
+} from "../_shared/botmaker-operator-templates.ts";
+import { sendBotmakerWhatsApp } from "../_shared/botmaker-outbound.ts";
 import { getOperatorGate, isStrictOperatorRole } from "../_shared/operator-auth.ts";
 
 const corsHeaders = {
@@ -16,22 +19,15 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;
 const PUBLIC_SITE_URL = (Deno.env.get("PUBLIC_SITE_URL") ?? "https://washero.ar").replace(/\/+$/, "");
 const ALLOW_UNASSIGNED_TODAY = String(Deno.env.get("OPERATOR_ALLOW_UNASSIGNED_TODAY") ?? "false").toLowerCase() === "true";
-const ALLOW_FALLBACK_TEXT = String(Deno.env.get("OPERATOR_WHATSAPP_ALLOW_FALLBACK_TEXT") ?? "false").toLowerCase() === "true";
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 
-type ActionKey =
-  | "operator_on_the_way"
-  | "operator_arrived"
-  | "operator_delayed"
-  | "operator_access_needed"
-  | "operator_wash_completed"
-  | "operator_payment_reminder";
-
 type Payload = {
   booking_id?: string;
-  action_key?: ActionKey;
+  action?: string;
+  action_key?: string;
   eta_minutes?: number | null;
+  variables?: Record<string, unknown> | null;
   message_text?: string | null;
 };
 
@@ -65,20 +61,6 @@ function customerInvoiceUrl(publicToken: string | null | undefined) {
   return `${PUBLIC_SITE_URL}/comprobante/${token}`;
 }
 
-async function hasOpenConversationWindow(phone: string) {
-  const normalized = normalizeArgentinaWhatsAppPhone(phone);
-  if (!normalized) return false;
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const { data } = await admin
-    .from("botmaker_messages")
-    .select("id")
-    .eq("customer_phone", normalized)
-    .eq("direction", "inbound")
-    .gte("created_at", cutoff)
-    .limit(1);
-  return (data?.length ?? 0) > 0;
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ ok: false, status: "method_not_allowed" }, 405);
@@ -101,11 +83,14 @@ Deno.serve(async (req) => {
   }
 
   const bookingId = String(body.booking_id ?? "").trim();
-  const actionKey = body.action_key as ActionKey | undefined;
-  const etaMinutes = Number(body.eta_minutes ?? 20);
-  const fallbackText = String(body.message_text ?? "").trim();
+  const actionKey = parseOperatorWhatsappAction(body.action_key ?? body.action);
+  const etaMinutes = Number(body.variables?.eta ?? body.eta_minutes ?? 20);
+
   if (!bookingId) {
     return json({ ok: false, status: "missing_booking_id", message: "Falta booking_id." }, 400);
+  }
+  if (!actionKey) {
+    return json({ ok: false, status: "missing_action", message: "Falta acción de mensaje." }, 400);
   }
 
   const { data: booking, error: bookingError } = await admin
@@ -136,6 +121,19 @@ Deno.serve(async (req) => {
     }
   }
 
+  const templateDef = getOperatorTemplate(actionKey);
+  if (!isOperatorTemplateConfigured(templateDef.templateKey)) {
+    return json(
+      {
+        ok: false,
+        status: "template_not_configured",
+        message: `Plantilla Botmaker "${templateDef.templateKey}" no configurada. Revisá BOTMAKER_CONFIGURED_TEMPLATES.`,
+        template_key: templateDef.templateKey,
+      },
+      422,
+    );
+  }
+
   const { data: invoice } = await admin
     .from("invoices")
     .select("public_token,invoice_number")
@@ -143,7 +141,7 @@ Deno.serve(async (req) => {
     .maybeSingle();
   const receiptUrl = customerInvoiceUrl(invoice?.public_token);
 
-  const vars = {
+  const vars: OperatorTemplateVars = {
     firstName: firstName(String(booking.customer_name ?? "cliente")),
     bookingTime: formatTime(String(booking.scheduled_time ?? "")),
     bookingDate: formatDate(String(booking.scheduled_date ?? today)),
@@ -152,70 +150,24 @@ Deno.serve(async (req) => {
     receiptUrl,
   };
 
-  const templates: Partial<Record<ActionKey, { templateKey: string; text: string }>> = {
-    operator_on_the_way: {
-      templateKey: "operator_on_the_way",
-      text: `Hola ${vars.firstName}, ya estoy en camino para tu lavado de las ${vars.bookingTime}. Llego en aproximadamente ${vars.eta} minutos.`,
-    },
-    operator_arrived: {
-      templateKey: "operator_arrived",
-      text: `Hola ${vars.firstName}, ya llegué a ${vars.address}. Cuando puedas, te espero para comenzar el lavado.`,
-    },
-    operator_delayed: {
-      templateKey: "operator_delayed",
-      text: `Hola ${vars.firstName}, voy con una demora operativa. Te aviso apenas esté saliendo para allá. Gracias por la paciencia.`,
-    },
-    operator_access_needed: {
-      templateKey: "operator_access_needed",
-      text: `Hola ${vars.firstName}, ya estoy en la ubicación y necesito acceso para iniciar el lavado. ¿Me ayudás, por favor?`,
-    },
-    operator_wash_completed: {
-      templateKey: "operator_wash_completed",
-      text: `Hola ${vars.firstName}, terminamos tu lavado Washero de hoy (${vars.bookingDate}).${vars.receiptUrl ? ` Podés ver tu comprobante acá: ${vars.receiptUrl}` : ""}`,
-    },
-    operator_payment_reminder: {
-      templateKey: "operator_payment_reminder",
-      text: `Hola ${vars.firstName}, te recordamos que el pago de tu lavado sigue pendiente. Si ya abonaste, avisanos por este medio.`,
-    },
-  };
-
-  let templateKey: string | null = null;
-  let message = "";
-
-  if (actionKey && templates[actionKey]) {
-    templateKey = templates[actionKey]!.templateKey;
-    message = templates[actionKey]!.text;
-  } else if (fallbackText) {
-    const isWindowOpen = await hasOpenConversationWindow(String(booking.customer_phone ?? ""));
-    if (!ALLOW_FALLBACK_TEXT || !isWindowOpen) {
-      return json(
-        {
-          ok: false,
-          status: "fallback_text_not_allowed",
-          message: "No está permitido enviar texto libre sin ventana activa.",
-        },
-        422,
-      );
-    }
-    templateKey = null;
-    message = fallbackText;
-  } else {
-    return json({ ok: false, status: "missing_action", message: "Falta acción de mensaje." }, 400);
-  }
+  const message = templateDef.buildMessage(vars);
 
   const result = await sendBotmakerWhatsApp(admin, {
     phone: String(booking.customer_phone ?? ""),
     customer_name: String(booking.customer_name ?? ""),
     booking_id: booking.id,
-    template_key: templateKey,
+    template_key: templateDef.templateKey,
     message,
   });
 
-  return json({
-    ok: result.ok,
-    status: result.status,
-    message: result.error ?? (result.ok ? "sent" : "failed"),
-    template_key: templateKey,
-    log_id: result.log_id ?? null,
-  }, result.ok ? 200 : 502);
+  return json(
+    {
+      ok: result.ok,
+      status: result.status,
+      message: result.error ?? (result.ok ? "sent" : "failed"),
+      template_key: templateDef.templateKey,
+      log_id: result.log_id ?? null,
+    },
+    result.ok ? 200 : 502,
+  );
 });

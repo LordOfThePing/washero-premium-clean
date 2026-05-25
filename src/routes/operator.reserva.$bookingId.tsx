@@ -30,6 +30,7 @@ import {
   type OperatorBooking,
 } from "@/lib/operator";
 import { BookingStatusBadge, PaymentStatusBadge } from "@/lib/booking-badges";
+import { OperatorWhatsappActions } from "@/components/operator/OperatorWhatsappActions";
 
 export const Route = createFileRoute("/operator/reserva/$bookingId")({
   component: OperatorReservaDetailPage,
@@ -155,7 +156,7 @@ function OperatorReservaDetailPage() {
           <div className="grid gap-2">
             <Button asChild variant="outline" className="h-11">
               <a href={whatsappClientUrl(b.customer_phone)} target="_blank" rel="noreferrer">
-                <MessageCircle className="mr-2 h-4 w-4" /> Escribir al cliente
+                <MessageCircle className="mr-2 h-4 w-4" /> Abrir chat manual
               </a>
             </Button>
             <Button asChild variant="secondary" className="h-11">
@@ -171,6 +172,8 @@ function OperatorReservaDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      <OperatorWhatsappActions bookingId={b.id} />
 
       {(b.notes || b.operator_notes) && (
         <Card>
