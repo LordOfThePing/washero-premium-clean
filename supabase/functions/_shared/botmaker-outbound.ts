@@ -25,6 +25,7 @@ export type SendBotmakerMessageInput = {
   booking_id?: string | null;
   invoice_id?: string | null;
   template_key?: string | null;
+  send_mode?: "text" | "template";
 };
 
 export type SendBotmakerMessageResult = {
@@ -39,6 +40,8 @@ export type SendBotmakerMessageResult = {
 
 const DEFAULT_BASE = "https://api.botmaker.com/v2.0";
 const DEFAULT_SEND_PATH = "/chats-actions/send-message";
+const DEFAULT_TEMPLATE_SEND_PATH = "/notifications-engine/send-template";
+const DEFAULT_TEMPLATE_SEND_MODE = "notifications_engine";
 
 const SENSITIVE_KEY = /^(access[-_]?token|authorization|api[-_]?key|x-api-key|token|secret|password|bearer)$/i;
 
@@ -144,6 +147,7 @@ async function insertCommunicationLog(
     raw_payload: sanitizeForLog({
       status: row.status,
       template_key: row.input.template_key ?? null,
+      send_mode: row.input.send_mode ?? "text",
       customer_phone: row.input.phone,
       customer_name: row.input.customer_name ?? null,
       invoice_id: row.input.invoice_id ?? null,
@@ -314,6 +318,193 @@ export async function sendBotmakerWhatsApp(
   }
 }
 
+export type SendBotmakerTemplateInput = {
+  customerPhone: string;
+  templateKey: string;
+  variables: Record<string, unknown>;
+  bookingId?: string | null;
+  customerName?: string | null;
+  invoiceId?: string | null;
+  messagePreview?: string | null;
+};
+
+function buildTemplatePayload(
+  mode: string,
+  input: { phone: string; templateKey: string; variables: Record<string, unknown> },
+): Record<string, unknown> {
+  if (mode === "chat_action") {
+    return {
+      chatPlatform: "whatsapp",
+      platformContactId: input.phone,
+      action: input.templateKey,
+      variables: input.variables,
+    };
+  }
+  if (mode === "template_message") {
+    return {
+      chatPlatform: "whatsapp",
+      platformContactId: input.phone,
+      template: {
+        key: input.templateKey,
+        variables: input.variables,
+      },
+    };
+  }
+  return {
+    chatPlatform: "whatsapp",
+    platformContactId: input.phone,
+    templateKey: input.templateKey,
+    templateVariables: input.variables,
+    notification: {
+      key: input.templateKey,
+      variables: input.variables,
+    },
+  };
+}
+
+export async function sendBotmakerTemplateMessage(
+  admin: SupabaseClient,
+  input: SendBotmakerTemplateInput,
+): Promise<SendBotmakerMessageResult> {
+  const phone = normalizeArgentinaWhatsAppPhone(input.customerPhone);
+  const templateKey = String(input.templateKey ?? "").trim();
+  const logInput: SendBotmakerMessageInput = {
+    phone: phone ?? input.customerPhone,
+    message: input.messagePreview ?? "",
+    customer_name: input.customerName ?? null,
+    booking_id: input.bookingId ?? null,
+    invoice_id: input.invoiceId ?? null,
+    template_key: templateKey || null,
+    send_mode: "template",
+  };
+
+  if (!phone) {
+    const r: SendBotmakerMessageResult = {
+      ok: false,
+      status: "skipped",
+      error: "invalid_phone",
+      request: null,
+      response: null,
+    };
+    r.log_id = await insertCommunicationLog(admin, { status: "skipped", input: logInput, error: r.error });
+    return r;
+  }
+  if (!templateKey) {
+    const r: SendBotmakerMessageResult = {
+      ok: false,
+      status: "skipped",
+      error: "missing_template_key",
+      request: null,
+      response: null,
+    };
+    r.log_id = await insertCommunicationLog(admin, { status: "skipped", input: logInput, error: r.error });
+    return r;
+  }
+
+  const token = Deno.env.get("BOTMAKER_API_TOKEN") ?? "";
+  if (!token) {
+    const r: SendBotmakerMessageResult = {
+      ok: false,
+      status: "failed",
+      error: "missing_botmaker_token",
+      request: null,
+      response: null,
+    };
+    r.log_id = await insertCommunicationLog(admin, { status: "failed", input: logInput, error: r.error });
+    return r;
+  }
+
+  const baseUrl = (Deno.env.get("BOTMAKER_BASE_URL") ?? DEFAULT_BASE).replace(/\/$/, "");
+  const sendPath = Deno.env.get("BOTMAKER_TEMPLATE_SEND_PATH") ?? DEFAULT_TEMPLATE_SEND_PATH;
+  const sendMode = (Deno.env.get("BOTMAKER_TEMPLATE_SEND_MODE") ?? DEFAULT_TEMPLATE_SEND_MODE).trim();
+  const channelId = Deno.env.get("BOTMAKER_CHANNEL_ID") ?? "";
+  const requestUrl = `${baseUrl}${sendPath.startsWith("/") ? sendPath : `/${sendPath}`}`;
+  const requestPayload = buildTemplatePayload(sendMode, {
+    phone,
+    templateKey,
+    variables: input.variables ?? {},
+  });
+  if (channelId) {
+    requestPayload.chatChannelNumber = channelId;
+    requestPayload.channelId = channelId;
+  }
+  const httpRequest: LoggedHttpRequest = {
+    url: requestUrl,
+    path: sendPath,
+    method: "POST",
+    payload: requestPayload,
+  };
+
+  try {
+    const res = await fetch(requestUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "access-token": token,
+      },
+      body: JSON.stringify(requestPayload),
+    });
+    const httpResponse = await readHttpResponse(res);
+    if (!res.ok) {
+      const err = `botmaker_template_http_${res.status}`;
+      const r: SendBotmakerMessageResult = {
+        ok: false,
+        status: "failed",
+        error: err,
+        request: httpRequest,
+        response: httpResponse,
+      };
+      r.log_id = await insertCommunicationLog(admin, {
+        status: "failed",
+        input: logInput,
+        error: err,
+        request: httpRequest,
+        response: httpResponse,
+      });
+      return r;
+    }
+    const provider_message_id = extractProviderMessageId(httpResponse.body);
+    const r: SendBotmakerMessageResult = {
+      ok: true,
+      status: "sent",
+      provider_message_id,
+      request: httpRequest,
+      response: httpResponse,
+    };
+    r.log_id = await insertCommunicationLog(admin, {
+      status: "sent",
+      input: logInput,
+      provider_message_id,
+      request: httpRequest,
+      response: httpResponse,
+    });
+    return r;
+  } catch (e) {
+    const err = String((e as Error)?.message ?? e);
+    const httpResponse: LoggedHttpResponse = {
+      status: 0,
+      statusText: "network_error",
+      bodyText: err,
+      body: null,
+    };
+    const r: SendBotmakerMessageResult = {
+      ok: false,
+      status: "failed",
+      error: err,
+      request: httpRequest,
+      response: httpResponse,
+    };
+    r.log_id = await insertCommunicationLog(admin, {
+      status: "failed",
+      input: logInput,
+      error: err,
+      request: httpRequest,
+      response: httpResponse,
+    });
+    return r;
+  }
+}
+
 export async function hasOutboundTemplateLog(
   admin: SupabaseClient,
   bookingId: string,
@@ -339,6 +530,6 @@ export async function hasOutboundTemplateLog(
   }
   return (data ?? []).some((row) => {
     const p = row.raw_payload as Record<string, unknown> | null;
-    return p?.template_key === templateKey && p?.status === "sent";
+    return p?.template_key === templateKey && (p?.status === "sent" || p?.status === "pending");
   });
 }

@@ -2,6 +2,7 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import {
   hasOutboundTemplateLog,
+  sendBotmakerTemplateMessage,
   sendBotmakerWhatsApp,
   type SendBotmakerMessageResult,
 } from "./botmaker-outbound.ts";
@@ -74,6 +75,11 @@ export function buildBookingCreatedMessage(b: BookingNotifyRow): string {
 *Pago:* ${b.payment_method}
 
 Te vamos a contactar si necesitamos ajustar algún detalle.`;
+}
+
+export function buildBookingConfirmedPreview(b: BookingNotifyRow): string {
+  const name = firstName(b.customer_name);
+  return `Hola ${name}, tu reserva de Washero está confirmada para el ${fmtDate(b.scheduled_date)} a las ${fmtTime(b.scheduled_time)}.`;
 }
 
 export function buildPaymentConfirmedMessage(
@@ -158,16 +164,23 @@ export async function notifyBookingCreated(
     return null;
   }
 
-  if (await hasOutboundTemplateLog(admin, bookingId, "booking_created")) {
+  if (await hasOutboundTemplateLog(admin, bookingId, "booking_confirmed_v2")) {
     return { ok: false, status: "skipped", error: "duplicate_template" };
   }
 
-  return sendBotmakerWhatsApp(admin, {
-    phone: booking.customer_phone,
-    customer_name: booking.customer_name,
-    booking_id: bookingId,
-    template_key: "booking_created",
-    message: buildBookingCreatedMessage(booking),
+  return sendBotmakerTemplateMessage(admin, {
+    customerPhone: booking.customer_phone,
+    customerName: booking.customer_name,
+    bookingId,
+    templateKey: "booking_confirmed_v2",
+    variables: {
+      firstName: firstName(booking.customer_name),
+      service: booking.service_name,
+      date: fmtDate(booking.scheduled_date),
+      time: fmtTime(booking.scheduled_time),
+      address: addressLine(booking),
+    },
+    messagePreview: buildBookingConfirmedPreview(booking),
   });
 }
 

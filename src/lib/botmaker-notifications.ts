@@ -4,6 +4,8 @@ export type BotmakerDiagnosticsStatus = {
   secret_configured: boolean;
   botmaker_api_token_configured: boolean;
   outbound_whatsapp?: {
+    template_send_path?: string;
+    template_send_mode?: string;
     sent_last_24h: number;
     sent_last_7d: number;
     last_sent: {
@@ -16,6 +18,13 @@ export type BotmakerDiagnosticsStatus = {
       error: string | null;
       template_key: string | null;
     }>;
+    last_template_failed?: {
+      created_at: string;
+      error: string | null;
+      template_key: string | null;
+      request?: unknown;
+      response?: unknown;
+    } | null;
   };
 };
 

@@ -229,6 +229,20 @@ function NotificacionesPage() {
         </Card>
       </div>
 
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Configuración template Botmaker</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-1 text-xs text-muted-foreground">
+          <p>
+            Path: <code>{d?.outbound_whatsapp?.template_send_path ?? "—"}</code>
+          </p>
+          <p>
+            Modo: <code>{d?.outbound_whatsapp?.template_send_mode ?? "—"}</code>
+          </p>
+        </CardContent>
+      </Card>
+
       {d?.outbound_whatsapp?.last_sent && (
         <Card>
           <CardHeader className="pb-2">
@@ -329,6 +343,27 @@ function NotificacionesPage() {
             <HttpDebugCollapsible
               request={(d.outbound_whatsapp.last_failed.request as HttpDebugBlock | null) ?? null}
               response={(d.outbound_whatsapp.last_failed.response as HttpDebugBlock | null) ?? null}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {d?.outbound_whatsapp?.last_template_failed && (
+        <Card className="border-destructive/40">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base text-destructive">Último error de template</CardTitle>
+            <CardDescription>
+              {new Date(d.outbound_whatsapp.last_template_failed.created_at).toLocaleString("es-AR")}
+              {d.outbound_whatsapp.last_template_failed.template_key
+                ? ` · ${d.outbound_whatsapp.last_template_failed.template_key}`
+                : ""}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm">
+            <p className="text-destructive">{d.outbound_whatsapp.last_template_failed.error ?? "Error desconocido"}</p>
+            <HttpDebugCollapsible
+              request={(d.outbound_whatsapp.last_template_failed.request as HttpDebugBlock | null) ?? null}
+              response={(d.outbound_whatsapp.last_template_failed.response as HttpDebugBlock | null) ?? null}
             />
           </CardContent>
         </Card>

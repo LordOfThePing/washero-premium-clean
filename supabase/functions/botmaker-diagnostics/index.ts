@@ -12,6 +12,8 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;
 const WEBHOOK_SECRET = Deno.env.get("BOTMAKER_WEBHOOK_SECRET") ?? "";
 const BOTMAKER_API_TOKEN = Deno.env.get("BOTMAKER_API_TOKEN") ?? "";
+const BOTMAKER_TEMPLATE_SEND_PATH = Deno.env.get("BOTMAKER_TEMPLATE_SEND_PATH") ?? "/notifications-engine/send-template";
+const BOTMAKER_TEMPLATE_SEND_MODE = Deno.env.get("BOTMAKER_TEMPLATE_SEND_MODE") ?? "notifications_engine";
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 
@@ -72,13 +74,20 @@ async function status() {
   const sent24h = outbound.filter((r) => r.created_at >= since24h && logStatus(r) === "sent").length;
   const sent7d = outbound.filter((r) => logStatus(r) === "sent").length;
   const failedRecent = outbound.filter((r) => logStatus(r) === "failed").slice(0, 10);
+  const failedTemplateRecent = outbound.filter((r) => {
+    const p = (r.raw_payload ?? {}) as Record<string, unknown>;
+    return logStatus(r) === "failed" && p.send_mode === "template";
+  }).slice(0, 10);
   const lastOutboundSent = outbound.find((r) => logStatus(r) === "sent") ?? null;
   const lastOutboundFailed = outbound.find((r) => logStatus(r) === "failed") ?? null;
+  const lastTemplateFailed = failedTemplateRecent[0] ?? null;
 
   return {
     secret_configured: !!WEBHOOK_SECRET,
     botmaker_api_token_configured: !!BOTMAKER_API_TOKEN,
     outbound_whatsapp: {
+      template_send_path: BOTMAKER_TEMPLATE_SEND_PATH,
+      template_send_mode: BOTMAKER_TEMPLATE_SEND_MODE,
       sent_last_24h: sent24h,
       sent_last_7d: sent7d,
       last_sent: lastOutboundSent
@@ -95,6 +104,15 @@ async function status() {
             template_key:
               ((lastOutboundFailed.raw_payload as Record<string, unknown>)?.template_key as string) ?? null,
             ...pickHttpDebug(lastOutboundFailed.raw_payload),
+          }
+        : null,
+      last_template_failed: lastTemplateFailed
+        ? {
+            created_at: lastTemplateFailed.created_at,
+            error: ((lastTemplateFailed.raw_payload as Record<string, unknown>)?.error as string) ?? null,
+            template_key:
+              ((lastTemplateFailed.raw_payload as Record<string, unknown>)?.template_key as string) ?? null,
+            ...pickHttpDebug(lastTemplateFailed.raw_payload),
           }
         : null,
       recent_failed: failedRecent.map((r) => ({
