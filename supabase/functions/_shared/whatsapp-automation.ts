@@ -144,7 +144,7 @@ export async function fetchBookingForNotify(
 export function scheduleBookingCreatedWhatsApp(
   admin: SupabaseClient,
   bookingId: string,
-  opts?: { skipSources?: string[] },
+  opts?: { skipSources?: string[]; allowBotmakerSource?: boolean },
 ): void {
   void notifyBookingCreated(admin, bookingId, opts).catch((e) =>
     console.error("[whatsapp-automation] booking_created", e)
@@ -154,13 +154,16 @@ export function scheduleBookingCreatedWhatsApp(
 export async function notifyBookingCreated(
   admin: SupabaseClient,
   bookingId: string,
-  opts?: { skipSources?: string[] },
+  opts?: { skipSources?: string[]; allowBotmakerSource?: boolean },
 ): Promise<SendBotmakerMessageResult | null> {
   const booking = await fetchBookingForNotify(admin, bookingId);
   if (!booking?.customer_phone?.trim()) return null;
 
   const source = (booking.booking_source ?? "").toLowerCase();
-  if (opts?.skipSources?.includes(source) || source === "botmaker") {
+  if (
+    !opts?.allowBotmakerSource &&
+    (opts?.skipSources?.includes(source) || source === "botmaker")
+  ) {
     return null;
   }
 

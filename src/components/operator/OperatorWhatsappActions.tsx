@@ -17,14 +17,11 @@ const ACTIONS: Array<{ key: OperatorWhatsappAction; label: string }> = [
   { key: "operator_payment_reminder", label: "Recordar pago pendiente" },
 ];
 
-function actionErrorMessage(status?: string, fallback?: string) {
-  if (status === "template_not_configured") {
-    return "Plantilla de WhatsApp no configurada en Botmaker. Avisá al administrador.";
-  }
+function actionErrorMessage(status?: string) {
   if (status === "booking_forbidden") {
     return "No podés enviar mensajes para esta reserva.";
   }
-  return fallback ?? "No pudimos enviar el mensaje.";
+  return "No pudimos enviar el WhatsApp. Revisá notificaciones/admin.";
 }
 
 type Props = {
@@ -38,7 +35,7 @@ export function OperatorWhatsappActions({ bookingId, compact, onSent }: Props) {
     mutationFn: async (actionKey: OperatorWhatsappAction) => {
       const res = await invokeOperatorSendWhatsapp({ booking_id: bookingId, action_key: actionKey });
       if (!res.ok) {
-        throw new Error(actionErrorMessage(res.status, res.message));
+        throw new Error(actionErrorMessage(res.status));
       }
       return res;
     },

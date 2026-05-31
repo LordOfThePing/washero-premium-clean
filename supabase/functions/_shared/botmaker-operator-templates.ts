@@ -15,8 +15,30 @@ export type OperatorTemplateVars = {
   receiptUrl: string | null;
 };
 
+export type BotmakerOperatorVariables = {
+  firstName: string;
+  service: string;
+  date: string;
+  time: string;
+  address: string;
+  etaMinutes?: string;
+  arrivalTime?: string;
+  totalAmount?: string;
+};
+
+export type OperatorBookingContext = {
+  customer_name: string;
+  service_name?: string | null;
+  scheduled_date: string;
+  scheduled_time: string;
+  formatted_address?: string | null;
+  address?: string | null;
+  price?: number | null;
+};
+
 export type OperatorTemplateDef = {
   action: OperatorWhatsappAction;
+  /** Human template name — maps to Botmaker WaTemplate id via BOTMAKER_WA_TEMPLATE_RULE_IDS (intentIdOrName). */
   templateKey: string;
   buildMessage: (vars: OperatorTemplateVars) => string;
 };
@@ -30,13 +52,13 @@ export const OPERATOR_WHATSAPP_TEMPLATES: Record<OperatorWhatsappAction, Operato
   },
   operator_arrived: {
     action: "operator_arrived",
-    templateKey: "operator_arrived",
+    templateKey: "operator_arrived_v2",
     buildMessage: (v) =>
       `Hola ${v.firstName}, ya llegué a ${v.address}. Cuando puedas, te espero para comenzar el lavado.`,
   },
   operator_delayed: {
     action: "operator_delayed",
-    templateKey: "operator_delayed",
+    templateKey: "operator_delayed_v2",
     buildMessage: (v) =>
       `Hola ${v.firstName}, voy con una demora operativa. Te aviso apenas esté saliendo para allá. Gracias por la paciencia.`,
   },
@@ -77,4 +99,70 @@ export function isOperatorTemplateConfigured(templateKey: string): boolean {
 
 export function getOperatorTemplate(action: OperatorWhatsappAction): OperatorTemplateDef {
   return OPERATOR_WHATSAPP_TEMPLATES[action];
+}
+
+function operatorFirstName(full: string): string {
+  const name = String(full ?? "").trim().split(/\s+/)[0];
+  return name || "!";
+}
+
+function formatOperatorDate(iso: string): string {
+  const raw = String(iso ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw || "—";
+  const [y, m, d] = raw.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("es-AR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+}
+
+function formatOperatorTime(time: string): string {
+  return String(time ?? "").slice(0, 5) || "—";
+}
+
+function formatOperatorAddress(booking: OperatorBookingContext): string {
+  return String(booking.formatted_address ?? booking.address ?? "").trim() || "—";
+}
+
+function formatTotalAmount(price?: number | null): string {
+  if (price == null || !Number.isFinite(Number(price))) return "$0";
+  return `$${Math.round(Number(price)).toLocaleString("es-AR")}`;
+}
+
+/** Variables payload for Botmaker /notifications templates. */
+export function buildOperatorBotmakerVariables(
+  action: OperatorWhatsappAction,
+  booking: OperatorBookingContext,
+  opts?: { etaMinutes?: number },
+): BotmakerOperatorVariables {
+  const firstName = operatorFirstName(booking.customer_name);
+  const service = String(booking.service_name ?? "").trim() || "Lavado";
+  const date = formatOperatorDate(booking.scheduled_date);
+  const time = formatOperatorTime(booking.scheduled_time);
+  const address = formatOperatorAddress(booking);
+  const base: BotmakerOperatorVariables = { firstName, service, date, time, address };
+
+  if (action === "operator_on_the_way") {
+    const eta = Number(opts?.etaMinutes ?? 20);
+    return {
+      ...base,
+      etaMinutes: String(Number.isFinite(eta) && eta > 0 ? Math.round(eta) : 20),
+    };
+  }
+  if (action === "operator_delayed") {
+    return { ...base, arrivalTime: time !== "—" ? time : "en breve" };
+  }
+  if (action === "operator_payment_reminder") {
+    return { ...base, totalAmount: formatTotalAmount(booking.price) };
+  }
+  return base;
+}
+
+export function buildOperatorTemplateLogPreview(
+  templateKey: string,
+  customerName: string,
+): string {
+  const firstName = operatorFirstName(customerName);
+  return `Template ${templateKey} enviado a ${firstName}`;
 }

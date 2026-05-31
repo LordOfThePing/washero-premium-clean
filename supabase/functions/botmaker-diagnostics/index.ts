@@ -1,5 +1,6 @@
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { getBotmakerTemplateSendDiagnostics } from "../_shared/botmaker-outbound.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,8 +13,6 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;
 const WEBHOOK_SECRET = Deno.env.get("BOTMAKER_WEBHOOK_SECRET") ?? "";
 const BOTMAKER_API_TOKEN = Deno.env.get("BOTMAKER_API_TOKEN") ?? "";
-const BOTMAKER_TEMPLATE_SEND_PATH = Deno.env.get("BOTMAKER_TEMPLATE_SEND_PATH") ?? "/notifications-engine/send-template";
-const BOTMAKER_TEMPLATE_SEND_MODE = Deno.env.get("BOTMAKER_TEMPLATE_SEND_MODE") ?? "notifications_engine";
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 
@@ -41,6 +40,13 @@ function pickHttpDebug(raw_payload: unknown) {
     request: (p.request ?? null) as Record<string, unknown> | null,
     response: (p.response ?? null) as Record<string, unknown> | null,
   };
+}
+
+function isTemplateSendMode(raw_payload: unknown): boolean {
+  const p = (raw_payload ?? {}) as Record<string, unknown>;
+  const mode = p.send_mode;
+  return mode === "trigger_intent" || mode === "intent_v2" || mode === "template" ||
+    mode === "notifications";
 }
 
 async function status() {
@@ -71,23 +77,33 @@ async function status() {
     .limit(500);
 
   const outbound = outboundLogs ?? [];
+  const templateConfig = getBotmakerTemplateSendDiagnostics();
   const sent24h = outbound.filter((r) => r.created_at >= since24h && logStatus(r) === "sent").length;
   const sent7d = outbound.filter((r) => logStatus(r) === "sent").length;
   const failedRecent = outbound.filter((r) => logStatus(r) === "failed").slice(0, 10);
   const failedTemplateRecent = outbound.filter((r) => {
     const p = (r.raw_payload ?? {}) as Record<string, unknown>;
-    return logStatus(r) === "failed" && p.send_mode === "template";
+    return logStatus(r) === "failed" && isTemplateSendMode(p);
   }).slice(0, 10);
   const lastOutboundSent = outbound.find((r) => logStatus(r) === "sent") ?? null;
   const lastOutboundFailed = outbound.find((r) => logStatus(r) === "failed") ?? null;
   const lastTemplateFailed = failedTemplateRecent[0] ?? null;
+  const lastTemplateSent = outbound.find((r) => {
+    const p = (r.raw_payload ?? {}) as Record<string, unknown>;
+    return logStatus(r) === "sent" && isTemplateSendMode(p);
+  }) ?? null;
 
   return {
     secret_configured: !!WEBHOOK_SECRET,
     botmaker_api_token_configured: !!BOTMAKER_API_TOKEN,
     outbound_whatsapp: {
-      template_send_path: BOTMAKER_TEMPLATE_SEND_PATH,
-      template_send_mode: BOTMAKER_TEMPLATE_SEND_MODE,
+      template_send_path: templateConfig.template_send_path,
+      template_send_mode: templateConfig.template_send_mode,
+      template_base_url: templateConfig.template_base_url,
+      channel_id: templateConfig.channel_id,
+      channel_id_configured: templateConfig.channel_id_configured,
+      chat_channel_number: templateConfig.chat_channel_number,
+      chat_channel_number_configured: templateConfig.chat_channel_number_configured,
       sent_last_24h: sent24h,
       sent_last_7d: sent7d,
       last_sent: lastOutboundSent
@@ -95,6 +111,22 @@ async function status() {
             created_at: lastOutboundSent.created_at,
             message_preview: (lastOutboundSent.message_text ?? "").slice(0, 120),
             template_key: ((lastOutboundSent.raw_payload as Record<string, unknown>)?.template_key as string) ?? null,
+            botmaker_rule_name_or_id:
+              ((lastOutboundSent.raw_payload as Record<string, unknown>)?.botmaker_rule_name_or_id as string) ??
+              null,
+            send_mode: ((lastOutboundSent.raw_payload as Record<string, unknown>)?.send_mode as string) ?? null,
+          }
+        : null,
+      last_template_sent: lastTemplateSent
+        ? {
+            created_at: lastTemplateSent.created_at,
+            template_key: ((lastTemplateSent.raw_payload as Record<string, unknown>)?.template_key as string) ?? null,
+            botmaker_rule_name_or_id:
+              ((lastTemplateSent.raw_payload as Record<string, unknown>)?.botmaker_rule_name_or_id as string) ??
+              null,
+            send_mode: ((lastTemplateSent.raw_payload as Record<string, unknown>)?.send_mode as string) ?? null,
+            message_preview: (lastTemplateSent.message_text ?? "").slice(0, 120),
+            ...pickHttpDebug(lastTemplateSent.raw_payload),
           }
         : null,
       last_failed: lastOutboundFailed

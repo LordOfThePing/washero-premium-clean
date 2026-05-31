@@ -235,13 +235,52 @@ function NotificacionesPage() {
         </CardHeader>
         <CardContent className="space-y-1 text-xs text-muted-foreground">
           <p>
+            Base URL: <code>{d?.outbound_whatsapp?.template_base_url ?? "—"}</code>
+          </p>
+          <p>
             Path: <code>{d?.outbound_whatsapp?.template_send_path ?? "—"}</code>
           </p>
           <p>
             Modo: <code>{d?.outbound_whatsapp?.template_send_mode ?? "—"}</code>
           </p>
+          <p>
+            Channel ID:{" "}
+            <code>{d?.outbound_whatsapp?.channel_id ?? "—"}</code>
+            {!d?.outbound_whatsapp?.channel_id_configured && (
+              <span className="ml-2 text-amber-700 dark:text-amber-400">(falta BOTMAKER_CHANNEL_ID)</span>
+            )}
+          </p>
         </CardContent>
       </Card>
+
+      {d?.outbound_whatsapp?.last_template_sent && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Último template enviado</CardTitle>
+            <CardDescription>
+              {new Date(d.outbound_whatsapp.last_template_sent.created_at).toLocaleString("es-AR")}
+              {d.outbound_whatsapp.last_template_sent.template_key
+                ? ` · ${d.outbound_whatsapp.last_template_sent.template_key}`
+                : ""}
+              {d.outbound_whatsapp.last_template_sent.send_mode
+                ? ` · ${d.outbound_whatsapp.last_template_sent.send_mode}`
+                : ""}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm">
+            {d.outbound_whatsapp.last_template_sent.message_preview && (
+              <p className="mb-2 whitespace-pre-wrap text-muted-foreground">
+                {d.outbound_whatsapp.last_template_sent.message_preview}
+              </p>
+            )}
+            <HttpDebugCollapsible
+              request={(d.outbound_whatsapp.last_template_sent.request as HttpDebugBlock | null) ?? null}
+              response={(d.outbound_whatsapp.last_template_sent.response as HttpDebugBlock | null) ?? null}
+              label="Ver request/response del template"
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {d?.outbound_whatsapp?.last_sent && (
         <Card>

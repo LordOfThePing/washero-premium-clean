@@ -6,17 +6,40 @@ export type BotmakerDiagnosticsStatus = {
   outbound_whatsapp?: {
     template_send_path?: string;
     template_send_mode?: string;
+    template_base_url?: string;
+    channel_id?: string | null;
+    channel_id_configured?: boolean;
+    chat_channel_number?: string | null;
+    chat_channel_number_configured?: boolean;
     sent_last_24h: number;
     sent_last_7d: number;
     last_sent: {
       created_at: string;
       message_preview: string;
       template_key: string | null;
+      send_mode?: string | null;
+    } | null;
+    last_template_sent?: {
+      created_at: string;
+      template_key: string | null;
+      send_mode?: string | null;
+      message_preview?: string;
+      request?: unknown;
+      response?: unknown;
+    } | null;
+    last_failed?: {
+      created_at: string;
+      error: string | null;
+      template_key: string | null;
+      request?: unknown;
+      response?: unknown;
     } | null;
     recent_failed: Array<{
       created_at: string;
       error: string | null;
       template_key: string | null;
+      request?: unknown;
+      response?: unknown;
     }>;
     last_template_failed?: {
       created_at: string;
