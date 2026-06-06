@@ -16,6 +16,40 @@ export const VEHICLE_CODE_TO_TYPE: Record<string, "Auto" | "SUV" | "Pick-up"> = 
   pickup: "Pick-up",
 };
 
+export const SECOND_UNIT_DISCOUNT_RATE = 0.2;
+
+export type AddressMode = "street" | "private_neighborhood";
+
+export type PrivateNeighborhood = {
+  id: string;
+  name: string;
+  aliases: string[];
+  formatted_address: string;
+  canonical_address: string;
+  lat: number;
+  lng: number;
+  coverage_zone_id: string | null;
+  coverage_zone_name: string | null;
+  place_id: string | null;
+  display_order: number;
+};
+
+export type UnitPricing = {
+  subtotal: number;
+  discountRate: number;
+  discountAmount: number;
+  total: number;
+  durationMinutes: number;
+  extrasTotal: number;
+  vehicleAmount: number;
+};
+
+export type BookingUnitPayload = {
+  vehicle_type: string;
+  service_id: string;
+  selected_extras: string[];
+};
+
 export const PAYMENTS = [
   { value: "MercadoPago", label: "Mercado Pago", hint: "Online seguro" },
   { value: "Transferencia", label: "Transferencia", hint: "Te enviamos los datos" },
@@ -74,8 +108,14 @@ export type LogisticDay = {
 export type FormState = {
   service_id: string;
   vehicle_code: string;
+  second_vehicle_enabled: boolean;
+  second_vehicle_code: string;
   extras: string[];
   address: string;
+  address_mode: AddressMode;
+  private_neighborhood_id: string;
+  private_lot: string;
+  private_extra_details: string;
   customer_name: string;
   customer_phone: string;
   customer_email: string;
@@ -88,8 +128,14 @@ export type FormState = {
 export const INITIAL_FORM: FormState = {
   service_id: "",
   vehicle_code: "",
+  second_vehicle_enabled: false,
+  second_vehicle_code: "",
   extras: [],
   address: "",
+  address_mode: "street",
+  private_neighborhood_id: "",
+  private_lot: "",
+  private_extra_details: "",
   customer_name: "",
   customer_phone: "",
   customer_email: "",
@@ -98,6 +144,57 @@ export const INITIAL_FORM: FormState = {
   kipper_quote: false,
   payment_method: "MercadoPago",
 };
+
+export function computeUnitPricing(input: {
+  serviceBasePrice: number;
+  serviceDurationMinutes: number;
+  vehicleAmount: number;
+  vehicleDurationMinutes: number;
+  extraItems: Array<{ amount: number; duration_minutes: number }>;
+  discountRate?: number;
+}): UnitPricing {
+  const extrasTotal = input.extraItems.reduce((sum, item) => sum + item.amount, 0);
+  const extrasDuration = input.extraItems.reduce((sum, item) => sum + item.duration_minutes, 0);
+  const subtotal = input.serviceBasePrice + input.vehicleAmount + extrasTotal;
+  const discountRate = input.discountRate ?? 0;
+  const discountAmount = discountRate > 0 ? Math.round(subtotal * discountRate) : 0;
+  return {
+    subtotal,
+    discountRate,
+    discountAmount,
+    total: subtotal - discountAmount,
+    durationMinutes: input.serviceDurationMinutes + input.vehicleDurationMinutes + extrasDuration,
+    extrasTotal,
+    vehicleAmount: input.vehicleAmount,
+  };
+}
+
+export function buildPrivateNeighborhoodDisplayAddress(name: string, lot: string) {
+  const trimmedLot = lot.trim();
+  return trimmedLot ? `Barrio ${name}, lote ${trimmedLot}` : `Barrio ${name}`;
+}
+
+export function buildBookingUnitsPayload(opts: {
+  firstVehicleType: string;
+  secondVehicleType?: string | null;
+  serviceId: string;
+  selectedExtras: string[];
+  secondVehicleEnabled: boolean;
+}): BookingUnitPayload[] {
+  const units: BookingUnitPayload[] = [{
+    vehicle_type: opts.firstVehicleType,
+    service_id: opts.serviceId,
+    selected_extras: opts.selectedExtras,
+  }];
+  if (opts.secondVehicleEnabled && opts.secondVehicleType) {
+    units.push({
+      vehicle_type: opts.secondVehicleType,
+      service_id: opts.serviceId,
+      selected_extras: [],
+    });
+  }
+  return units;
+}
 
 export const contactSchema = z.object({
   customer_name: z.string().trim().min(2, "Ingresá tu nombre"),
@@ -216,6 +313,31 @@ export function filterTooSoonSlots<T extends { date: string; start_time: string 
   return slots.filter((slot) => !isSlotTooSoonForPublic(slot.date, slot.start_time, minLeadMinutes));
 }
 
+export async function fetchPrivateNeighborhoods(): Promise<PrivateNeighborhood[]> {
+  const { data, error } = await supabase
+    .from("private_neighborhoods")
+    .select(
+      "id,name,aliases,formatted_address,canonical_address,lat,lng,coverage_zone_id,coverage_zone_name,place_id,display_order",
+    )
+    .eq("active", true)
+    .order("display_order")
+    .order("name");
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    aliases: Array.isArray(row.aliases) ? row.aliases.map(String) : [],
+    formatted_address: String(row.formatted_address),
+    canonical_address: String(row.canonical_address),
+    lat: Number(row.lat),
+    lng: Number(row.lng),
+    coverage_zone_id: row.coverage_zone_id ? String(row.coverage_zone_id) : null,
+    coverage_zone_name: row.coverage_zone_name ? String(row.coverage_zone_name) : null,
+    place_id: row.place_id ? String(row.place_id) : null,
+    display_order: Number(row.display_order) || 0,
+  }));
+}
+
 export async function fetchServices(): Promise<Service[]> {
   const { data, error } = await supabase
     .from("services")
@@ -277,29 +399,36 @@ export async function fetchLogisticAvailability(input: {
   coverage_zone_id: string | null;
   coverage_zone_name: string;
   service_id: string;
-  duration_minutes: number;
+  /** Fallback when booking_units is absent; ignored by backend when booking_units is sent. */
+  duration_minutes?: number;
+  booking_units?: BookingUnitPayload[];
   date_from?: string;
   date_to?: string;
   debug?: boolean;
 }): Promise<LogisticDay[]> {
   const today = isoFromDate(new Date());
+  const body: Record<string, unknown> = {
+    address_lat: input.address_lat,
+    address_lng: input.address_lng,
+    coverage_zone_id: input.coverage_zone_id,
+    coverage_zone_name: input.coverage_zone_name,
+    service_id: input.service_id,
+    date_from: input.date_from ?? today,
+    date_to: input.date_to ?? addDaysIso(today, 13),
+    debug: !!input.debug,
+  };
+  if (input.booking_units?.length) {
+    body.booking_units = input.booking_units;
+  } else if (typeof input.duration_minutes === "number" && input.duration_minutes > 0) {
+    body.duration_minutes = input.duration_minutes;
+  }
   const { data, error } = await supabase.functions.invoke("get-logistic-availability", {
-    body: {
-      address_lat: input.address_lat,
-      address_lng: input.address_lng,
-      coverage_zone_id: input.coverage_zone_id,
-      coverage_zone_name: input.coverage_zone_name,
-      service_id: input.service_id,
-      duration_minutes: input.duration_minutes,
-      date_from: input.date_from ?? today,
-      date_to: input.date_to ?? addDaysIso(today, 13),
-      debug: !!input.debug,
-    },
+    body,
   });
   if (error) throw error;
-  const body = data as { ok: boolean; days?: LogisticDay[] } | null;
-  if (!body?.ok) throw new Error("logistic_availability_failed");
-  return body.days ?? [];
+  const res = data as { ok: boolean; days?: LogisticDay[] } | null;
+  if (!res?.ok) throw new Error("logistic_availability_failed");
+  return res.days ?? [];
 }
 
 export function isGooglePlacesDropdownTarget(target: EventTarget | null) {

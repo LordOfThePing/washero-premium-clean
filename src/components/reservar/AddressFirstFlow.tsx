@@ -28,11 +28,16 @@ import {
   COVERAGE_COPY,
   INITIAL_FORM,
   PAYMENTS,
+  SECOND_UNIT_DISCOUNT_RATE,
   VEHICLE_CODE_TO_TYPE,
   WHATSAPP_URL,
+  buildBookingUnitsPayload,
+  buildPrivateNeighborhoodDisplayAddress,
+  computeUnitPricing,
   contactSchema,
   fetchLogisticAvailability,
   fetchPricing,
+  fetchPrivateNeighborhoods,
   fetchServices,
   filterTooSoonSlots,
   formatARS,
@@ -41,6 +46,7 @@ import {
   isoFromDate,
   type FormState,
   type LogisticSlot,
+  type PrivateNeighborhood,
 } from "@/components/reservar/shared";
 
 type CoverageState =
@@ -54,6 +60,24 @@ type SlotPick = { date: string; time: string; slot_id: string; reason?: string }
 
 const STEPS = ["Dirección", "Servicio", "Horario", "Datos y pago"] as const;
 const RECOMMENDED_SCORE_MIN = 70;
+
+type ResolvedLocation = {
+  displayAddress: string;
+  formatted_address: string;
+  lat: number;
+  lng: number;
+  zone_id: string | null;
+  zone_name: string;
+  place_id: string | null;
+};
+
+function normalizeSearchText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
 
 export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribution }) {
   const navigate = useNavigate();
@@ -69,58 +93,161 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
 
   const services = useQuery({ queryKey: ["services"], queryFn: fetchServices, staleTime: 60_000 });
   const pricing = useQuery({ queryKey: ["pricing_items"], queryFn: fetchPricing, staleTime: 60_000 });
+  const privateNeighborhoods = useQuery({
+    queryKey: ["private_neighborhoods"],
+    queryFn: fetchPrivateNeighborhoods,
+    staleTime: 60_000,
+  });
+  const [privateNeighborhoodSearch, setPrivateNeighborhoodSearch] = useState("");
 
   const selectedService = services.data?.find((s) => s.id === form.service_id);
-  const vehicleDurationMinutes = useMemo(() => {
-    const item = (pricing.data ?? []).find(
-      (p) => p.type === "vehicle_surcharge" && p.code === form.vehicle_code,
-    );
-    return Math.max(0, item?.duration_minutes ?? 0);
-  }, [pricing.data, form.vehicle_code]);
-  const extrasDurationMinutes = useMemo(
+  const selectedPrivateNeighborhood = useMemo(
+    () => privateNeighborhoods.data?.find((row) => row.id === form.private_neighborhood_id) ?? null,
+    [privateNeighborhoods.data, form.private_neighborhood_id],
+  );
+  const filteredPrivateNeighborhoods = useMemo(() => {
+    const rows = privateNeighborhoods.data ?? [];
+    const needle = normalizeSearchText(privateNeighborhoodSearch);
+    if (!needle) return rows;
+    return rows.filter((row) => {
+      const haystack = [row.name, ...row.aliases].map(normalizeSearchText).join(" ");
+      return haystack.includes(needle);
+    });
+  }, [privateNeighborhoods.data, privateNeighborhoodSearch]);
+
+  const selectedVehicle = useMemo(
+    () => (pricing.data ?? []).find((p) => p.type === "vehicle_surcharge" && p.code === form.vehicle_code),
+    [pricing.data, form.vehicle_code],
+  );
+  const selectedSecondVehicle = useMemo(
+    () => (pricing.data ?? []).find((p) => p.type === "vehicle_surcharge" && p.code === form.second_vehicle_code),
+    [pricing.data, form.second_vehicle_code],
+  );
+
+  const selectedExtraItems = useMemo(
     () =>
-      form.extras.reduce(
-        (sum, code) =>
-          sum +
-          Math.max(
-            0,
-            (pricing.data ?? []).find((p) => p.type === "extra" && p.code === code)?.duration_minutes ?? 0,
-          ),
-        0,
-      ),
+      form.extras
+        .map((code) => (pricing.data ?? []).find((p) => p.type === "extra" && p.code === code))
+        .filter((item): item is NonNullable<typeof item> => !!item)
+        .map((item) => ({ amount: item.amount, duration_minutes: item.duration_minutes })),
     [pricing.data, form.extras],
   );
-  const estimatedDurationMinutes = Math.max(
-    0,
-    (selectedService?.duration_minutes ?? 0) + vehicleDurationMinutes + extrasDurationMinutes,
+
+  const firstUnitPricing = useMemo(
+    () =>
+      computeUnitPricing({
+        serviceBasePrice: selectedService?.base_price ?? 0,
+        serviceDurationMinutes: selectedService?.duration_minutes ?? 0,
+        vehicleAmount: selectedVehicle?.amount ?? 0,
+        vehicleDurationMinutes: selectedVehicle?.duration_minutes ?? 0,
+        extraItems: selectedExtraItems,
+      }),
+    [selectedExtraItems, selectedService, selectedVehicle],
   );
+
+  const secondUnitPricing = useMemo(() => {
+    if (!form.second_vehicle_enabled) return null;
+    return computeUnitPricing({
+      serviceBasePrice: selectedService?.base_price ?? 0,
+      serviceDurationMinutes: selectedService?.duration_minutes ?? 0,
+      vehicleAmount: selectedSecondVehicle?.amount ?? 0,
+      vehicleDurationMinutes: selectedSecondVehicle?.duration_minutes ?? 0,
+      extraItems: [],
+      discountRate: SECOND_UNIT_DISCOUNT_RATE,
+    });
+  }, [form.second_vehicle_enabled, selectedSecondVehicle, selectedService]);
+
+  const estimatedDurationMinutes = firstUnitPricing.durationMinutes + (secondUnitPricing?.durationMinutes ?? 0);
+  const subtotalBeforeDiscounts = firstUnitPricing.subtotal + (secondUnitPricing?.subtotal ?? 0);
+  const discountTotal = secondUnitPricing?.discountAmount ?? 0;
+  const total = firstUnitPricing.total + (secondUnitPricing?.total ?? 0);
+  const vehicleCount = form.second_vehicle_enabled ? 2 : 1;
+
+  const resolvedLocation = useMemo((): ResolvedLocation | null => {
+    if (coverage.kind !== "ok") return null;
+    if (form.address_mode === "private_neighborhood" && selectedPrivateNeighborhood) {
+      return {
+        displayAddress: buildPrivateNeighborhoodDisplayAddress(
+          selectedPrivateNeighborhood.name,
+          form.private_lot,
+        ),
+        formatted_address: selectedPrivateNeighborhood.formatted_address,
+        lat: selectedPrivateNeighborhood.lat,
+        lng: selectedPrivateNeighborhood.lng,
+        zone_id: coverage.zone_id,
+        zone_name: coverage.zone_name,
+        place_id: selectedPrivateNeighborhood.place_id,
+      };
+    }
+    if (form.address_mode === "street" && place?.lat != null && place.lng != null) {
+      return {
+        displayAddress: place.formatted_address,
+        formatted_address: place.formatted_address,
+        lat: place.lat,
+        lng: place.lng,
+        zone_id: coverage.zone_id,
+        zone_name: coverage.zone_name,
+        place_id: place.place_id,
+      };
+    }
+    return null;
+  }, [coverage, form.address_mode, form.private_lot, place, selectedPrivateNeighborhood]);
+
+  const addressReady =
+    form.address_mode === "street"
+      ? !!place
+      : !!selectedPrivateNeighborhood && !!form.private_lot.trim();
+
+  const firstVehicleType = form.vehicle_code ? VEHICLE_CODE_TO_TYPE[form.vehicle_code] : undefined;
+  const secondVehicleType = form.second_vehicle_enabled && form.second_vehicle_code
+    ? VEHICLE_CODE_TO_TYPE[form.second_vehicle_code]
+    : undefined;
+
+  const bookingUnitsPayload = useMemo(() => {
+    if (!form.service_id || !firstVehicleType) return undefined;
+    return buildBookingUnitsPayload({
+      firstVehicleType,
+      secondVehicleType,
+      serviceId: form.service_id,
+      selectedExtras: form.extras,
+      secondVehicleEnabled: form.second_vehicle_enabled,
+    });
+  }, [
+    firstVehicleType,
+    form.extras,
+    form.second_vehicle_enabled,
+    form.service_id,
+    secondVehicleType,
+  ]);
 
   const logisticEnabled =
     coverage.kind === "ok" &&
-    place?.lat != null &&
-    place?.lng != null &&
+    !!resolvedLocation &&
     !!form.service_id &&
-    estimatedDurationMinutes > 0;
+    !!bookingUnitsPayload?.length;
 
   const logistic = useQuery({
     queryKey: [
       "logistic_availability",
-      place?.lat,
-      place?.lng,
+      resolvedLocation?.lat,
+      resolvedLocation?.lng,
       coverage.kind === "ok" ? coverage.zone_id : null,
       coverage.kind === "ok" ? coverage.zone_name : null,
       form.service_id,
       form.vehicle_code,
+      form.second_vehicle_enabled,
+      form.second_vehicle_code,
       form.extras.slice().sort().join("|"),
-      estimatedDurationMinutes,
+      bookingUnitsPayload,
     ],
     queryFn: () =>
       fetchLogisticAvailability({
-        address_lat: place!.lat!,
-        address_lng: place!.lng!,
+        address_lat: resolvedLocation!.lat,
+        address_lng: resolvedLocation!.lng,
         coverage_zone_id: coverage.kind === "ok" ? coverage.zone_id : null,
         coverage_zone_name: coverage.kind === "ok" ? coverage.zone_name : "",
         service_id: form.service_id,
+        booking_units: bookingUnitsPayload,
         duration_minutes: estimatedDurationMinutes,
         debug: import.meta.env.DEV,
       }),
@@ -157,9 +284,16 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
 
   useEffect(() => {
     setPick(null);
-  }, [form.service_id, form.vehicle_code, form.extras]);
+  }, [form.service_id, form.vehicle_code, form.second_vehicle_enabled, form.second_vehicle_code, form.extras]);
 
   useEffect(() => {
+    if (form.second_vehicle_enabled && !form.second_vehicle_code && form.vehicle_code) {
+      setForm((f) => ({ ...f, second_vehicle_code: f.vehicle_code }));
+    }
+  }, [form.second_vehicle_enabled, form.second_vehicle_code, form.vehicle_code]);
+
+  useEffect(() => {
+    if (form.address_mode !== "street") return;
     if (!place) {
       setCoverage({ kind: "idle" });
       return;
@@ -170,6 +304,7 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
       try {
         const { data, error } = await supabase.functions.invoke("validate-address-location", {
           body: {
+            address_type: "street",
             place_id: place.place_id,
             formatted_address: place.formatted_address,
             lat: place.lat,
@@ -204,7 +339,69 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
     return () => {
       cancelled = true;
     };
-  }, [place]);
+  }, [form.address_mode, place]);
+
+  useEffect(() => {
+    if (form.address_mode !== "private_neighborhood") return;
+    if (!form.private_neighborhood_id || !form.private_lot.trim()) {
+      setCoverage({ kind: "idle" });
+      return;
+    }
+    let cancelled = false;
+    setCoverage({ kind: "validating" });
+    (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("validate-address-location", {
+          body: {
+            address_type: "private_neighborhood",
+            private_neighborhood_id: form.private_neighborhood_id,
+          },
+        });
+        if (cancelled) return;
+        type Resp = {
+          ok: boolean;
+          inside_coverage: boolean;
+          zone: { id: string | null; name: string } | null;
+          private_neighborhood?: { id: string; name: string };
+        };
+        const res = (data ?? null) as Resp | null;
+        if (error || !res?.ok || !res.inside_coverage) {
+          setCoverage({
+            kind: "error",
+            message: "El barrio seleccionado no está disponible. Elegí otro o escribinos por WhatsApp.",
+          });
+          return;
+        }
+        const zoneName =
+          res.zone?.name
+          ?? selectedPrivateNeighborhood?.coverage_zone_name
+          ?? selectedPrivateNeighborhood?.name
+          ?? "";
+        setCoverage({
+          kind: "ok",
+          zone_id: res.zone?.id ?? selectedPrivateNeighborhood?.coverage_zone_id ?? null,
+          zone_name: zoneName,
+        });
+      } catch {
+        if (!cancelled) {
+          setCoverage({
+            kind: "error",
+            message: "No pudimos validar el barrio. Probá nuevamente o escribinos por WhatsApp.",
+          });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    form.address_mode,
+    form.private_neighborhood_id,
+    form.private_lot,
+    selectedPrivateNeighborhood?.coverage_zone_id,
+    selectedPrivateNeighborhood?.coverage_zone_name,
+    selectedPrivateNeighborhood?.name,
+  ]);
 
   const days = useMemo(
     () =>
@@ -230,20 +427,22 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
   }, [focusDate]);
 
   useEffect(() => {
-    if (!import.meta.env.DEV || !logistic.data || !place || coverage.kind !== "ok") return;
+    if (!import.meta.env.DEV || !logistic.data || !resolvedLocation || coverage.kind !== "ok") return;
     const firstDay = logistic.data[0];
     console.log("[Reservar][logistic-debug]", {
-      address_lat: place.lat,
-      address_lng: place.lng,
+      address_lat: resolvedLocation.lat,
+      address_lng: resolvedLocation.lng,
       coverage_zone_id: coverage.zone_id,
       coverage_zone_name: coverage.zone_name,
       duration_minutes: estimatedDurationMinutes,
+      vehicle_count: vehicleCount,
+      booking_units: bookingUnitsPayload,
       days_returned: logistic.data.length,
       first_day: firstDay?.date ?? null,
       first_day_recommended_count: firstDay?.recommended_slots.length ?? 0,
       first_day_other_count: firstDay?.other_slots.length ?? 0,
     });
-  }, [coverage, estimatedDurationMinutes, logistic.data, place]);
+  }, [bookingUnitsPayload, coverage, estimatedDurationMinutes, logistic.data, resolvedLocation, vehicleCount]);
 
   const daySummaries = useMemo(
     () =>
@@ -263,14 +462,6 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
   const recommendedForFocus = focusDay?.recommended_slots ?? [];
   const otherForFocus = focusDay?.other_slots ?? [];
 
-  const selectedVehicle = vehicles.find((v) => v.code === form.vehicle_code);
-  const vehicleSurcharge = selectedVehicle?.amount ?? 0;
-  const extrasTotal = form.extras.reduce(
-    (sum, code) => sum + (extras.find((e) => e.code === code)?.amount ?? 0),
-    0,
-  );
-  const total = (selectedService?.base_price ?? 0) + vehicleSurcharge + extrasTotal;
-
   const update = <K extends keyof FormState>(k: K, v: FormState[K]) => {
     setForm((f) => ({ ...f, [k]: v }));
     setErrors((e) => {
@@ -286,6 +477,28 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
     }));
   }
 
+  function switchAddressMode(mode: FormState["address_mode"]) {
+    setForm((f) => ({
+      ...f,
+      address_mode: mode,
+      private_neighborhood_id: mode === "street" ? "" : f.private_neighborhood_id,
+      private_lot: mode === "street" ? "" : f.private_lot,
+      private_extra_details: mode === "street" ? "" : f.private_extra_details,
+      address: mode === "private_neighborhood" ? "" : f.address,
+    }));
+    if (mode === "street") {
+      setPrivateNeighborhoodSearch("");
+    } else {
+      setPlace(null);
+    }
+    setCoverage({ kind: "idle" });
+  }
+
+  function selectPrivateNeighborhood(row: PrivateNeighborhood) {
+    update("private_neighborhood_id", row.id);
+    setPrivateNeighborhoodSearch(row.name);
+  }
+
   function selectSlot(slot: LogisticSlot) {
     setPick({
       date: slot.date,
@@ -296,8 +509,12 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
   }
 
   function goToServiceStep() {
-    if (coverage.kind !== "ok" || !place) {
+    if (coverage.kind !== "ok" || !addressReady) {
       toast.error("Validá tu dirección dentro de la zona de cobertura.");
+      return;
+    }
+    if (form.address_mode === "private_neighborhood" && !form.private_lot.trim()) {
+      toast.error("Ingresá el lote o casa dentro del barrio.");
       return;
     }
     setStep(1);
@@ -310,6 +527,10 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
     }
     if (!form.vehicle_code) {
       toast.error("Elegí el tamaño de tu vehículo.");
+      return;
+    }
+    if (form.second_vehicle_enabled && !form.second_vehicle_code) {
+      toast.error("Elegí el tamaño del segundo auto.");
       return;
     }
     setPick(null);
@@ -338,12 +559,15 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
     }
     if (!form.service_id) errs.service_id = "Elegí un servicio";
     if (!form.vehicle_code) errs.vehicle_code = "Elegí el tamaño de tu vehículo";
+    if (form.second_vehicle_enabled && !form.second_vehicle_code) {
+      errs.second_vehicle_code = "Elegí el tamaño del segundo auto";
+    }
     if (!pick) errs.slot = "Elegí un horario";
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
       return;
     }
-    if (coverage.kind !== "ok" || !place) {
+    if (coverage.kind !== "ok" || !resolvedLocation) {
       toast.error("Dirección fuera de cobertura.");
       return;
     }
@@ -353,25 +577,39 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
       toast.error("Tipo de vehículo inválido.");
       return;
     }
+    const second_vehicle_type = form.second_vehicle_enabled
+      ? VEHICLE_CODE_TO_TYPE[form.second_vehicle_code]
+      : null;
+    if (form.second_vehicle_enabled && !second_vehicle_type) {
+      toast.error("Tipo de vehículo inválido para la segunda unidad.");
+      return;
+    }
+    if (!bookingUnitsPayload?.length) {
+      toast.error("No pudimos armar la reserva. Probá nuevamente.");
+      return;
+    }
 
     setSubmitting(true);
     const noteParts: string[] = [];
     if (form.notes.trim()) noteParts.push(form.notes.trim());
     if (form.whatsapp_reminders) noteParts.push("Recordatorios WhatsApp: sí");
     if (form.kipper_quote) noteParts.push("Interés en cotización Kipper Seguros: sí");
+    if (form.address_mode === "private_neighborhood" && form.private_extra_details.trim()) {
+      noteParts.push(`Ingreso barrio: ${form.private_extra_details.trim()}`);
+    }
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       customer_name: form.customer_name.trim(),
       customer_phone: form.customer_phone.trim(),
       customer_email: form.customer_email.trim() || null,
-      address: place.formatted_address,
-      formatted_address: place.formatted_address,
-      place_id: place.place_id,
-      address_lat: place.lat,
-      address_lng: place.lng,
-      neighborhood: coverage.zone_name,
-      coverage_zone_id: coverage.zone_id,
-      coverage_zone_name: coverage.zone_name,
+      address: resolvedLocation.displayAddress,
+      formatted_address: resolvedLocation.formatted_address,
+      place_id: resolvedLocation.place_id,
+      address_lat: resolvedLocation.lat,
+      address_lng: resolvedLocation.lng,
+      neighborhood: resolvedLocation.zone_name,
+      coverage_zone_id: resolvedLocation.zone_id,
+      coverage_zone_name: resolvedLocation.zone_name,
       vehicle_type,
       service_id: form.service_id,
       scheduled_date: pick!.date,
@@ -379,6 +617,7 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
       payment_method: form.payment_method,
       notes: noteParts.join(" · ") || null,
       selected_extras: form.extras,
+      booking_units: bookingUnitsPayload,
       marketing_source: attribution?.marketing_source ?? null,
       marketing_medium: attribution?.marketing_medium ?? null,
       marketing_campaign: attribution?.marketing_campaign ?? null,
@@ -388,6 +627,16 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
       landing_url: attribution?.landing_url ?? null,
       referrer_url: attribution?.referrer_url ?? null,
     };
+
+    if (form.address_mode === "private_neighborhood" && selectedPrivateNeighborhood) {
+      payload.address_type = "private_neighborhood";
+      payload.private_neighborhood_id = selectedPrivateNeighborhood.id;
+      payload.private_neighborhood_name = selectedPrivateNeighborhood.name;
+      payload.private_lot = form.private_lot.trim();
+      payload.private_extra_details = form.private_extra_details.trim() || null;
+    } else {
+      payload.address_type = "street";
+    }
 
     const { data, error } = await supabase.functions.invoke("create-website-booking", { body: payload });
     type Resp = {
@@ -416,6 +665,10 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
             ? "Ese horario ya no está disponible. Elegí otro."
             : status === "invalid_extra"
               ? "Hay un extra inválido. Actualizá la página."
+            : status === "invalid_private_neighborhood"
+              ? "El barrio cerrado seleccionado no está disponible."
+            : status === "too_many_units"
+              ? "Solo podés reservar hasta 2 vehículos por turno."
               : (res?.customer_message ??
                 "No pudimos crear la reserva. Probá nuevamente o escribinos por WhatsApp.");
       console.error("[Reservar][create-website-booking]", {
@@ -474,24 +727,125 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
           <div>
             <h2 className="text-lg font-semibold">¿Dónde lavamos tu auto?</h2>
             <p className="text-sm text-muted-foreground">
-              Buscá y seleccioná tu dirección en Google Maps.
+              Elegí si estás en una dirección a la calle o en un barrio cerrado.
             </p>
           </div>
-          <PlacesAutocomplete
-            value={form.address}
-            onChange={(v) => update("address", v)}
-            onSelect={(p) => {
-              setPlace(p);
-              if (p) update("address", p.formatted_address);
-            }}
-            placeholder="Ej: Av. del Libertador 1234, Tigre"
-          />
-          {!place && form.address.trim().length > 0 && (
-            <p className="text-xs text-muted-foreground">
-              Seleccioná una sugerencia de la lista para validar la zona.
-            </p>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => switchAddressMode("street")}
+              className={cn(
+                "rounded-xl border p-3 text-left text-sm",
+                form.address_mode === "street" ? "border-primary border-2 bg-primary/5" : "border-border",
+              )}
+            >
+              <div className="font-medium">Dirección a la calle</div>
+              <div className="text-xs text-muted-foreground">Google Maps</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => switchAddressMode("private_neighborhood")}
+              className={cn(
+                "rounded-xl border p-3 text-left text-sm",
+                form.address_mode === "private_neighborhood"
+                  ? "border-primary border-2 bg-primary/5"
+                  : "border-border",
+              )}
+            >
+              <div className="font-medium">Barrio cerrado</div>
+              <div className="text-xs text-muted-foreground">Lista de barrios</div>
+            </button>
+          </div>
+
+          {form.address_mode === "street" ? (
+            <>
+              <PlacesAutocomplete
+                value={form.address}
+                onChange={(v) => update("address", v)}
+                onSelect={(p) => {
+                  setPlace(p);
+                  if (p) update("address", p.formatted_address);
+                }}
+                placeholder="Ej: Av. del Libertador 1234, Tigre"
+              />
+              {!place && form.address.trim().length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Seleccioná una sugerencia de la lista para validar la zona.
+                </p>
+              )}
+            </>
+          ) : (
+            <div className="space-y-3">
+              <div>
+                <Label>Barrio cerrado</Label>
+                <Input
+                  value={privateNeighborhoodSearch}
+                  onChange={(e) => setPrivateNeighborhoodSearch(e.target.value)}
+                  placeholder="Buscá tu barrio…"
+                />
+              </div>
+              {privateNeighborhoods.isLoading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Cargando barrios…
+                </div>
+              ) : filteredPrivateNeighborhoods.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No encontramos barrios con ese nombre.{" "}
+                  <a href={WHATSAPP_URL} target="_blank" rel="noreferrer" className="underline">
+                    Escribinos por WhatsApp
+                  </a>
+                  .
+                </p>
+              ) : (
+                <div className="max-h-48 space-y-2 overflow-y-auto rounded-xl border p-2">
+                  {filteredPrivateNeighborhoods.map((row) => (
+                    <button
+                      key={row.id}
+                      type="button"
+                      onClick={() => selectPrivateNeighborhood(row)}
+                      className={cn(
+                        "w-full rounded-lg border p-3 text-left text-sm",
+                        form.private_neighborhood_id === row.id
+                          ? "border-primary border-2 bg-primary/5"
+                          : "border-border",
+                      )}
+                    >
+                      <div className="font-medium">{row.name}</div>
+                      {row.coverage_zone_name && (
+                        <div className="text-xs text-muted-foreground">Zona {row.coverage_zone_name}</div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div>
+                <Label>Lote / casa / manzana *</Label>
+                <Input
+                  value={form.private_lot}
+                  onChange={(e) => update("private_lot", e.target.value)}
+                  placeholder="Ej: 35, Mza 12 casa 4"
+                />
+              </div>
+              <div>
+                <Label>Indicaciones para ingresar o encontrar la casa</Label>
+                <Textarea
+                  rows={2}
+                  value={form.private_extra_details}
+                  onChange={(e) => update("private_extra_details", e.target.value)}
+                  placeholder="Ej: portón negro, avisar en garita"
+                />
+              </div>
+              {selectedPrivateNeighborhood && form.private_lot.trim() && (
+                <p className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
+                  Usamos la entrada del barrio para ordenar la ruta. El operador verá tu lote/casa en el
+                  detalle de la reserva.
+                </p>
+              )}
+            </div>
           )}
-          {place && (
+
+          {addressReady && (
             <div className="space-y-2">
               {coverage.kind === "validating" && (
                 <div className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -527,20 +881,28 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
               )}
             </div>
           )}
-          <Button className="w-full" size="lg" disabled={coverage.kind !== "ok"} onClick={goToServiceStep}>
+          <Button
+            className="w-full"
+            size="lg"
+            disabled={coverage.kind !== "ok" || !addressReady}
+            onClick={goToServiceStep}
+          >
             Elegir servicio <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         </section>
       )}
 
-      {step === 1 && place && coverage.kind === "ok" && (
+      {step === 1 && resolvedLocation && coverage.kind === "ok" && (
         <section className="space-y-5">
           <div className="rounded-xl border bg-muted/30 p-3 text-sm">
             <p className="flex items-start gap-2 font-medium">
               <MapPin className="h-4 w-4 shrink-0 text-primary" />
-              {place.formatted_address}
+              {resolvedLocation.displayAddress}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">Zona {coverage.zone_name}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {form.address_mode === "private_neighborhood" ? "Barrio cerrado · " : ""}
+              Zona {coverage.zone_name}
+            </p>
           </div>
 
           <FormSection title="Servicio">
@@ -592,6 +954,64 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
             {errors.vehicle_code && <p className="text-xs text-destructive">{errors.vehicle_code}</p>}
           </FormSection>
 
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold">¿Querés sumar otro auto en la misma visita?</h3>
+              <p className="text-xs text-muted-foreground mt-1">La segunda unidad tiene 20% OFF.</p>
+            </div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <Checkbox
+                checked={form.second_vehicle_enabled}
+                onCheckedChange={(v) => update("second_vehicle_enabled", !!v)}
+              />
+              Agregar segundo auto
+            </label>
+            {form.second_vehicle_enabled && (
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Mismo día, mismo horario y misma dirección que el primer auto.
+                </p>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {vehicles.map((v) => (
+                    <button
+                      key={`second-${v.id}`}
+                      type="button"
+                      onClick={() => update("second_vehicle_code", v.code)}
+                      className={cn(
+                        "rounded-xl border p-3 text-left text-sm",
+                        form.second_vehicle_code === v.code ? "border-primary border-2 bg-primary/5" : "",
+                      )}
+                    >
+                      <div className="font-medium">{v.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {v.amount > 0 ? `+ ${formatARS(v.amount)}` : "Sin cargo"} · +{v.duration_minutes} min
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                {errors.second_vehicle_code && (
+                  <p className="text-xs text-destructive">{errors.second_vehicle_code}</p>
+                )}
+                {secondUnitPricing && (
+                  <div className="rounded-lg border bg-background/80 p-3 text-xs space-y-1">
+                    <div className="flex justify-between">
+                      <span>Subtotal segunda unidad</span>
+                      <span>{formatARS(secondUnitPricing.subtotal)}</span>
+                    </div>
+                    <div className="flex justify-between text-emerald-700">
+                      <span>Segunda unidad 20% OFF</span>
+                      <span>-{formatARS(secondUnitPricing.discountAmount)}</span>
+                    </div>
+                    <div className="flex justify-between font-semibold">
+                      <span>Segunda unidad final</span>
+                      <span>{formatARS(secondUnitPricing.total)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <FormSection title="Extras opcionales">
             <div className="space-y-2">
               {extras.map((e) => (
@@ -619,13 +1039,25 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
           </FormSection>
 
           <div className="rounded-xl border bg-muted/30 p-3 text-sm space-y-1">
+            {form.second_vehicle_enabled && (
+              <>
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Subtotal antes de descuentos</span>
+                  <span>{formatARS(subtotalBeforeDiscounts)}</span>
+                </div>
+                <div className="flex justify-between text-xs text-emerald-700">
+                  <span>Segunda unidad 20% OFF</span>
+                  <span>-{formatARS(discountTotal)}</span>
+                </div>
+              </>
+            )}
             <div className="flex justify-between font-semibold">
-              <span>Total estimado</span>
+              <span>Total estimado ({vehicleCount} {vehicleCount === 1 ? "vehículo" : "vehículos"})</span>
               <span>{formatARS(total)}</span>
             </div>
             {selectedService && (
               <p className="text-[10px] text-muted-foreground">
-                Duración estimada: {estimatedDurationMinutes} min.
+                Duración estimada: {estimatedDurationMinutes} min · mismo día y horario
               </p>
             )}
           </div>
@@ -645,15 +1077,16 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
         </section>
       )}
 
-      {step === 2 && place && coverage.kind === "ok" && form.service_id && (
+      {step === 2 && resolvedLocation && coverage.kind === "ok" && form.service_id && (
         <section className="space-y-5">
           <div className="rounded-xl border bg-muted/30 p-3 text-sm space-y-2">
             <p className="flex items-start gap-2 font-medium">
               <MapPin className="h-4 w-4 shrink-0 text-primary" />
-              {place.formatted_address}
+              {resolvedLocation.displayAddress}
             </p>
             <p className="text-xs text-muted-foreground">
-              {selectedService?.name} · {estimatedDurationMinutes} min · Zona {coverage.zone_name}
+              {selectedService?.name} · {vehicleCount} {vehicleCount === 1 ? "vehículo" : "vehículos"} ·{" "}
+              {estimatedDurationMinutes} min · Zona {coverage.zone_name}
             </p>
             <button
               type="button"
@@ -831,7 +1264,34 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
         <section className="space-y-5">
           <div className="rounded-xl border bg-muted/30 p-3 text-sm space-y-1">
             <p className="font-medium capitalize">{formatDayLong(pick.date)} · {pick.time} hs</p>
-            <p className="text-muted-foreground">{selectedService?.name} · {formatARS(total)}</p>
+            {resolvedLocation && (
+              <p className="text-muted-foreground">{resolvedLocation.displayAddress}</p>
+            )}
+            {form.address_mode === "private_neighborhood" && selectedPrivateNeighborhood && (
+              <p className="text-muted-foreground">
+                Barrio cerrado: {selectedPrivateNeighborhood.name}
+                {form.private_lot.trim() ? ` · Lote ${form.private_lot.trim()}` : ""}
+              </p>
+            )}
+            {form.address_mode === "private_neighborhood" && form.private_extra_details.trim() && (
+              <p className="text-muted-foreground text-xs">
+                Ingreso: {form.private_extra_details.trim()}
+              </p>
+            )}
+            <p className="text-muted-foreground">
+              {selectedService?.name} · {vehicleCount} {vehicleCount === 1 ? "vehículo" : "vehículos"} ·{" "}
+              {formatARS(total)}
+            </p>
+            {form.second_vehicle_enabled && discountTotal > 0 && (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Subtotal antes de descuentos: {formatARS(subtotalBeforeDiscounts)}
+                </p>
+                <p className="text-emerald-700 text-xs">
+                  Segunda unidad 20% OFF (-{formatARS(discountTotal)})
+                </p>
+              </>
+            )}
             <p className="text-muted-foreground">Duración estimada: {estimatedDurationMinutes} min</p>
           </div>
 
