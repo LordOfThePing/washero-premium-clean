@@ -16,6 +16,13 @@ const WEBHOOK_URL = `https://${PROJECT_REF}.supabase.co/functions/v1/mercadopago
 const PUSH_INTERNAL_SECRET = Deno.env.get("PUSH_INTERNAL_SECRET") ?? "";
 const SUPABASE_URL_ROOT = Deno.env.get("SUPABASE_URL")!;
 
+type BookingUnitPayload = {
+  vehicle_type?: string;
+  service_id?: string | null;
+  service_name?: string | null;
+  selected_extras?: string[];
+};
+
 type Payload = {
   customer_name?: string;
   customer_phone?: string;
@@ -33,6 +40,12 @@ type Payload = {
   formatted_address?: string | null;
   address_lat?: number | null;
   address_lng?: number | null;
+  booking_units?: BookingUnitPayload[];
+  address_type?: "street" | "private_neighborhood";
+  private_neighborhood_id?: string | null;
+  private_neighborhood_name?: string | null;
+  private_lot?: string | null;
+  private_extra_details?: string | null;
   marketing_source?: string | null;
   marketing_medium?: string | null;
   marketing_campaign?: string | null;
@@ -147,6 +160,19 @@ Deno.serve(async (req) => {
       qr_code_slug: body.qr_code_slug ?? null,
       landing_url: body.landing_url ?? null,
       referrer_url: body.referrer_url ?? null,
+      booking_units: Array.isArray(body.booking_units)
+        ? body.booking_units.map((unit) => ({
+          vehicle_type: unit.vehicle_type ?? "",
+          service_id: unit.service_id ?? null,
+          service_name: unit.service_name ?? null,
+          selected_extras: Array.isArray(unit.selected_extras) ? unit.selected_extras : [],
+        }))
+        : undefined,
+      address_type: body.address_type,
+      private_neighborhood_id: body.private_neighborhood_id ?? null,
+      private_neighborhood_name: body.private_neighborhood_name ?? null,
+      private_lot: body.private_lot ?? null,
+      private_extra_details: body.private_extra_details ?? null,
       enforce_coverage: true, // strict coverage on website
       source: "website",
     });
@@ -182,6 +208,8 @@ Deno.serve(async (req) => {
       slot_full: "Ese horario ya se completó. Elegí otro día u horario.",
       duplicate: "Ya tenemos una reserva registrada para ese teléfono en ese día y horario.",
       outside_coverage: "Esa dirección está fuera de nuestra zona de cobertura. Escribinos por WhatsApp y vemos cómo ayudarte.",
+      invalid_private_neighborhood: "El barrio privado seleccionado no está disponible. Elegí otro o escribinos por WhatsApp.",
+      too_many_units: "Solo podés reservar hasta 2 vehículos por turno.",
       server_error: "No pudimos crear la reserva. Probá de nuevo.",
     };
     return json({
@@ -202,6 +230,10 @@ Deno.serve(async (req) => {
     address: booking.address,
     neighborhood: booking.neighborhood,
     price: booking.price,
+    vehicle_count: result.vehicle_count,
+    subtotal_before_discounts: result.subtotal_before_discounts,
+    discount_total: result.discount_total,
+    units: result.units,
   };
   const baseResponse = {
     ok: true,

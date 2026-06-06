@@ -181,6 +181,7 @@ export type Database = {
       bookings: {
         Row: {
           address: string
+          address_type: string
           address_lat: number | null
           address_lng: number | null
           assigned_operator_id: string | null
@@ -196,6 +197,7 @@ export type Database = {
           customer_id: string | null
           customer_name: string
           customer_phone: string
+          discount_total: number
           duration_minutes: number
           extras_total: number
           formatted_address: string | null
@@ -214,6 +216,10 @@ export type Database = {
           place_id: string | null
           price: number
           price_breakdown: Json
+          private_extra_details: string | null
+          private_lot: string | null
+          private_neighborhood_id: string | null
+          private_neighborhood_name: string | null
           qr_code_slug: string | null
           referrer_url: string | null
           scheduled_date: string
@@ -221,14 +227,17 @@ export type Database = {
           selected_extras: Json
           service_id: string | null
           service_name: string
+          subtotal_before_discounts: number | null
           subscription_usage_id: string | null
           updated_at: string
+          vehicle_count: number
           vehicle_surcharge: number
           vehicle_type: string
           landing_url: string | null
         }
         Insert: {
           address: string
+          address_type?: string
           address_lat?: number | null
           address_lng?: number | null
           booking_source?: string
@@ -241,6 +250,7 @@ export type Database = {
           customer_id?: string | null
           customer_name: string
           customer_phone: string
+          discount_total?: number
           duration_minutes: number
           extras_total?: number
           formatted_address?: string | null
@@ -259,6 +269,10 @@ export type Database = {
           place_id?: string | null
           price: number
           price_breakdown?: Json
+          private_extra_details?: string | null
+          private_lot?: string | null
+          private_neighborhood_id?: string | null
+          private_neighborhood_name?: string | null
           qr_code_slug?: string | null
           referrer_url?: string | null
           scheduled_date: string
@@ -266,14 +280,17 @@ export type Database = {
           selected_extras?: Json
           service_id?: string | null
           service_name: string
+          subtotal_before_discounts?: number | null
           subscription_usage_id?: string | null
           updated_at?: string
+          vehicle_count?: number
           vehicle_surcharge?: number
           vehicle_type: string
           landing_url?: string | null
         }
         Update: {
           address?: string
+          address_type?: string
           address_lat?: number | null
           address_lng?: number | null
           booking_source?: string
@@ -286,6 +303,7 @@ export type Database = {
           customer_id?: string | null
           customer_name?: string
           customer_phone?: string
+          discount_total?: number
           duration_minutes?: number
           extras_total?: number
           formatted_address?: string | null
@@ -304,6 +322,10 @@ export type Database = {
           place_id?: string | null
           price?: number
           price_breakdown?: Json
+          private_extra_details?: string | null
+          private_lot?: string | null
+          private_neighborhood_id?: string | null
+          private_neighborhood_name?: string | null
           qr_code_slug?: string | null
           referrer_url?: string | null
           scheduled_date?: string
@@ -311,8 +333,10 @@ export type Database = {
           selected_extras?: Json
           service_id?: string | null
           service_name?: string
+          subtotal_before_discounts?: number | null
           subscription_usage_id?: string | null
           updated_at?: string
+          vehicle_count?: number
           vehicle_surcharge?: number
           vehicle_type?: string
           landing_url?: string | null
@@ -334,6 +358,85 @@ export type Database = {
           },
           {
             foreignKeyName: "bookings_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_private_neighborhood_id_fkey"
+            columns: ["private_neighborhood_id"]
+            isOneToOne: false
+            referencedRelation: "private_neighborhoods"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      booking_units: {
+        Row: {
+          booking_id: string
+          created_at: string
+          discount_amount: number
+          discount_rate: number
+          duration_minutes: number
+          extras_total: number
+          id: string
+          price_breakdown: Json
+          selected_extras: Json
+          service_id: string | null
+          service_name: string
+          service_price: number
+          total_price: number
+          unit_index: number
+          vehicle_surcharge: number
+          vehicle_type: string
+        }
+        Insert: {
+          booking_id: string
+          created_at?: string
+          discount_amount?: number
+          discount_rate?: number
+          duration_minutes?: number
+          extras_total?: number
+          id?: string
+          price_breakdown?: Json
+          selected_extras?: Json
+          service_id?: string | null
+          service_name: string
+          service_price?: number
+          total_price?: number
+          unit_index: number
+          vehicle_surcharge?: number
+          vehicle_type: string
+        }
+        Update: {
+          booking_id?: string
+          created_at?: string
+          discount_amount?: number
+          discount_rate?: number
+          duration_minutes?: number
+          extras_total?: number
+          id?: string
+          price_breakdown?: Json
+          selected_extras?: Json
+          service_id?: string | null
+          service_name?: string
+          service_price?: number
+          total_price?: number
+          unit_index?: number
+          vehicle_surcharge?: number
+          vehicle_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "booking_units_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "booking_units_service_id_fkey"
             columns: ["service_id"]
             isOneToOne: false
             referencedRelation: "services"
@@ -921,6 +1024,74 @@ export type Database = {
             columns: ["booking_id"]
             isOneToOne: false
             referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      private_neighborhoods: {
+        Row: {
+          access_notes: string | null
+          active: boolean
+          aliases: string[]
+          canonical_address: string
+          city: string | null
+          coverage_zone_id: string | null
+          coverage_zone_name: string | null
+          created_at: string
+          display_order: number
+          formatted_address: string
+          id: string
+          lat: number
+          lng: number
+          name: string
+          place_id: string | null
+          province: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_notes?: string | null
+          active?: boolean
+          aliases?: string[]
+          canonical_address: string
+          city?: string | null
+          coverage_zone_id?: string | null
+          coverage_zone_name?: string | null
+          created_at?: string
+          display_order?: number
+          formatted_address: string
+          id?: string
+          lat: number
+          lng: number
+          name: string
+          place_id?: string | null
+          province?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_notes?: string | null
+          active?: boolean
+          aliases?: string[]
+          canonical_address?: string
+          city?: string | null
+          coverage_zone_id?: string | null
+          coverage_zone_name?: string | null
+          created_at?: string
+          display_order?: number
+          formatted_address?: string
+          id?: string
+          lat?: number
+          lng?: number
+          name?: string
+          place_id?: string | null
+          province?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "private_neighborhoods_coverage_zone_id_fkey"
+            columns: ["coverage_zone_id"]
+            isOneToOne: false
+            referencedRelation: "coverage_zones"
             referencedColumns: ["id"]
           },
         ]

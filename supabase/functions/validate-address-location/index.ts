@@ -23,6 +23,8 @@ type Payload = {
   lat?: number;
   lng?: number;
   neighborhood?: string;
+  address_type?: "street" | "private_neighborhood";
+  private_neighborhood_id?: string;
 };
 
 Deno.serve(async (req) => {
@@ -36,6 +38,49 @@ Deno.serve(async (req) => {
   const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const GOOGLE_KEY = Deno.env.get("GOOGLE_MAPS_SERVER_KEY") ?? "";
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+
+  if (body.address_type === "private_neighborhood") {
+    const privateNeighborhoodId = (body.private_neighborhood_id ?? "").trim();
+    if (!privateNeighborhoodId) {
+      console.warn("[validate-address-location] missing private_neighborhood_id for private_neighborhood address_type");
+      return json({ ok: false, error: "missing_private_neighborhood_id" }, 400);
+    }
+
+    const { data, error } = await admin.from("private_neighborhoods")
+      .select("id,name,active,coverage_zone_id,coverage_zone_name,canonical_address,formatted_address,lat,lng")
+      .eq("id", privateNeighborhoodId)
+      .maybeSingle();
+
+    if (error || !data || !data.active) {
+      console.warn("[validate-address-location] invalid or inactive private_neighborhood_id", privateNeighborhoodId, error);
+      return json({ ok: false, error: "invalid_private_neighborhood" }, 400);
+    }
+
+    const zone = data.coverage_zone_id
+      ? { id: data.coverage_zone_id as string, name: (data.coverage_zone_name as string | null) ?? "" }
+      : data.coverage_zone_name
+      ? { id: null, name: data.coverage_zone_name as string }
+      : null;
+
+    return json({
+      ok: true,
+      inside_coverage: true,
+      zone,
+      match_type: "private_neighborhood",
+      distance_km: null,
+      place_id: null,
+      formatted_address: data.formatted_address,
+      canonical_address: data.canonical_address,
+      lat: data.lat,
+      lng: data.lng,
+      coverage_zone_id: data.coverage_zone_id,
+      coverage_zone_name: data.coverage_zone_name,
+      private_neighborhood: {
+        id: data.id,
+        name: data.name,
+      },
+    });
+  }
 
   let lat = typeof body.lat === "number" ? body.lat : null;
   let lng = typeof body.lng === "number" ? body.lng : null;

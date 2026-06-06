@@ -1,17 +1,6 @@
 // Logistic availability: capacity + zone/distance scoring for address-first booking.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
-import {
-  remainingCapacity,
-  serviceFitsSlot,
-  type BookingOverlapRow,
-  type SlotRow,
-} from "../_shared/slot-capacity.ts";
-import {
-  scoreLogisticSlot,
-  splitRecommendedSlots,
-  type BookingForLogistics,
-  type ScoredLogisticSlot,
-} from "../_shared/logistic-scoring.ts";
+import { queryLogisticAvailabilityDays } from "../_shared/logistic-availability.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -26,39 +15,12 @@ function json(body: unknown, status = 200) {
   });
 }
 
-function isDate(v: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(v);
-}
-
-function addDays(iso: string, days: number): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  dt.setUTCDate(dt.getUTCDate() + days);
-  return dt.toISOString().slice(0, 10);
-}
-
-const PUBLIC_MIN_LEAD_MINUTES = 120;
-
-function slotStartUtcMsFromBuenosAires(dateIso: string, timeHHMM: string) {
-  const [y, m, d] = dateIso.split("-").map(Number);
-  const [hh, mm] = String(timeHHMM).slice(0, 5).split(":").map(Number);
-  if (
-    !Number.isFinite(y) ||
-    !Number.isFinite(m) ||
-    !Number.isFinite(d) ||
-    !Number.isFinite(hh) ||
-    !Number.isFinite(mm)
-  ) {
-    return null;
-  }
-  return Date.UTC(y, m - 1, d, hh + 3, mm, 0, 0);
-}
-
-function isSlotTooSoonForPublic(dateIso: string, timeHHMM: string, nowMs = Date.now()) {
-  const slotMs = slotStartUtcMsFromBuenosAires(dateIso, timeHHMM);
-  if (slotMs == null) return true;
-  return slotMs < nowMs + PUBLIC_MIN_LEAD_MINUTES * 60_000;
-}
+type BookingUnitPayload = {
+  vehicle_type?: string;
+  service_id?: string | null;
+  service_name?: string | null;
+  selected_extras?: string[];
+};
 
 type Payload = {
   address_lat?: number;
@@ -69,6 +31,9 @@ type Payload = {
   date_from?: string;
   date_to?: string;
   duration_minutes?: number;
+  booking_units?: BookingUnitPayload[];
+  vehicle_type?: string;
+  selected_extras?: string[];
   debug?: boolean;
 };
 
@@ -93,166 +58,39 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "missing_coordinates" }, 400);
   }
 
-  const today = new Date().toISOString().slice(0, 10);
-  let dateFrom = (body.date_from ?? today).trim();
-  let dateTo = (body.date_to ?? addDays(today, 13)).trim();
-  if (!isDate(dateFrom)) dateFrom = today;
-  if (!isDate(dateTo)) dateTo = addDays(today, 13);
-  if (dateFrom < today) dateFrom = today;
-  if (dateTo < dateFrom) dateTo = addDays(dateFrom, 13);
-
   const serviceId = (body.service_id ?? "").trim();
+  if (!serviceId) return json({ ok: false, error: "missing_service_id" }, 400);
+
   const debugMode = body.debug === true;
-  const requestedDuration =
-    typeof body.duration_minutes === "number" && body.duration_minutes > 0
-      ? Math.round(body.duration_minutes)
-      : null;
-  let serviceDurationMinutes: number | null = null;
+  const booking_units = Array.isArray(body.booking_units)
+    ? body.booking_units.map((unit) => ({
+      vehicle_type: String(unit.vehicle_type ?? "").trim(),
+      service_id: unit.service_id ?? null,
+      service_name: unit.service_name ?? null,
+      selected_extras: Array.isArray(unit.selected_extras) ? unit.selected_extras : [],
+    }))
+    : undefined;
 
-  if (serviceId) {
-    const { data: svc, error: svcErr } = await admin
-      .from("services")
-      .select("duration_minutes, active")
-      .eq("id", serviceId)
-      .maybeSingle();
-    if (svcErr || !svc?.active || typeof svc.duration_minutes !== "number" || svc.duration_minutes <= 0) {
-      return json({ ok: false, error: "invalid_service" }, 400);
-    }
-    serviceDurationMinutes = Math.round(svc.duration_minutes);
-  }
-
-  let durationMinutes = requestedDuration ?? serviceDurationMinutes;
-  if (durationMinutes != null && serviceDurationMinutes != null) {
-    durationMinutes = Math.max(durationMinutes, serviceDurationMinutes);
-  }
-
-  if (durationMinutes == null || durationMinutes <= 0) {
-    return json({ ok: false, error: "missing_duration" }, 400);
-  }
-
-  const { data: slots, error: slotErr } = await admin
-    .from("availability_slots")
-    .select("id,date,start_time,end_time,capacity")
-    .eq("active", true)
-    .gte("date", dateFrom)
-    .lte("date", dateTo)
-    .order("date")
-    .order("start_time")
-    .limit(2000);
-
-  if (slotErr) {
-    console.error("[get-logistic-availability] slots", slotErr);
-    return json({ ok: false, error: "server_error" }, 500);
-  }
-
-  const { data: bookings, error: bkErr } = await admin
-    .from("bookings")
-    .select(
-      "id,scheduled_date,scheduled_time,duration_minutes,booking_status,coverage_zone_id,coverage_zone_name,address_lat,address_lng",
-    )
-    .gte("scheduled_date", dateFrom)
-    .lte("scheduled_date", dateTo)
-    .neq("booking_status", "cancelled")
-    .limit(5000);
-
-  if (bkErr) {
-    console.error("[get-logistic-availability] bookings", bkErr);
-    return json({ ok: false, error: "server_error" }, 500);
-  }
-
-  const bookingsList = ((bookings ?? []) as BookingForLogistics[]).filter((b) => {
-    const status = String(b.booking_status ?? "").toLowerCase();
-    return status !== "cancelled" && status !== "rejected" && status !== "no_show";
+  const result = await queryLogisticAvailabilityDays(admin, {
+    address_lat: lat,
+    address_lng: lng,
+    coverage_zone_id: body.coverage_zone_id ?? null,
+    coverage_zone_name: body.coverage_zone_name ?? null,
+    service_id: serviceId,
+    duration_minutes: body.duration_minutes,
+    booking_units,
+    vehicle_type: body.vehicle_type,
+    selected_extras: Array.isArray(body.selected_extras) ? body.selected_extras : undefined,
+    date_from: body.date_from,
+    date_to: body.date_to,
   });
-  const bookingsByDate = new Map<string, BookingOverlapRow[]>();
-  const logisticsByDate = new Map<string, BookingForLogistics[]>();
 
-  for (const b of bookingsList) {
-    const d = b.scheduled_date as string;
-    const row: BookingOverlapRow = {
-      scheduled_date: d,
-      scheduled_time: b.scheduled_time as string,
-      duration_minutes: (b.duration_minutes as number) ?? 60,
-    };
-    const arr = bookingsByDate.get(d) ?? [];
-    arr.push(row);
-    bookingsByDate.set(d, arr);
-
-    const logArr = logisticsByDate.get(d) ?? [];
-    logArr.push(b);
-    logisticsByDate.set(d, logArr);
+  if (!result.ok) {
+    const status = result.error === "server_error" ? 500 : 400;
+    return json({ ok: false, error: result.error }, status);
   }
 
-  const daysMap = new Map<string, ScoredLogisticSlot[]>();
-  const nowMs = Date.now();
-
-  for (const raw of slots ?? []) {
-    const slot: SlotRow = {
-      id: raw.id as string,
-      date: raw.date as string,
-      start_time: String(raw.start_time),
-      end_time: String(raw.end_time),
-      capacity: (raw.capacity as number) ?? 1,
-    };
-
-    if (isSlotTooSoonForPublic(slot.date, slot.start_time, nowMs)) continue;
-    if (!serviceFitsSlot(slot, durationMinutes)) continue;
-
-    const onDate = bookingsByDate.get(slot.date) ?? [];
-    const remaining = remainingCapacity(slot, onDate);
-    if (remaining <= 0) continue;
-
-    const scored = scoreLogisticSlot(
-      { ...slot, remaining_capacity: remaining },
-      {
-        address_lat: lat,
-        address_lng: lng,
-        coverage_zone_id: body.coverage_zone_id ?? null,
-        coverage_zone_name: body.coverage_zone_name ?? null,
-        bookingsOnDate: logisticsByDate.get(slot.date) ?? [],
-      },
-    );
-
-    const list = daysMap.get(slot.date) ?? [];
-    list.push(scored);
-    daysMap.set(slot.date, list);
-  }
-
-  const days: Array<{
-    date: string;
-    recommended_slots: ScoredLogisticSlot[];
-    other_slots: ScoredLogisticSlot[];
-  }> = [];
-
-  for (let d = dateFrom; d <= dateTo; d = addDays(d, 1)) {
-    const scored = daysMap.get(d) ?? [];
-    if (scored.length === 0) continue;
-    const { recommended, other } = splitRecommendedSlots(scored);
-    days.push({
-      date: d,
-      recommended_slots: recommended,
-      other_slots: other,
-    });
-  }
-
-  const payload = {
-    ok: true,
-    date_from: dateFrom,
-    date_to: dateTo,
-    duration_minutes: durationMinutes,
-    days,
-    ...(debugMode
-      ? {
-          debug: {
-            address_lat: lat,
-            address_lng: lng,
-            coverage_zone_id: body.coverage_zone_id ?? null,
-            coverage_zone_name: body.coverage_zone_name ?? null,
-            considered_bookings_total: bookingsList.length,
-          },
-        }
-      : {}),
-  };
+  const { days, date_from, date_to, duration_minutes } = result;
 
   if (debugMode) {
     const first = days[0];
@@ -261,7 +99,7 @@ Deno.serve(async (req) => {
       address_lng: lng,
       coverage_zone_id: body.coverage_zone_id ?? null,
       coverage_zone_name: body.coverage_zone_name ?? null,
-      duration_minutes: durationMinutes,
+      duration_minutes,
       days_returned: days.length,
       first_day: first?.date ?? null,
       first_recommended: first?.recommended_slots.length ?? 0,
@@ -269,5 +107,22 @@ Deno.serve(async (req) => {
     });
   }
 
-  return json(payload);
+  return json({
+    ok: true,
+    date_from,
+    date_to,
+    duration_minutes,
+    days,
+    ...(debugMode
+      ? {
+          debug: {
+            address_lat: lat,
+            address_lng: lng,
+            coverage_zone_id: body.coverage_zone_id ?? null,
+            coverage_zone_name: body.coverage_zone_name ?? null,
+            considered_bookings_total: null,
+          },
+        }
+      : {}),
+  });
 });

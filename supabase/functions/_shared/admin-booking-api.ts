@@ -41,6 +41,8 @@ const REASON_MESSAGES: Record<string, string> = {
   slot_full: "Ese horario ya se completó (capacidad agotada).",
   duplicate: "Ya existe una reserva para ese teléfono en ese día y horario.",
   outside_coverage: "La dirección está fuera de la zona de cobertura.",
+  invalid_private_neighborhood: "El barrio privado seleccionado no está disponible.",
+  too_many_units: "Solo se permiten hasta 2 vehículos por turno en la web.",
   server_error: "No pudimos crear la reserva.",
 };
 
