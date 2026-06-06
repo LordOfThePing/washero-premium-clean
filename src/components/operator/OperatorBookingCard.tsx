@@ -1,31 +1,57 @@
-import { Link } from "@tanstack/react-router";
-import { MapPin, MessageCircle, Navigation } from "lucide-react";
+import { MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { OperatorNavActions } from "@/components/operator/OperatorNavActions";
 import {
   type OperatorBooking,
   customerFirstName,
   formatOpTime,
-  mapsUrl,
   paymentInstruction,
   statusLabel,
-  whatsappClientUrl,
 } from "@/lib/operator";
 import { BookingStatusBadge, PaymentStatusBadge } from "@/lib/booking-badges";
+import { cn } from "@/lib/utils";
 
-export function OperatorBookingCard({ booking }: { booking: OperatorBooking }) {
+type Variant = "default" | "highlight" | "compact" | "done";
+
+type Props = {
+  booking: OperatorBooking;
+  variant?: Variant;
+  detailFrom?: string;
+};
+
+export function OperatorBookingCard({ booking, variant = "default", detailFrom }: Props) {
   const pay = paymentInstruction(booking);
   const addr = booking.formatted_address || booking.address;
+  const isCompact = variant === "compact";
+  const padding = isCompact ? "p-3" : "p-4";
+  const spacing = isCompact ? "space-y-2" : "space-y-3";
 
   return (
-    <Card className="overflow-hidden">
-      <CardContent className="space-y-3 p-4">
+    <Card
+      className={cn(
+        "overflow-hidden",
+        variant === "highlight" && "border-primary/40 bg-primary/5",
+        variant === "done" && "opacity-75",
+      )}
+    >
+      <CardContent className={cn(spacing, padding)}>
         <div className="flex items-start justify-between gap-2">
           <div>
-            <p className="text-lg font-semibold tabular-nums">{formatOpTime(booking.scheduled_time)}</p>
-            <p className="font-medium">{customerFirstName(booking.customer_name)}</p>
-            <p className="text-sm text-muted-foreground">{booking.service_name} · {booking.vehicle_type}</p>
+            <p
+              className={cn(
+                "font-semibold tabular-nums",
+                isCompact ? "text-base" : "text-lg",
+              )}
+            >
+              {formatOpTime(booking.scheduled_time)}
+            </p>
+            <p className={cn("font-medium", isCompact && "text-sm")}>
+              {customerFirstName(booking.customer_name)}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {booking.service_name} · {booking.vehicle_type}
+            </p>
           </div>
           <div className="flex flex-col items-end gap-1">
             <BookingStatusBadge value={booking.booking_status} />
@@ -58,23 +84,11 @@ export function OperatorBookingCard({ booking }: { booking: OperatorBooking }) {
           {pay.label}
         </Badge>
 
-        <div className="grid grid-cols-2 gap-2">
-          <Button asChild variant="outline" size="sm" className="h-10">
-            <Link to="/operator/reserva/$bookingId" params={{ bookingId: booking.id }}>
-              Ver detalle
-            </Link>
-          </Button>
-          <Button asChild variant="outline" size="sm" className="h-10">
-            <a href={whatsappClientUrl(booking.customer_phone)} target="_blank" rel="noreferrer">
-              <MessageCircle className="mr-1 h-4 w-4" /> WhatsApp
-            </a>
-          </Button>
-          <Button asChild variant="secondary" size="sm" className="col-span-2 h-10">
-            <a href={mapsUrl(booking)} target="_blank" rel="noreferrer">
-              <Navigation className="mr-1 h-4 w-4" /> Cómo llegar
-            </a>
-          </Button>
-        </div>
+        <OperatorNavActions
+          booking={booking}
+          size={isCompact ? "sm" : "default"}
+          detailFrom={detailFrom}
+        />
       </CardContent>
     </Card>
   );

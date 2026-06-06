@@ -8,6 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { OperatorWhatsappActions } from "@/components/operator/OperatorWhatsappActions";
+import {
+  OPERATOR_BOOKING_SELECT,
+  getWorkflowPhase,
+  type OperatorBooking,
+  type OperatorWorkflowPhase,
+} from "@/lib/operator";
 
 type OperatorConversation = {
   conversation_id: string;
@@ -48,15 +54,45 @@ function OperatorMensajesPage() {
     },
   });
 
+  const bookingIds = useMemo(() => {
+    const ids = (conversations.data ?? []).map((c) => c.booking_id).filter(Boolean);
+    return [...new Set(ids)].sort();
+  }, [conversations.data]);
+
+  const bookingsContext = useQuery({
+    queryKey: ["operator", "messages", "bookings-context", bookingIds.join(",")],
+    enabled: bookingIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("bookings")
+        .select(OPERATOR_BOOKING_SELECT)
+        .in("id", bookingIds);
+      if (error) throw error;
+      const map = new Map<string, OperatorBooking>();
+      for (const row of data ?? []) {
+        map.set(row.id, row as OperatorBooking);
+      }
+      return map;
+    },
+  });
+
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return conversations.data ?? [];
     return (conversations.data ?? []).filter((c) =>
-      `${c.customer_name} ${c.latest_message}`.toLowerCase().includes(term)
+      `${c.customer_name} ${c.latest_message}`.toLowerCase().includes(term),
     );
   }, [conversations.data, search]);
 
-  const selected = (conversations.data ?? []).find((c) => c.booking_id === activeBookingId) ?? null;
+  const selected =
+    (conversations.data ?? []).find((c) => c.booking_id === activeBookingId) ?? null;
+  const selectedBooking = selected ? bookingsContext.data?.get(selected.booking_id) : undefined;
+
+  const whatsappPhase: OperatorWorkflowPhase | undefined = selectedBooking
+    ? getWorkflowPhase(selectedBooking)
+    : selected?.requires_human
+      ? "issue"
+      : undefined;
 
   const timeline = useQuery({
     queryKey: ["operator", "messages", "timeline", selected?.conversation_id],
@@ -75,7 +111,7 @@ function OperatorMensajesPage() {
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Mensajes</h1>
         <p className="text-sm text-muted-foreground">
-          Conversaciones operativas de reservas de hoy asignadas a vos.
+          Conversaciones de reservas de hoy asignadas a vos.
         </p>
       </div>
 
@@ -115,7 +151,11 @@ function OperatorMensajesPage() {
                 </button>
                 <div className="flex gap-2">
                   <Button asChild variant="outline" size="sm" className="h-8">
-                    <Link to="/operator/reserva/$bookingId" params={{ bookingId: c.booking_id }}>
+                    <Link
+                      to="/operator/reserva/$bookingId"
+                      params={{ bookingId: c.booking_id }}
+                      search={{ from: "mensajes" }}
+                    >
                       Ver reserva
                     </Link>
                   </Button>
@@ -134,20 +174,18 @@ function OperatorMensajesPage() {
       {selected && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Timeline — {selected.customer_name}</CardTitle>
+            <CardTitle className="text-base">Conversación — {selected.customer_name}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {timeline.isLoading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" /> Cargando timeline...
+                <Loader2 className="h-4 w-4 animate-spin" /> Cargando mensajes...
               </div>
             ) : (
               <div className="max-h-52 space-y-2 overflow-y-auto rounded-md border bg-muted/20 p-2">
                 {(timeline.data ?? []).map((m) => (
                   <div key={m.id} className="rounded border bg-background p-2 text-xs">
-                    <p className="font-medium">
-                      {m.sender_type ?? m.direction ?? "mensaje"}
-                    </p>
+                    <p className="font-medium">{m.sender_type ?? m.direction ?? "mensaje"}</p>
                     <p className="text-muted-foreground">{m.message_text ?? "—"}</p>
                   </div>
                 ))}
@@ -155,6 +193,8 @@ function OperatorMensajesPage() {
             )}
             <OperatorWhatsappActions
               bookingId={selected.booking_id}
+              booking={selectedBooking}
+              phase={whatsappPhase}
               compact
               onSent={() => {
                 conversations.refetch();

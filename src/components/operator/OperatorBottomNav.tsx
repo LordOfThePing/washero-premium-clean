@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { CalendarDays, CalendarRange, ClipboardList, MessageSquare, User } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -14,10 +15,20 @@ export function OperatorBottomNav() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/60 bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/60 bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur"
+      style={
+        {
+          "--operator-nav-height": "calc(3.75rem + env(safe-area-inset-bottom, 0px))",
+        } as CSSProperties
+      }
+    >
       <div className="mx-auto grid max-w-lg grid-cols-5">
         {items.map(({ to, label, icon: Icon }) => {
-          const active = pathname === to || pathname.startsWith(`${to}/`);
+          const active =
+            pathname === to ||
+            pathname.startsWith(`${to}/`) ||
+            (to === "/operator/hoy" && pathname.startsWith("/operator/reserva/"));
           return (
             <Link
               key={to}

@@ -56,7 +56,7 @@ function OperatorPendientesPage() {
       ) : (
         <div className="space-y-3">
           {list.map((b) => (
-            <OperatorBookingCard key={b.id} booking={b} />
+            <OperatorBookingCard key={b.id} booking={b} detailFrom="pendientes" />
           ))}
         </div>
       )}

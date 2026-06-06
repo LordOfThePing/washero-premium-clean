@@ -1,11 +1,9 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Loader2, MapPin, MessageCircle, Navigation } from "lucide-react";
+import { Loader2, MessageCircle, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import {
   AlertDialog,
@@ -18,41 +16,50 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { OperatorStatusTimeline } from "@/components/operator/OperatorBookingCard";
-import {
-  OPERATOR_BOOKING_SELECT,
-  formatOpDate,
-  formatOpTime,
-  invokeOperatorUpdateBooking,
-  mapsUrl,
-  paymentInstruction,
-  wazeUrl,
-  whatsappClientUrl,
-  type OperatorBooking,
-} from "@/lib/operator";
-import { BookingStatusBadge, PaymentStatusBadge } from "@/lib/booking-badges";
+import { OperatorAccessSummary } from "@/components/operator/OperatorAccessSummary";
+import { OperatorBookingUnitsSummary } from "@/components/operator/OperatorBookingUnitsSummary";
+import { OperatorDetailHeader } from "@/components/operator/OperatorDetailHeader";
+import { OperatorPriceSummary } from "@/components/operator/OperatorPriceSummary";
 import { OperatorWhatsappActions } from "@/components/operator/OperatorWhatsappActions";
+import { OperatorWorkflowBar } from "@/components/operator/OperatorWorkflowBar";
+import {
+  OPERATOR_LAYOUT,
+  canOperatorStartBooking,
+  fetchOperatorBookingDetail,
+  getIssueActionLabel,
+  getPrimaryBookingAction,
+  getWorkflowPhase,
+  invokeOperatorUpdateBooking,
+  whatsappClientUrl,
+} from "@/lib/operator";
+import { cn } from "@/lib/utils";
+
+type ReservaSearch = {
+  from?: string;
+};
 
 export const Route = createFileRoute("/operator/reserva/$bookingId")({
+  validateSearch: (search: Record<string, unknown>): ReservaSearch => ({
+    from: typeof search.from === "string" ? search.from : undefined,
+  }),
   component: OperatorReservaDetailPage,
 });
 
 function OperatorReservaDetailPage() {
   const { bookingId } = Route.useParams();
+  const { from } = Route.useSearch();
   const qc = useQueryClient();
   const [issueOpen, setIssueOpen] = useState(false);
   const [issueNote, setIssueNote] = useState("");
   const [payDialog, setPayDialog] = useState(false);
 
-  const booking = useQuery({
-    queryKey: ["operator", "booking", bookingId],
+  const detail = useQuery({
+    queryKey: ["operator", "booking-detail", bookingId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("bookings")
-        .select(OPERATOR_BOOKING_SELECT)
-        .eq("id", bookingId)
-        .maybeSingle();
-      if (error) throw error;
-      return data as OperatorBooking | null;
+      const res = await fetchOperatorBookingDetail(bookingId);
+      if (res.error) throw new Error(res.error);
+      if (!res.booking) throw new Error("Reserva no encontrada.");
+      return { booking: res.booking, units: res.units };
     },
   });
 
@@ -70,34 +77,44 @@ function OperatorReservaDetailPage() {
       if (vars.action === "report_issue") toast.success("Problema reportado.");
       if (res.invoice_created) toast.message("Factura generada.");
       invalidate();
-      booking.refetch();
+      detail.refetch();
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const b = booking.data;
-  if (booking.isLoading) {
+  if (detail.isLoading) {
     return (
       <div className="flex justify-center py-16">
         <Loader2 className="h-6 w-6 animate-spin" />
       </div>
     );
   }
-  if (!b) {
+
+  if (detail.isError || !detail.data) {
+    const errMsg =
+      detail.error instanceof Error
+        ? detail.error.message
+        : "No pudimos cargar el detalle de esta reserva.";
+
     return (
-      <p className="py-8 text-center text-sm text-muted-foreground">Reserva no encontrada.</p>
+      <div className="space-y-4 py-12 text-center">
+        <p className="text-sm text-muted-foreground">{errMsg}</p>
+        <Button type="button" variant="outline" onClick={() => detail.refetch()}>
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Reintentar
+        </Button>
+      </div>
     );
   }
 
-  const pay = paymentInstruction(b);
-  const addr = b.formatted_address || b.address;
-  const extras = Array.isArray(b.selected_extras) ? (b.selected_extras as string[]).join(", ") : "";
-  const canStart = ["pending", "confirmed", "needs_review"].includes(b.booking_status);
-  const canComplete = ["confirmed", "in_progress", "needs_review", "pending"].includes(
-    b.booking_status,
-  );
-  const collectOnComplete =
-    b.payment_method === "Pagar después" && b.payment_status !== "paid";
+  const b = detail.data.booking;
+  const units = detail.data.units;
+  const phase = getWorkflowPhase(b);
+  const primaryAction = getPrimaryBookingAction(b);
+  const collectOnComplete = b.payment_method === "Pagar después" && b.payment_status !== "paid";
+  const canStart = canOperatorStartBooking(b);
+  const canComplete = b.booking_status === "in_progress";
+  const issueDialogTitle = getIssueActionLabel(b);
 
   const completeWash = (markPaid: boolean) => {
     runAction.mutate({
@@ -108,130 +125,53 @@ function OperatorReservaDetailPage() {
     setPayDialog(false);
   };
 
+  const handleComplete = () => {
+    if (!canComplete) return;
+    if (collectOnComplete) setPayDialog(true);
+    else completeWash(false);
+  };
+
   return (
-    <div className="space-y-4 pb-8">
-      <Button asChild variant="ghost" size="sm" className="-ml-2">
-        <Link to="/operator/hoy">
-          <ArrowLeft className="mr-1 h-4 w-4" /> Volver
-        </Link>
-      </Button>
-
-      <div>
-        <h1 className="text-xl font-semibold">{b.customer_name}</h1>
-        <p className="text-sm text-muted-foreground">
-          {formatOpDate(b.scheduled_date)} · {formatOpTime(b.scheduled_time)}
-        </p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <BookingStatusBadge value={b.booking_status} />
-          <PaymentStatusBadge value={b.payment_status} />
-        </div>
-      </div>
-
-      <OperatorStatusTimeline status={b.booking_status} />
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Servicio</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          <p>
-            {b.service_name} · {b.vehicle_type}
-          </p>
-          {extras ? <p className="text-muted-foreground">Extras: {extras}</p> : null}
-          <p className="font-medium text-primary">{pay.label}</p>
-          <p className="text-muted-foreground">{b.payment_method}</p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Ubicación</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm">
-          <p className="flex gap-2">
-            <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
-            {addr}
-            {b.neighborhood ? `, ${b.neighborhood}` : ""}
-          </p>
-          <div className="grid gap-2">
-            <Button asChild variant="outline" className="h-11">
-              <a href={whatsappClientUrl(b.customer_phone)} target="_blank" rel="noreferrer">
-                <MessageCircle className="mr-2 h-4 w-4" /> Abrir chat manual
-              </a>
-            </Button>
-            <Button asChild variant="secondary" className="h-11">
-              <a href={mapsUrl(b)} target="_blank" rel="noreferrer">
-                <Navigation className="mr-2 h-4 w-4" /> Abrir Google Maps
-              </a>
-            </Button>
-            <Button asChild variant="outline" className="h-11">
-              <a href={wazeUrl(b)} target="_blank" rel="noreferrer">
-                Abrir Waze
-              </a>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <OperatorWhatsappActions bookingId={b.id} />
-
-      {(b.notes || b.operator_notes) && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Notas</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm whitespace-pre-wrap">
-            {b.notes ? <p>{b.notes}</p> : null}
-            {b.operator_notes ? (
-              <p className="text-muted-foreground">{b.operator_notes}</p>
-            ) : null}
-          </CardContent>
-        </Card>
-      )}
+    <div className={cn("space-y-4", OPERATOR_LAYOUT.detailPagePadding)}>
+      <OperatorDetailHeader booking={b} from={from} />
 
       <div className="space-y-2">
-        {canStart && (
-          <Button
-            className="h-12 w-full text-base"
-            disabled={runAction.isPending}
-            onClick={() => runAction.mutate({ booking_id: b.id, action: "start" })}
-          >
-            Iniciar lavado
-          </Button>
-        )}
-        {canComplete && (
-          <Button
-            className="h-12 w-full text-base"
-            variant="default"
-            disabled={runAction.isPending}
-            onClick={() => {
-              if (collectOnComplete) setPayDialog(true);
-              else completeWash(false);
-            }}
-          >
-            Completar lavado
-          </Button>
-        )}
-        {b.payment_status !== "paid" && b.booking_status === "completed" && (
-          <Button
-            className="h-12 w-full"
-            variant="secondary"
-            disabled={runAction.isPending}
-            onClick={() =>
-              runAction.mutate({ booking_id: b.id, action: "mark_paid" })
-            }
-          >
-            Marcar cobrado
-          </Button>
-        )}
-        <Button
-          className="h-12 w-full"
-          variant="outline"
-          onClick={() => setIssueOpen(true)}
-        >
-          Reportar problema
+        <OperatorStatusTimeline status={b.booking_status} />
+        <p className="text-sm text-muted-foreground">{primaryAction.helper}</p>
+      </div>
+
+      <OperatorAccessSummary booking={b} detailFrom={from} />
+
+      <OperatorWhatsappActions booking={b} phase={phase} />
+
+      <div className="text-center">
+        <Button asChild variant="link" size="sm" className="h-auto p-0 text-xs text-muted-foreground">
+          <a href={whatsappClientUrl(b.customer_phone)} target="_blank" rel="noreferrer">
+            <MessageCircle className="mr-1 inline h-3.5 w-3.5" />
+            Abrir WhatsApp manual — solo emergencia
+          </a>
         </Button>
       </div>
+
+      <OperatorBookingUnitsSummary booking={b} units={units} />
+      <OperatorPriceSummary booking={b} units={units} />
+
+      <OperatorWorkflowBar
+        booking={b}
+        isUpdating={runAction.isPending}
+        onStart={
+          canStart
+            ? () => runAction.mutate({ booking_id: b.id, action: "start" })
+            : undefined
+        }
+        onComplete={canComplete ? handleComplete : undefined}
+        onMarkPaid={
+          phase === "payment"
+            ? () => runAction.mutate({ booking_id: b.id, action: "mark_paid" })
+            : undefined
+        }
+        onReportIssue={() => setIssueOpen(true)}
+      />
 
       <AlertDialog open={payDialog} onOpenChange={setPayDialog}>
         <AlertDialogContent>
@@ -242,10 +182,7 @@ function OperatorReservaDetailPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col gap-2 sm:flex-col">
-            <AlertDialogAction
-              className="w-full"
-              onClick={() => completeWash(true)}
-            >
+            <AlertDialogAction className="w-full" onClick={() => completeWash(true)}>
               Sí, cobrado
             </AlertDialogAction>
             <AlertDialogCancel className="w-full" onClick={() => completeWash(false)}>
@@ -258,9 +195,11 @@ function OperatorReservaDetailPage() {
       <AlertDialog open={issueOpen} onOpenChange={setIssueOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Reportar problema</AlertDialogTitle>
+            <AlertDialogTitle>{issueDialogTitle}</AlertDialogTitle>
             <AlertDialogDescription>
-              Describí qué pasó. El equipo lo verá en revisión.
+              {b.booking_status === "needs_review"
+                ? "Contanos qué pasó o si ya pudiste resolverlo. El equipo lo verá en revisión."
+                : "Describí qué pasó. El equipo lo verá en revisión."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <Textarea

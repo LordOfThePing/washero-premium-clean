@@ -1,14 +1,42 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { OperatorBookingCard } from "@/components/operator/OperatorBookingCard";
-import { OPERATOR_BOOKING_SELECT, todayIso, type OperatorBooking } from "@/lib/operator";
+import { OperatorDaySections } from "@/components/operator/OperatorDaySections";
+import { OperatorNextWashHero } from "@/components/operator/OperatorNextWashHero";
+import {
+  OPERATOR_BOOKING_SELECT,
+  groupTodayBookings,
+  todayIso,
+  type OperatorBooking,
+} from "@/lib/operator";
 import { useOperatorAuth } from "@/hooks/use-operator-auth";
+import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/operator/hoy")({
   component: OperatorHoyPage,
 });
+
+function SummaryCard({
+  label,
+  value,
+  active,
+}: {
+  label: string;
+  value: number;
+  active?: boolean;
+}) {
+  return (
+    <Card className={cn(active && value > 0 && "border-primary/30 bg-primary/5")}>
+      <CardContent className="p-3 text-center">
+        <p className="text-xl font-semibold tabular-nums">{value}</p>
+        <p className="text-[10px] font-medium text-muted-foreground">{label}</p>
+      </CardContent>
+    </Card>
+  );
+}
 
 function OperatorHoyPage() {
   const auth = useOperatorAuth();
@@ -36,25 +64,23 @@ function OperatorHoyPage() {
   });
 
   const list = bookings.data ?? [];
-  const next = list.find((b) => !["completed", "cancelled"].includes(b.booking_status));
+
+  const grouped = useMemo(() => groupTodayBookings(list), [list]);
+
+  const inProgressCount = list.filter((b) => b.booking_status === "in_progress").length;
+  const upcomingCount = list.filter(
+    (b) => b.booking_status === "pending" || b.booking_status === "confirmed",
+  ).length;
+  const completedCount = grouped.completed.length;
 
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">Reservas de hoy</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Jornada de hoy</h1>
         <p className="text-sm text-muted-foreground">
           {list.length} lavado{list.length === 1 ? "" : "s"} programado{list.length === 1 ? "" : "s"}
         </p>
       </div>
-
-      {next ? (
-        <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
-          <p className="font-medium text-primary">Próximo lavado</p>
-          <p className="text-muted-foreground">
-            {next.scheduled_time.slice(0, 5)} — {next.customer_name}
-          </p>
-        </div>
-      ) : null}
 
       {bookings.isLoading ? (
         <div className="flex justify-center py-12">
@@ -63,11 +89,38 @@ function OperatorHoyPage() {
       ) : list.length === 0 ? (
         <p className="py-8 text-center text-sm text-muted-foreground">No hay lavados para hoy.</p>
       ) : (
-        <div className="space-y-3">
-          {list.map((b) => (
-            <OperatorBookingCard key={b.id} booking={b} />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-4 gap-2">
+            <SummaryCard label="Total" value={list.length} />
+            <SummaryCard label="En curso" value={inProgressCount} active />
+            <SummaryCard label="Próximos" value={upcomingCount} />
+            <SummaryCard label="Terminados" value={completedCount} />
+          </div>
+
+          {grouped.next ? (
+            <OperatorNextWashHero booking={grouped.next} />
+          ) : completedCount > 0 ? (
+            <Card className="border-green-300/40 bg-green-50/50 dark:bg-green-950/20">
+              <CardContent className="flex items-center gap-3 p-4">
+                <CheckCircle2 className="h-8 w-8 shrink-0 text-green-600 dark:text-green-400" />
+                <div>
+                  <p className="font-medium text-green-900 dark:text-green-100">Jornada completa</p>
+                  <p className="text-sm text-muted-foreground">
+                    Terminaste {completedCount} lavado{completedCount === 1 ? "" : "s"} hoy.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          <OperatorDaySections
+            inProgress={grouped.inProgress}
+            needsReview={grouped.needsReview}
+            upcoming={grouped.upcoming}
+            completed={grouped.completed}
+            detailFrom="hoy"
+          />
+        </>
       )}
     </div>
   );

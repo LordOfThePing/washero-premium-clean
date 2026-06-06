@@ -106,7 +106,7 @@ function OperatorSemanaPage() {
               </h2>
               <div className="space-y-3">
                 {items.map((b) => (
-                  <OperatorBookingCard key={b.id} booking={b} />
+                  <OperatorBookingCard key={b.id} booking={b} detailFrom="semana" />
                 ))}
               </div>
             </section>
