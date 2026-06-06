@@ -51,5 +51,8 @@ verify_jwt = true
 [functions.operator-messages]
 verify_jwt = true
 
+[functions.operator-booking-detail]
+verify_jwt = true
+
 [functions.send-operator-push]
 verify_jwt = false
