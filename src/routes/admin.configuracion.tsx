@@ -44,6 +44,7 @@ function ConfigPage() {
         <TabsList className="flex flex-wrap h-auto">
           <TabsTrigger value="servicios">Servicios</TabsTrigger>
           <TabsTrigger value="zonas">Zonas de cobertura</TabsTrigger>
+          <TabsTrigger value="barrios">Barrios cerrados</TabsTrigger>
           <TabsTrigger value="negocio">Negocio</TabsTrigger>
           <TabsTrigger value="salud">Salud del sistema</TabsTrigger>
           <TabsTrigger value="checklist">Checklist lanzamiento</TabsTrigger>
@@ -51,6 +52,7 @@ function ConfigPage() {
 
         <TabsContent value="servicios"><ServicesTab /></TabsContent>
         <TabsContent value="zonas"><AreasTab /></TabsContent>
+        <TabsContent value="barrios"><PrivateNeighborhoodsTab /></TabsContent>
         <TabsContent value="negocio"><BusinessTab /></TabsContent>
         <TabsContent value="salud"><HealthTab /></TabsContent>
         <TabsContent value="checklist"><ChecklistTab /></TabsContent>
@@ -514,6 +516,392 @@ function AreaForm({ initial, existing, onClose, onSaved }: { initial?: Area; exi
       <DialogFooter>
         <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
         <Button type="submit" disabled={busy}>{busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Guardar</Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+// ===========================================================================
+// PRIVATE NEIGHBORHOODS
+// ===========================================================================
+
+type CoverageZoneOption = { id: string; name: string };
+
+type PrivateNeighborhood = {
+  id: string;
+  name: string;
+  aliases: string[];
+  active: boolean;
+  coverage_zone_id: string | null;
+  coverage_zone_name: string | null;
+  canonical_address: string;
+  formatted_address: string;
+  place_id: string | null;
+  lat: number;
+  lng: number;
+  city: string | null;
+  province: string | null;
+  access_notes: string | null;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+function PrivateNeighborhoodsTab() {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState<PrivateNeighborhood | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<{ row: PrivateNeighborhood; bookings: number } | null>(null);
+
+  const zonesQ = useQuery({
+    queryKey: ["admin", "coverage_zones"],
+    queryFn: async (): Promise<CoverageZoneOption[]> => {
+      const { data, error } = await supabase
+        .from("coverage_zones")
+        .select("id,name")
+        .order("display_order")
+        .order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const q = useQuery({
+    queryKey: ["admin", "private_neighborhoods"],
+    queryFn: async (): Promise<PrivateNeighborhood[]> => {
+      const { data, error } = await supabase
+        .from("private_neighborhoods")
+        .select("*")
+        .order("display_order")
+        .order("name");
+      if (error) throw error;
+      return (data ?? []).map((row) => ({
+        ...row,
+        aliases: Array.isArray(row.aliases) ? row.aliases.map(String) : [],
+        lat: Number(row.lat),
+        lng: Number(row.lng),
+        display_order: Number(row.display_order) || 0,
+      }));
+    },
+  });
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ["admin", "private_neighborhoods"] });
+
+  const toggleActive = useMutation({
+    mutationFn: async (row: PrivateNeighborhood) => {
+      const { error } = await supabase
+        .from("private_neighborhoods")
+        .update({ active: !row.active })
+        .eq("id", row.id);
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Barrio actualizado."); refresh(); },
+    onError: (e: Error) => toast.error(e?.message ?? "Error"),
+  });
+
+  const askDelete = async (row: PrivateNeighborhood) => {
+    const { count } = await supabase
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("private_neighborhood_id", row.id);
+    setConfirmDelete({ row, bookings: count ?? 0 });
+  };
+
+  const doDelete = useMutation({
+    mutationFn: async (row: PrivateNeighborhood) => {
+      const { error } = await supabase.from("private_neighborhoods").delete().eq("id", row.id);
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Barrio eliminado."); refresh(); setConfirmDelete(null); },
+    onError: (e: Error) => toast.error(e?.message ?? "Error"),
+  });
+
+  const zoneName = (row: PrivateNeighborhood) =>
+    row.coverage_zone_name
+    ?? zonesQ.data?.find((z) => z.id === row.coverage_zone_id)?.name
+    ?? "—";
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm text-muted-foreground">
+          Barrios cerrados con dirección normalizada para reservas web.
+        </div>
+        <Button size="sm" onClick={() => setCreating(true)}>
+          <Plus className="mr-2 h-4 w-4" /> Nuevo barrio
+        </Button>
+      </div>
+
+      {q.isLoading ? (
+        <Skeleton className="h-32 w-full" />
+      ) : q.error ? (
+        <Card><CardContent className="p-6 text-sm text-destructive">No pudimos cargar los barrios.</CardContent></Card>
+      ) : (q.data ?? []).length === 0 ? (
+        <Card><CardContent className="p-6 text-sm text-muted-foreground">No hay barrios cerrados todavía.</CardContent></Card>
+      ) : (
+        <>
+          <Card className="hidden lg:block">
+            <CardContent className="p-0 overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nombre</TableHead>
+                    <TableHead>Zona</TableHead>
+                    <TableHead>Dirección</TableHead>
+                    <TableHead>Orden</TableHead>
+                    <TableHead>Activo</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {q.data!.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell className="font-medium">{row.name}</TableCell>
+                      <TableCell>{zoneName(row)}</TableCell>
+                      <TableCell className="max-w-xs text-sm text-muted-foreground line-clamp-2">
+                        {row.formatted_address}
+                      </TableCell>
+                      <TableCell>{row.display_order}</TableCell>
+                      <TableCell><Switch checked={row.active} onCheckedChange={() => toggleActive.mutate(row)} /></TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="sm" onClick={() => setEditing(row)}><Pencil className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="sm" onClick={() => askDelete(row)}><Trash2 className="h-4 w-4" /></Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <div className="space-y-2 lg:hidden">
+            {q.data!.map((row) => (
+              <Card key={row.id}>
+                <CardContent className="space-y-2 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-medium">{row.name}</div>
+                      <div className="text-xs text-muted-foreground">{zoneName(row)} · orden {row.display_order}</div>
+                    </div>
+                    <Badge variant={row.active ? "secondary" : "outline"}>{row.active ? "Activo" : "Inactivo"}</Badge>
+                  </div>
+                  <div className="text-sm text-muted-foreground line-clamp-2">{row.formatted_address}</div>
+                  <div className="flex items-center justify-between gap-2 pt-2">
+                    <Switch checked={row.active} onCheckedChange={() => toggleActive.mutate(row)} />
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => setEditing(row)}><Pencil className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="sm" onClick={() => askDelete(row)}><Trash2 className="h-4 w-4" /></Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
+
+      <Dialog open={!!editing || creating} onOpenChange={(o) => { if (!o) { setEditing(null); setCreating(false); } }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <PrivateNeighborhoodForm
+            initial={editing ?? undefined}
+            zones={zonesQ.data ?? []}
+            onClose={() => { setEditing(null); setCreating(false); }}
+            onSaved={() => { refresh(); setEditing(null); setCreating(false); }}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar barrio cerrado</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmDelete?.bookings ? (
+                <>Este barrio ya tiene <b>{confirmDelete.bookings}</b> reserva(s). Te recomendamos desactivarlo en vez de eliminarlo.</>
+              ) : (
+                <>¿Eliminar “{confirmDelete?.row.name}”? Esta acción no se puede deshacer.</>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            {confirmDelete?.bookings ? (
+              <AlertDialogAction onClick={() => {
+                if (!confirmDelete) return;
+                toggleActive.mutate({ ...confirmDelete.row, active: true });
+                setConfirmDelete(null);
+              }}>
+                Desactivar
+              </AlertDialogAction>
+            ) : (
+              <AlertDialogAction onClick={() => confirmDelete && doDelete.mutate(confirmDelete.row)}>
+                Eliminar
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function PrivateNeighborhoodForm({
+  initial,
+  zones,
+  onClose,
+  onSaved,
+}: {
+  initial?: PrivateNeighborhood;
+  zones: CoverageZoneOption[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(initial?.name ?? "");
+  const [aliases, setAliases] = useState((initial?.aliases ?? []).join(", "));
+  const [active, setActive] = useState(initial?.active ?? true);
+  const [coverageZoneId, setCoverageZoneId] = useState(initial?.coverage_zone_id ?? "");
+  const [canonicalAddress, setCanonicalAddress] = useState(initial?.canonical_address ?? "");
+  const [formattedAddress, setFormattedAddress] = useState(initial?.formatted_address ?? "");
+  const [placeId, setPlaceId] = useState(initial?.place_id ?? "");
+  const [lat, setLat] = useState(String(initial?.lat ?? ""));
+  const [lng, setLng] = useState(String(initial?.lng ?? ""));
+  const [city, setCity] = useState(initial?.city ?? "");
+  const [province, setProvince] = useState(initial?.province ?? "");
+  const [accessNotes, setAccessNotes] = useState(initial?.access_notes ?? "");
+  const [displayOrder, setDisplayOrder] = useState(String(initial?.display_order ?? 0));
+  const [busy, setBusy] = useState(false);
+
+  const save = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return toast.error("El nombre es obligatorio.");
+    if (!canonicalAddress.trim() || !formattedAddress.trim()) {
+      return toast.error("Completá la dirección canónica y formateada.");
+    }
+    const latNum = Number(lat);
+    const lngNum = Number(lng);
+    const orderNum = Number(displayOrder);
+    if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
+      return toast.error("Latitud y longitud inválidas.");
+    }
+    if (!Number.isFinite(orderNum)) return toast.error("Orden de visualización inválido.");
+
+    const selectedZone = zones.find((z) => z.id === coverageZoneId);
+    const aliasList = aliases
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+
+    setBusy(true);
+    try {
+      const payload = {
+        name: name.trim(),
+        aliases: aliasList,
+        active,
+        coverage_zone_id: selectedZone?.id ?? null,
+        coverage_zone_name: selectedZone?.name ?? null,
+        canonical_address: canonicalAddress.trim(),
+        formatted_address: formattedAddress.trim(),
+        place_id: placeId.trim() || null,
+        lat: latNum,
+        lng: lngNum,
+        city: city.trim() || null,
+        province: province.trim() || null,
+        access_notes: accessNotes.trim() || null,
+        display_order: Math.round(orderNum),
+      };
+      if (initial) {
+        const { error } = await supabase.from("private_neighborhoods").update(payload).eq("id", initial.id);
+        if (error) throw error;
+        toast.success("Barrio actualizado.");
+      } else {
+        const { error } = await supabase.from("private_neighborhoods").insert(payload);
+        if (error) throw error;
+        toast.success("Barrio creado.");
+      }
+      onSaved();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={save} className="space-y-3">
+      <DialogHeader>
+        <DialogTitle>{initial ? "Editar barrio cerrado" : "Nuevo barrio cerrado"}</DialogTitle>
+        <DialogDescription>
+          Estos datos normalizan la dirección en la web y vinculan el barrio a una zona de cobertura.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <Label>Nombre *</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} />
+        </div>
+        <div className="sm:col-span-2">
+          <Label>Alias (separados por coma)</Label>
+          <Input value={aliases} onChange={(e) => setAliases(e.target.value)} placeholder="Santa Catalina, Barrio Santa Catalina" />
+        </div>
+        <div>
+          <Label>Zona de cobertura</Label>
+          <select
+            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+            value={coverageZoneId}
+            onChange={(e) => setCoverageZoneId(e.target.value)}
+          >
+            <option value="">Sin zona</option>
+            {zones.map((z) => (
+              <option key={z.id} value={z.id}>{z.name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <Label>Orden de visualización</Label>
+          <Input type="number" value={displayOrder} onChange={(e) => setDisplayOrder(e.target.value)} />
+        </div>
+        <div className="sm:col-span-2">
+          <Label>Dirección canónica *</Label>
+          <Input value={canonicalAddress} onChange={(e) => setCanonicalAddress(e.target.value)} required />
+        </div>
+        <div className="sm:col-span-2">
+          <Label>Dirección formateada *</Label>
+          <Input value={formattedAddress} onChange={(e) => setFormattedAddress(e.target.value)} required />
+        </div>
+        <div>
+          <Label>Place ID (Google)</Label>
+          <Input value={placeId} onChange={(e) => setPlaceId(e.target.value)} />
+        </div>
+        <div className="flex items-center gap-2 sm:col-span-2">
+          <Switch checked={active} onCheckedChange={setActive} />
+          <Label>Activo</Label>
+        </div>
+        <div>
+          <Label>Latitud *</Label>
+          <Input type="number" step="any" value={lat} onChange={(e) => setLat(e.target.value)} required />
+        </div>
+        <div>
+          <Label>Longitud *</Label>
+          <Input type="number" step="any" value={lng} onChange={(e) => setLng(e.target.value)} required />
+        </div>
+        <div>
+          <Label>Ciudad</Label>
+          <Input value={city} onChange={(e) => setCity(e.target.value)} />
+        </div>
+        <div>
+          <Label>Provincia</Label>
+          <Input value={province} onChange={(e) => setProvince(e.target.value)} />
+        </div>
+        <div className="sm:col-span-2">
+          <Label>Notas de acceso</Label>
+          <Textarea value={accessNotes} onChange={(e) => setAccessNotes(e.target.value)} rows={3} />
+        </div>
+      </div>
+      <DialogFooter>
+        <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
+        <Button type="submit" disabled={busy}>
+          {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Guardar
+        </Button>
       </DialogFooter>
     </form>
   );
