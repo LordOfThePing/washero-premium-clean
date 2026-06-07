@@ -21,10 +21,10 @@ type NotificationStatus =
   | "missing_key";
 
 const STATUS_LABEL: Record<NotificationStatus, string> = {
-  unsupported: "No soportadas",
-  blocked: "Bloqueadas",
-  inactive: "No activadas",
-  active: "Activadas",
+  unsupported: "Push no soportadas",
+  blocked: "Push bloqueadas",
+  inactive: "Push desactivadas",
+  active: "Push activadas",
   missing_key: "Configuración pendiente",
 };
 

@@ -59,12 +59,15 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const targetUrl = event.notification?.data?.url || "/operator/hoy";
+  const rawUrl = event.notification?.data?.url || "/operator/hoy";
+  const targetUrl = new URL(rawUrl, self.location.origin).href;
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
         if ("focus" in client && client.url.includes("/operator")) {
-          client.navigate(targetUrl);
+          if ("navigate" in client && typeof client.navigate === "function") {
+            return client.navigate(targetUrl).then(() => client.focus());
+          }
           return client.focus();
         }
       }

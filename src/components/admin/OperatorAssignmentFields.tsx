@@ -15,8 +15,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { Booking } from "@/components/admin/bookings";
+import { notifyOperatorAssignmentPush } from "@/lib/web-push";
 
 type StaffRow = { id: string; email: string | null; role: string };
+
+function toastAssignmentPushResult(result: { sent_count: number; skipped_reason?: string }) {
+  if (result.sent_count > 0) {
+    toast.success("Operador asignado y notificado.");
+    return;
+  }
+  if (result.skipped_reason === "no_subscriptions") {
+    toast.warning("Operador asignado. No tiene notificaciones PWA activadas.");
+    return;
+  }
+  toast.success("Operador asignado.");
+}
 
 export function OperatorAssignmentFields({ booking }: { booking: Booking }) {
   const qc = useQueryClient();
@@ -39,25 +52,44 @@ export function OperatorAssignmentFields({ booking }: { booking: Booking }) {
 
   const save = useMutation({
     mutationFn: async () => {
+      const previousOperatorId = booking.assigned_operator_id ?? null;
+      const newOperatorId = operatorId || null;
+
       const { error } = await supabase
         .from("bookings")
         .update({
-          assigned_operator_id: operatorId || null,
+          assigned_operator_id: newOperatorId,
           assigned_vehicle_label: vehicleLabel.trim() || null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", booking.id);
       if (error) throw error;
+
+      return { previousOperatorId, newOperatorId };
     },
-    onSuccess: () => {
-      toast.success("Operador asignado.");
+    onSuccess: async ({ previousOperatorId, newOperatorId }) => {
       qc.invalidateQueries({ queryKey: ["admin", "bookings"] });
       qc.invalidateQueries({ queryKey: ["admin", "calendar"] });
-      booking.assigned_operator_id = operatorId || null;
+      booking.assigned_operator_id = newOperatorId;
       booking.assigned_vehicle_label = vehicleLabel.trim() || null;
-      const today = new Date().toISOString().slice(0, 10);
-      if (booking.scheduled_date === today) {
-        notifyOperator.mutate();
+
+      const operatorChanged = previousOperatorId !== newOperatorId;
+
+      if (!operatorChanged) {
+        toast.success("Asignación guardada.");
+        return;
+      }
+
+      if (!newOperatorId) {
+        toast.success("Asignación guardada.");
+        return;
+      }
+
+      try {
+        const result = await notifyOperatorAssignmentPush(booking.id);
+        toastAssignmentPushResult(result);
+      } catch {
+        toast.warning("Operador asignado, pero no pudimos enviar la notificación.");
       }
     },
     onError: (e: Error) => toast.error(e.message || "No pudimos guardar la asignación."),
@@ -65,18 +97,27 @@ export function OperatorAssignmentFields({ booking }: { booking: Booking }) {
 
   const notifyOperator = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("send-operator-push", {
-        body: {
-          booking_id: booking.id,
-          reason: "booking_updated_today",
-          title: "Reserva actualizada",
-        },
-      });
-      if (error) throw error;
-      return data;
+      if (!booking.assigned_operator_id && !operatorId) {
+        throw new Error("no_operator");
+      }
+      return notifyOperatorAssignmentPush(booking.id);
     },
-    onSuccess: () => toast.success("Notificación enviada al operador (si corresponde)."),
-    onError: (e: Error) => toast.error(e.message || "No se pudo enviar la notificación."),
+    onSuccess: (result) => {
+      if (result.sent_count > 0) {
+        toast.success("Notificación enviada al operador.");
+      } else if (result.skipped_reason === "no_subscriptions") {
+        toast.warning("El operador no tiene notificaciones PWA activadas.");
+      } else {
+        toast.message("No se envió la notificación (sin suscripción activa o operador inactivo).");
+      }
+    },
+    onError: (e: Error) => {
+      if (e.message === "no_operator") {
+        toast.error("Asigná un operador antes de notificar.");
+        return;
+      }
+      toast.error("No se pudo enviar la notificación.");
+    },
   });
 
   const logsQuery = useQuery({
@@ -153,7 +194,9 @@ export function OperatorAssignmentFields({ booking }: { booking: Booking }) {
         type="button"
         size="sm"
         variant="outline"
-        disabled={notifyOperator.isPending}
+        disabled={
+          notifyOperator.isPending || dirty || (!operatorId && !booking.assigned_operator_id)
+        }
         onClick={() => notifyOperator.mutate()}
       >
         {notifyOperator.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}

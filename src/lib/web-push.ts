@@ -104,3 +104,41 @@ export async function sendOperatorTestPush(): Promise<{ sent?: number }> {
   }
   return { sent: body.sent };
 }
+
+export type OperatorAssignmentPushResult = {
+  ok: boolean;
+  sent_count: number;
+  skipped_reason?: string;
+};
+
+/** Notify the assigned operator after admin assignment (requires admin auth). */
+export async function notifyOperatorAssignmentPush(
+  bookingId: string,
+): Promise<OperatorAssignmentPushResult> {
+  const { data, error } = await supabase.functions.invoke("send-operator-push", {
+    body: {
+      type: "assignment",
+      booking_id: bookingId,
+      force: true,
+    },
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+  const body = data as {
+    ok?: boolean;
+    status?: string;
+    sent?: number;
+    sent_count?: number;
+    skipped?: string;
+    skipped_reason?: string;
+  } | null;
+  if (!body?.ok) {
+    throw new Error(body?.status ?? "push_failed");
+  }
+  return {
+    ok: true,
+    sent_count: body.sent_count ?? body.sent ?? 0,
+    skipped_reason: body.skipped_reason ?? body.skipped,
+  };
+}

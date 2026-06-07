@@ -21,7 +21,9 @@ const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession:
 type Payload = {
   test?: boolean;
   booking_id?: string;
-  reason?: "booking_assigned_today" | "booking_updated_today" | "new_message_today" | "test";
+  operator_id?: string;
+  type?: "assignment";
+  reason?: "booking_assigned_today" | "booking_updated_today" | "new_message_today" | "assignment" | "test";
   title?: string;
   body?: string;
   url?: string;
@@ -35,6 +37,19 @@ type SubscriptionRow = {
   auth: string;
 };
 
+type BookingRow = {
+  id: string;
+  assigned_operator_id: string | null;
+  scheduled_date: string;
+  scheduled_time: string;
+  customer_name: string | null;
+  neighborhood: string | null;
+  coverage_zone_name: string | null;
+  private_neighborhood_name: string | null;
+  formatted_address: string | null;
+  address: string | null;
+};
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -42,7 +57,12 @@ function json(body: unknown, status = 200) {
   });
 }
 
+function isAssignmentPayload(body: Payload): boolean {
+  return body.type === "assignment" || body.reason === "assignment";
+}
+
 function fallbackTitle(reason: string | undefined) {
+  if (reason === "assignment") return "Nuevo lavado asignado";
   if (reason === "new_message_today") return "Mensaje nuevo de cliente";
   if (reason === "booking_updated_today") return "Reserva actualizada";
   if (reason === "test") return "Washero";
@@ -50,10 +70,39 @@ function fallbackTitle(reason: string | undefined) {
 }
 
 function fallbackBody(reason: string | undefined) {
+  if (reason === "assignment") return "Te asignaron un nuevo lavado.";
   if (reason === "new_message_today") return "Tenés un nuevo mensaje operativo.";
   if (reason === "booking_updated_today") return "Cambió una reserva asignada para hoy.";
   if (reason === "test") return "Notificaciones activadas correctamente.";
   return "Te asignaron una reserva para hoy.";
+}
+
+function formatAssignmentTime(time: string): string {
+  const t = String(time ?? "").trim();
+  if (!t) return "—";
+  return t.length >= 5 ? t.slice(0, 5) : t;
+}
+
+function formatAssignmentZone(booking: BookingRow): string {
+  return (
+    booking.private_neighborhood_name?.trim() ||
+    booking.coverage_zone_name?.trim() ||
+    booking.neighborhood?.trim() ||
+    booking.formatted_address?.trim() ||
+    booking.address?.trim() ||
+    "Zona a confirmar"
+  );
+}
+
+function formatAssignmentBody(booking: BookingRow): string {
+  const time = formatAssignmentTime(booking.scheduled_time);
+  const customer = booking.customer_name?.trim() || "Cliente";
+  const zone = formatAssignmentZone(booking);
+  return `${time} · ${customer} · ${zone}`;
+}
+
+function skippedResponse(skipped_reason: string) {
+  return json({ ok: true, sent: 0, sent_count: 0, skipped: skipped_reason, skipped_reason });
 }
 
 function pushStatusCode(error: unknown): number | null {
@@ -107,6 +156,7 @@ Deno.serve(async (req) => {
   }
 
   const isTest = body.test === true;
+  const isAssignment = isAssignmentPayload(body);
 
   if (!internalAllowed && isTest) {
     const gate = await getOperatorGate({
@@ -136,7 +186,6 @@ Deno.serve(async (req) => {
   webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
   if (isTest) {
-    let userId: string | null = null;
     if (internalAllowed) {
       return json({ ok: false, status: "test_requires_user_auth" }, 400);
     }
@@ -149,14 +198,14 @@ Deno.serve(async (req) => {
     if (!gate.ok || !gate.userId) {
       return json({ ok: false, status: "forbidden" }, 403);
     }
-    userId = gate.userId;
+    const userId = gate.userId;
 
     const { data: subs } = await admin
       .from("notification_subscriptions")
       .select("id,endpoint,p256dh,auth")
       .eq("user_id", userId);
     if (!subs || subs.length === 0) {
-      return json({ ok: true, skipped: "no_subscriptions", sent: 0, removed: 0 });
+      return skippedResponse("no_subscriptions");
     }
 
     const payload = JSON.stringify({
@@ -167,7 +216,7 @@ Deno.serve(async (req) => {
     });
 
     const { sent, removed } = await sendToSubscriptions(subs as SubscriptionRow[], payload);
-    return json({ ok: true, sent, removed });
+    return json({ ok: true, sent, sent_count: sent, removed });
   }
 
   const bookingId = String(body.booking_id ?? "").trim();
@@ -175,26 +224,38 @@ Deno.serve(async (req) => {
 
   const { data: booking } = await admin
     .from("bookings")
-    .select("id,assigned_operator_id,scheduled_date,scheduled_time")
+    .select(
+      "id,assigned_operator_id,scheduled_date,scheduled_time,customer_name,neighborhood,coverage_zone_name,private_neighborhood_name,formatted_address,address",
+    )
     .eq("id", bookingId)
     .maybeSingle();
   if (!booking) return json({ ok: false, status: "booking_not_found" }, 404);
 
+  const bookingRow = booking as BookingRow;
+  const reason = isAssignment ? "assignment" : (body.reason ?? "booking_assigned_today");
+  const bypassTodayCheck = body.force === true || isAssignment;
+
   const today = new Date().toISOString().slice(0, 10);
-  if (!body.force && booking.scheduled_date !== today) {
-    return json({ ok: true, skipped: "not_today", sent: 0 });
+  if (!bypassTodayCheck && bookingRow.scheduled_date !== today) {
+    return skippedResponse("not_today");
   }
-  if (!booking.assigned_operator_id) {
-    return json({ ok: true, skipped: "no_assigned_operator", sent: 0 });
+
+  const targetOperatorId = String(body.operator_id ?? bookingRow.assigned_operator_id ?? "").trim();
+  if (!targetOperatorId) {
+    return skippedResponse("no_assigned_operator");
+  }
+
+  if (body.operator_id && bookingRow.assigned_operator_id && body.operator_id !== bookingRow.assigned_operator_id) {
+    return json({ ok: false, status: "operator_mismatch" }, 400);
   }
 
   const { data: staff } = await admin
     .from("admin_users")
     .select("id,user_id,active")
-    .eq("id", booking.assigned_operator_id)
+    .eq("id", targetOperatorId)
     .maybeSingle();
   if (!staff?.active || !staff.user_id) {
-    return json({ ok: true, skipped: "operator_inactive", sent: 0 });
+    return skippedResponse("operator_inactive");
   }
 
   const { data: subs } = await admin
@@ -202,17 +263,25 @@ Deno.serve(async (req) => {
     .select("id,endpoint,p256dh,auth")
     .eq("user_id", staff.user_id);
   if (!subs || subs.length === 0) {
-    return json({ ok: true, skipped: "no_subscriptions", sent: 0 });
+    return skippedResponse("no_subscriptions");
   }
 
+  const defaultUrl = isAssignment
+    ? `/operator/reserva/${bookingRow.id}?from=push`
+    : `/operator/reserva/${bookingRow.id}`;
+
+  const notificationBody = isAssignment
+    ? formatAssignmentBody(bookingRow)
+    : (body.body ?? fallbackBody(reason));
+
   const payload = JSON.stringify({
-    title: body.title ?? fallbackTitle(body.reason),
-    body: body.body ?? fallbackBody(body.reason),
-    url: body.url ?? `/operator/reserva/${booking.id}`,
-    booking_id: booking.id,
-    reason: body.reason ?? "booking_assigned_today",
+    title: body.title ?? fallbackTitle(reason),
+    body: notificationBody,
+    url: body.url ?? defaultUrl,
+    booking_id: bookingRow.id,
+    reason,
   });
 
   const { sent, removed } = await sendToSubscriptions(subs as SubscriptionRow[], payload);
-  return json({ ok: true, sent, removed });
+  return json({ ok: true, sent, sent_count: sent, removed });
 });
