@@ -135,14 +135,11 @@ async function invokeSendOperatorPush(body: Record<string, unknown>): Promise<Pu
   const { data, error } = await supabase.functions.invoke("send-operator-push", { body });
   const response = (data ?? {}) as PushFunctionResponse;
 
-  if (error && !response.ok) {
-    const message = response.status ?? error.message ?? "invoke_error";
-    throw new Error(message);
+  if (response.ok) {
+    return response;
   }
-  if (!response.ok) {
-    throw new Error(response.status ?? "push_failed");
-  }
-  return response;
+
+  throw new Error(response.status ?? error?.message ?? "push_failed");
 }
 
 export async function subscribeOperatorPush(userId: string): Promise<void> {
@@ -231,10 +228,18 @@ export type OperatorAssignmentPushResult = {
 /** Notify the assigned operator after admin assignment (requires admin auth). */
 export async function notifyOperatorAssignmentPush(
   bookingId: string,
+  operatorId: string,
 ): Promise<OperatorAssignmentPushResult> {
+  const id = bookingId.trim();
+  const staffId = operatorId.trim();
+  if (!id || !staffId) {
+    throw new Error("missing_assignment_target");
+  }
+
   const response = await invokeSendOperatorPush({
     type: "assignment",
-    booking_id: bookingId,
+    booking_id: id,
+    operator_id: staffId,
     force: true,
   });
   return {

@@ -251,13 +251,44 @@ Deno.serve(async (req) => {
     return skippedResponse("not_today");
   }
 
-  const targetOperatorId = String(body.operator_id ?? bookingRow.assigned_operator_id ?? "").trim();
+  const payloadOperatorId = String(body.operator_id ?? "").trim();
+  const dbOperatorId = String(bookingRow.assigned_operator_id ?? "").trim();
+  const targetOperatorId = payloadOperatorId || dbOperatorId;
+
+  if (isAssignment) {
+    console.log("[send-operator-push] assignment:start", {
+      booking_id: bookingId,
+      payload_operator_id: payloadOperatorId || null,
+      db_assigned_operator_id: dbOperatorId || null,
+      target_operator_id: targetOperatorId || null,
+    });
+  }
+
   if (!targetOperatorId) {
+    if (isAssignment) {
+      console.log("[send-operator-push] assignment:skipped", {
+        booking_id: bookingId,
+        skipped_reason: "no_assigned_operator",
+      });
+    }
     return skippedResponse("no_assigned_operator");
   }
 
-  if (body.operator_id && bookingRow.assigned_operator_id && body.operator_id !== bookingRow.assigned_operator_id) {
+  if (
+    !isAssignment &&
+    payloadOperatorId &&
+    dbOperatorId &&
+    payloadOperatorId !== dbOperatorId
+  ) {
     return json({ ok: false, status: "operator_mismatch" }, 400);
+  }
+
+  if (isAssignment && payloadOperatorId && dbOperatorId && payloadOperatorId !== dbOperatorId) {
+    console.warn("[send-operator-push] assignment:db_lag", {
+      booking_id: bookingId,
+      payload_operator_id: payloadOperatorId,
+      db_assigned_operator_id: dbOperatorId,
+    });
   }
 
   const { data: staff } = await admin
@@ -265,15 +296,60 @@ Deno.serve(async (req) => {
     .select("id,user_id,active")
     .eq("id", targetOperatorId)
     .maybeSingle();
-  if (!staff?.active || !staff.user_id) {
-    return skippedResponse("operator_inactive");
+
+  if (!staff) {
+    if (isAssignment) {
+      console.log("[send-operator-push] assignment:skipped", {
+        booking_id: bookingId,
+        target_operator_id: targetOperatorId,
+        skipped_reason: "inactive_operator",
+      });
+    }
+    return skippedResponse("inactive_operator");
+  }
+  if (!staff.active) {
+    if (isAssignment) {
+      console.log("[send-operator-push] assignment:skipped", {
+        booking_id: bookingId,
+        target_operator_id: targetOperatorId,
+        skipped_reason: "inactive_operator",
+      });
+    }
+    return skippedResponse("inactive_operator");
+  }
+  if (!staff.user_id) {
+    if (isAssignment) {
+      console.log("[send-operator-push] assignment:skipped", {
+        booking_id: bookingId,
+        target_operator_id: targetOperatorId,
+        skipped_reason: "no_operator_user_id",
+      });
+    }
+    return skippedResponse("no_operator_user_id");
   }
 
   const { data: subs } = await admin
     .from("notification_subscriptions")
     .select("id,endpoint,p256dh,auth")
     .eq("user_id", staff.user_id);
+
+  const subscriptionCount = subs?.length ?? 0;
+  if (isAssignment) {
+    console.log("[send-operator-push] assignment:subscriptions", {
+      booking_id: bookingId,
+      target_operator_id: targetOperatorId,
+      operator_user_id: staff.user_id,
+      subscription_count: subscriptionCount,
+    });
+  }
+
   if (!subs || subs.length === 0) {
+    if (isAssignment) {
+      console.log("[send-operator-push] assignment:skipped", {
+        booking_id: bookingId,
+        skipped_reason: "no_subscriptions",
+      });
+    }
     return skippedResponse("no_subscriptions");
   }
 
@@ -294,5 +370,16 @@ Deno.serve(async (req) => {
   });
 
   const { sent, failed, removed } = await sendToSubscriptions(subs as SubscriptionRow[], payload);
+
+  if (isAssignment) {
+    console.log("[send-operator-push] assignment:done", {
+      booking_id: bookingId,
+      target_operator_id: targetOperatorId,
+      sent_count: sent,
+      failed_count: failed,
+      removed,
+    });
+  }
+
   return json({ ok: true, sent, sent_count: sent, failed_count: failed, removed });
 });

@@ -19,6 +19,13 @@ import { notifyOperatorAssignmentPush } from "@/lib/web-push";
 
 type StaffRow = { id: string; email: string | null; role: string };
 
+const ASSIGNMENT_PUSH_DEBUG = import.meta.env.DEV;
+
+function logAssignmentPush(event: string, detail: Record<string, unknown>) {
+  if (!ASSIGNMENT_PUSH_DEBUG) return;
+  console.debug(`[assignment-push] ${event}`, detail);
+}
+
 function toastAssignmentPushResult(result: {
   sent_count: number;
   skipped_reason?: string;
@@ -32,14 +39,39 @@ function toastAssignmentPushResult(result: {
     toast.warning("Operador asignado. No tiene notificaciones PWA activadas.");
     return;
   }
-  if (
-    result.skipped_reason === "missing_vapid_config" ||
-    (result.failed_count ?? 0) > 0
-  ) {
+  if (result.skipped_reason === "inactive_operator") {
+    toast.warning("Operador asignado, pero el operador está inactivo.");
+    return;
+  }
+  if (result.skipped_reason === "no_operator_user_id") {
+    toast.warning("Operador asignado, pero el usuario del operador no está vinculado.");
+    return;
+  }
+  if (result.skipped_reason === "no_assigned_operator") {
+    toast.warning("Operador asignado, pero no pudimos enviar la notificación.");
+    return;
+  }
+  if ((result.failed_count ?? 0) > 0) {
     toast.warning("Operador asignado, pero no pudimos enviar la notificación.");
     return;
   }
   toast.success("Operador asignado.");
+}
+
+function toastAssignmentPushError(message: string) {
+  if (message === "booking_not_found") {
+    toast.warning("Operador asignado, pero no pudimos encontrar la reserva para notificar.");
+    return;
+  }
+  if (message === "missing_vapid_config") {
+    toast.warning("Operador asignado, pero falta configuración de notificaciones.");
+    return;
+  }
+  if (message === "forbidden") {
+    toast.warning("Operador asignado, pero no pudimos enviar la notificación (sin permiso).");
+    return;
+  }
+  toast.warning("Operador asignado, pero no pudimos enviar la notificación.");
 }
 
 export function OperatorAssignmentFields({ booking }: { booking: Booking }) {
@@ -86,26 +118,39 @@ export function OperatorAssignmentFields({ booking }: { booking: Booking }) {
 
       const operatorChanged = previousOperatorId !== newOperatorId;
 
+      logAssignmentPush("save", {
+        bookingId: booking.id,
+        previousOperatorId,
+        newOperatorId,
+        operatorChanged,
+      });
+
       if (!operatorChanged) {
+        logAssignmentPush("skipped", { reason: "unchanged" });
         toast.success("Asignación guardada.");
         return;
       }
 
       if (!newOperatorId) {
+        logAssignmentPush("skipped", { reason: "removed_assignment" });
         toast.success("Asignación guardada.");
         return;
       }
 
       try {
-        const result = await notifyOperatorAssignmentPush(booking.id);
+        const result = await notifyOperatorAssignmentPush(booking.id, newOperatorId);
+        logAssignmentPush("result", {
+          bookingId: booking.id,
+          operatorId: newOperatorId,
+          sent_count: result.sent_count,
+          skipped_reason: result.skipped_reason ?? null,
+          failed_count: result.failed_count ?? 0,
+        });
         toastAssignmentPushResult(result);
       } catch (e) {
-        const msg = e instanceof Error ? e.message : "";
-        if (msg === "missing_vapid_config") {
-          toast.warning("Operador asignado, pero no pudimos enviar la notificación.");
-        } else {
-          toast.warning("Operador asignado, pero no pudimos enviar la notificación.");
-        }
+        const msg = e instanceof Error ? e.message : "push_failed";
+        logAssignmentPush("error", { bookingId: booking.id, operatorId: newOperatorId, message: msg });
+        toastAssignmentPushError(msg);
       }
     },
     onError: (e: Error) => toast.error(e.message || "No pudimos guardar la asignación."),
@@ -113,12 +158,18 @@ export function OperatorAssignmentFields({ booking }: { booking: Booking }) {
 
   const notifyOperator = useMutation({
     mutationFn: async () => {
-      if (!booking.assigned_operator_id && !operatorId) {
+      const targetOperatorId = operatorId || booking.assigned_operator_id;
+      if (!targetOperatorId) {
         throw new Error("no_operator");
       }
-      return notifyOperatorAssignmentPush(booking.id);
+      return notifyOperatorAssignmentPush(booking.id, targetOperatorId);
     },
     onSuccess: (result) => {
+      logAssignmentPush("manual_result", {
+        bookingId: booking.id,
+        sent_count: result.sent_count,
+        skipped_reason: result.skipped_reason ?? null,
+      });
       if (result.sent_count > 0) {
         toast.success("Notificación enviada al operador.");
       } else if (result.skipped_reason === "no_subscriptions") {
@@ -132,7 +183,7 @@ export function OperatorAssignmentFields({ booking }: { booking: Booking }) {
         toast.error("Asigná un operador antes de notificar.");
         return;
       }
-      toast.error("No se pudo enviar la notificación.");
+      toastAssignmentPushError(e.message);
     },
   });
 
@@ -153,6 +204,8 @@ export function OperatorAssignmentFields({ booking }: { booking: Booking }) {
   const dirty =
     (operatorId || "") !== (booking.assigned_operator_id ?? "") ||
     vehicleLabel.trim() !== (booking.assigned_vehicle_label ?? "").trim();
+
+  const assignedOperatorId = operatorId || booking.assigned_operator_id || "";
 
   return (
     <div className="space-y-2 border-t pt-3">
@@ -211,7 +264,7 @@ export function OperatorAssignmentFields({ booking }: { booking: Booking }) {
         size="sm"
         variant="outline"
         disabled={
-          notifyOperator.isPending || dirty || (!operatorId && !booking.assigned_operator_id)
+          notifyOperator.isPending || dirty || !assignedOperatorId
         }
         onClick={() => notifyOperator.mutate()}
       >
