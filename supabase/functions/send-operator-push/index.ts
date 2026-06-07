@@ -22,7 +22,7 @@ type Payload = {
   test?: boolean;
   booking_id?: string;
   operator_id?: string;
-  type?: "assignment";
+  type?: "assignment" | "test_self";
   reason?: "booking_assigned_today" | "booking_updated_today" | "new_message_today" | "assignment" | "test";
   title?: string;
   body?: string;
@@ -61,19 +61,23 @@ function isAssignmentPayload(body: Payload): boolean {
   return body.type === "assignment" || body.reason === "assignment";
 }
 
+function isTestSelfPayload(body: Payload): boolean {
+  return body.type === "test_self" || (body.test === true && !body.booking_id);
+}
+
 function fallbackTitle(reason: string | undefined) {
   if (reason === "assignment") return "Nuevo lavado asignado";
+  if (reason === "test") return "Notificaciones activadas";
   if (reason === "new_message_today") return "Mensaje nuevo de cliente";
   if (reason === "booking_updated_today") return "Reserva actualizada";
-  if (reason === "test") return "Washero";
   return "Nueva reserva para hoy";
 }
 
 function fallbackBody(reason: string | undefined) {
   if (reason === "assignment") return "Te asignaron un nuevo lavado.";
+  if (reason === "test") return "Washero puede enviarte avisos de nuevos lavados.";
   if (reason === "new_message_today") return "Tenés un nuevo mensaje operativo.";
   if (reason === "booking_updated_today") return "Cambió una reserva asignada para hoy.";
-  if (reason === "test") return "Notificaciones activadas correctamente.";
   return "Te asignaron una reserva para hoy.";
 }
 
@@ -102,7 +106,7 @@ function formatAssignmentBody(booking: BookingRow): string {
 }
 
 function skippedResponse(skipped_reason: string) {
-  return json({ ok: true, sent: 0, sent_count: 0, skipped: skipped_reason, skipped_reason });
+  return json({ ok: true, sent: 0, sent_count: 0, failed_count: 0, skipped: skipped_reason, skipped_reason });
 }
 
 function pushStatusCode(error: unknown): number | null {
@@ -116,8 +120,9 @@ function pushStatusCode(error: unknown): number | null {
 async function sendToSubscriptions(
   subs: SubscriptionRow[],
   payload: string,
-): Promise<{ sent: number; removed: number }> {
+): Promise<{ sent: number; failed: number; removed: number }> {
   let sent = 0;
+  let failed = 0;
   let removed = 0;
   for (const s of subs) {
     try {
@@ -130,6 +135,7 @@ async function sendToSubscriptions(
       );
       sent += 1;
     } catch (e) {
+      failed += 1;
       const status = pushStatusCode(e);
       console.warn("[send-operator-push] failed subscription", s.id, status, String(e));
       if (status === 404 || status === 410) {
@@ -138,13 +144,44 @@ async function sendToSubscriptions(
       }
     }
   }
-  return { sent, removed };
+  return { sent, failed, removed };
+}
+
+async function sendTestSelfPush(body: Payload, authHeader: string | null) {
+  const gate = await getOperatorGate({
+    authHeader,
+    supabaseUrl: SUPABASE_URL,
+    anonKey: ANON_KEY,
+    admin,
+  });
+  if (!gate.ok || !gate.userId) {
+    return json({ ok: false, status: "forbidden" }, 403);
+  }
+
+  const { data: subs } = await admin
+    .from("notification_subscriptions")
+    .select("id,endpoint,p256dh,auth")
+    .eq("user_id", gate.userId);
+  if (!subs || subs.length === 0) {
+    return skippedResponse("no_subscriptions");
+  }
+
+  const payload = JSON.stringify({
+    title: body.title ?? fallbackTitle("test"),
+    body: body.body ?? fallbackBody("test"),
+    url: body.url ?? "/operator/hoy",
+    reason: "test",
+  });
+
+  const { sent, failed, removed } = await sendToSubscriptions(subs as SubscriptionRow[], payload);
+  return json({ ok: true, sent, sent_count: sent, failed_count: failed, removed });
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ ok: false, status: "method_not_allowed" }, 405);
 
+  const authHeader = req.headers.get("authorization");
   const internalSecret = req.headers.get("x-internal-secret") ?? "";
   const internalAllowed = !!PUSH_INTERNAL_SECRET && internalSecret === PUSH_INTERNAL_SECRET;
 
@@ -155,12 +192,13 @@ Deno.serve(async (req) => {
     return json({ ok: false, status: "invalid_json" }, 400);
   }
 
-  const isTest = body.test === true;
+  const isTestSelf = isTestSelfPayload(body);
   const isAssignment = isAssignmentPayload(body);
 
-  if (!internalAllowed && isTest) {
+  if (!internalAllowed && isTestSelf) {
+    // Operator self-test: authenticated operator only.
     const gate = await getOperatorGate({
-      authHeader: req.headers.get("authorization"),
+      authHeader,
       supabaseUrl: SUPABASE_URL,
       anonKey: ANON_KEY,
       admin,
@@ -168,9 +206,9 @@ Deno.serve(async (req) => {
     if (!gate.ok || !gate.userId) {
       return json({ ok: false, status: "forbidden" }, 403);
     }
-  } else if (!internalAllowed && !isTest) {
+  } else if (!internalAllowed && !isTestSelf) {
     const gate = await getOperatorGate({
-      authHeader: req.headers.get("authorization"),
+      authHeader,
       supabaseUrl: SUPABASE_URL,
       anonKey: ANON_KEY,
       admin,
@@ -181,42 +219,15 @@ Deno.serve(async (req) => {
   }
 
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
-    return json({ ok: false, status: "missing_vapid_keys" }, 500);
+    return json({ ok: false, status: "missing_vapid_config" }, 500);
   }
   webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
-  if (isTest) {
+  if (isTestSelf) {
     if (internalAllowed) {
       return json({ ok: false, status: "test_requires_user_auth" }, 400);
     }
-    const gate = await getOperatorGate({
-      authHeader: req.headers.get("authorization"),
-      supabaseUrl: SUPABASE_URL,
-      anonKey: ANON_KEY,
-      admin,
-    });
-    if (!gate.ok || !gate.userId) {
-      return json({ ok: false, status: "forbidden" }, 403);
-    }
-    const userId = gate.userId;
-
-    const { data: subs } = await admin
-      .from("notification_subscriptions")
-      .select("id,endpoint,p256dh,auth")
-      .eq("user_id", userId);
-    if (!subs || subs.length === 0) {
-      return skippedResponse("no_subscriptions");
-    }
-
-    const payload = JSON.stringify({
-      title: body.title ?? "Washero",
-      body: body.body ?? "Notificaciones activadas correctamente.",
-      url: body.url ?? "/operator/hoy",
-      reason: "test",
-    });
-
-    const { sent, removed } = await sendToSubscriptions(subs as SubscriptionRow[], payload);
-    return json({ ok: true, sent, sent_count: sent, removed });
+    return sendTestSelfPush(body, authHeader);
   }
 
   const bookingId = String(body.booking_id ?? "").trim();
@@ -282,6 +293,6 @@ Deno.serve(async (req) => {
     reason,
   });
 
-  const { sent, removed } = await sendToSubscriptions(subs as SubscriptionRow[], payload);
-  return json({ ok: true, sent, sent_count: sent, removed });
+  const { sent, failed, removed } = await sendToSubscriptions(subs as SubscriptionRow[], payload);
+  return json({ ok: true, sent, sent_count: sent, failed_count: failed, removed });
 });

@@ -19,13 +19,24 @@ import { notifyOperatorAssignmentPush } from "@/lib/web-push";
 
 type StaffRow = { id: string; email: string | null; role: string };
 
-function toastAssignmentPushResult(result: { sent_count: number; skipped_reason?: string }) {
+function toastAssignmentPushResult(result: {
+  sent_count: number;
+  skipped_reason?: string;
+  failed_count?: number;
+}) {
   if (result.sent_count > 0) {
     toast.success("Operador asignado y notificado.");
     return;
   }
   if (result.skipped_reason === "no_subscriptions") {
     toast.warning("Operador asignado. No tiene notificaciones PWA activadas.");
+    return;
+  }
+  if (
+    result.skipped_reason === "missing_vapid_config" ||
+    (result.failed_count ?? 0) > 0
+  ) {
+    toast.warning("Operador asignado, pero no pudimos enviar la notificación.");
     return;
   }
   toast.success("Operador asignado.");
@@ -88,8 +99,13 @@ export function OperatorAssignmentFields({ booking }: { booking: Booking }) {
       try {
         const result = await notifyOperatorAssignmentPush(booking.id);
         toastAssignmentPushResult(result);
-      } catch {
-        toast.warning("Operador asignado, pero no pudimos enviar la notificación.");
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "";
+        if (msg === "missing_vapid_config") {
+          toast.warning("Operador asignado, pero no pudimos enviar la notificación.");
+        } else {
+          toast.warning("Operador asignado, pero no pudimos enviar la notificación.");
+        }
       }
     },
     onError: (e: Error) => toast.error(e.message || "No pudimos guardar la asignación."),

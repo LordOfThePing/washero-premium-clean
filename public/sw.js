@@ -1,4 +1,4 @@
-const CACHE = "washero-operator-v2";
+const CACHE = "washero-operator-v3";
 const SHELL = ["/operator", "/operator/hoy", "/operator/login"];
 
 self.addEventListener("install", (event) => {
@@ -37,21 +37,43 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
-self.addEventListener("push", (event) => {
-  let payload = {};
+function parsePushPayload(event) {
+  if (!event.data) return {};
   try {
-    payload = event.data ? event.data.json() : {};
+    return event.data.json();
   } catch {
-    payload = {};
+    try {
+      const text = event.data.text();
+      if (!text) return {};
+      return JSON.parse(text);
+    } catch {
+      return { body: String(event.data.text?.() ?? "") };
+    }
   }
+}
+
+function resolveOperatorUrl(rawUrl) {
+  const fallback = new URL("/operator/hoy", self.location.origin).href;
+  if (!rawUrl || typeof rawUrl !== "string") return fallback;
+  try {
+    return new URL(rawUrl, self.location.origin).href;
+  } catch {
+    return fallback;
+  }
+}
+
+self.addEventListener("push", (event) => {
+  const payload = parsePushPayload(event);
   const title = payload.title || "Washero";
   const body = payload.body || "Tenés una actualización operativa.";
   const url = payload.url || "/operator/hoy";
+
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
       icon: "/icons/icon-192.svg",
       badge: "/icons/icon-192.svg",
+      tag: payload.booking_id ? `booking-${payload.booking_id}` : "washero-operator",
       data: { url },
     }),
   );
@@ -59,18 +81,23 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const rawUrl = event.notification?.data?.url || "/operator/hoy";
-  const targetUrl = new URL(rawUrl, self.location.origin).href;
+  const targetUrl = resolveOperatorUrl(event.notification?.data?.url);
+
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
-        if ("focus" in client && client.url.includes("/operator")) {
-          if ("navigate" in client && typeof client.navigate === "function") {
-            return client.navigate(targetUrl).then(() => client.focus());
-          }
+        if (!client.url.includes("/operator")) continue;
+
+        if ("navigate" in client && typeof client.navigate === "function") {
+          return client.navigate(targetUrl).then(() => client.focus());
+        }
+
+        if ("focus" in client) {
+          client.postMessage({ type: "washero-open-url", url: targetUrl });
           return client.focus();
         }
       }
+
       return self.clients.openWindow(targetUrl);
     }),
   );
