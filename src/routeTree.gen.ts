@@ -35,6 +35,7 @@ import { Route as AdminFacturasRouteImport } from './routes/admin.facturas'
 import { Route as AdminEarlyAccessRouteImport } from './routes/admin.early-access'
 import { Route as AdminDisponibilidadRouteImport } from './routes/admin.disponibilidad'
 import { Route as AdminConfiguracionRouteImport } from './routes/admin.configuracion'
+import { Route as AdminComprobantesRouteImport } from './routes/admin.comprobantes'
 import { Route as AdminClientesRouteImport } from './routes/admin.clientes'
 import { Route as AdminCalendarioRouteImport } from './routes/admin.calendario'
 import { Route as AdminBotmakerRouteImport } from './routes/admin.botmaker'
@@ -175,6 +176,11 @@ const AdminConfiguracionRoute = AdminConfiguracionRouteImport.update({
   path: '/configuracion',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminComprobantesRoute = AdminComprobantesRouteImport.update({
+  id: '/comprobantes',
+  path: '/comprobantes',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminClientesRoute = AdminClientesRouteImport.update({
   id: '/clientes',
   path: '/clientes',
@@ -238,6 +244,7 @@ export interface FileRoutesByFullPath {
   '/admin/botmaker': typeof AdminBotmakerRoute
   '/admin/calendario': typeof AdminCalendarioRoute
   '/admin/clientes': typeof AdminClientesRoute
+  '/admin/comprobantes': typeof AdminComprobantesRoute
   '/admin/configuracion': typeof AdminConfiguracionRoute
   '/admin/disponibilidad': typeof AdminDisponibilidadRoute
   '/admin/early-access': typeof AdminEarlyAccessRoute
@@ -272,6 +279,7 @@ export interface FileRoutesByTo {
   '/admin/botmaker': typeof AdminBotmakerRoute
   '/admin/calendario': typeof AdminCalendarioRoute
   '/admin/clientes': typeof AdminClientesRoute
+  '/admin/comprobantes': typeof AdminComprobantesRoute
   '/admin/configuracion': typeof AdminConfiguracionRoute
   '/admin/disponibilidad': typeof AdminDisponibilidadRoute
   '/admin/early-access': typeof AdminEarlyAccessRoute
@@ -311,6 +319,7 @@ export interface FileRoutesById {
   '/admin/botmaker': typeof AdminBotmakerRoute
   '/admin/calendario': typeof AdminCalendarioRoute
   '/admin/clientes': typeof AdminClientesRoute
+  '/admin/comprobantes': typeof AdminComprobantesRoute
   '/admin/configuracion': typeof AdminConfiguracionRoute
   '/admin/disponibilidad': typeof AdminDisponibilidadRoute
   '/admin/early-access': typeof AdminEarlyAccessRoute
@@ -351,6 +360,7 @@ export interface FileRouteTypes {
     | '/admin/botmaker'
     | '/admin/calendario'
     | '/admin/clientes'
+    | '/admin/comprobantes'
     | '/admin/configuracion'
     | '/admin/disponibilidad'
     | '/admin/early-access'
@@ -385,6 +395,7 @@ export interface FileRouteTypes {
     | '/admin/botmaker'
     | '/admin/calendario'
     | '/admin/clientes'
+    | '/admin/comprobantes'
     | '/admin/configuracion'
     | '/admin/disponibilidad'
     | '/admin/early-access'
@@ -423,6 +434,7 @@ export interface FileRouteTypes {
     | '/admin/botmaker'
     | '/admin/calendario'
     | '/admin/clientes'
+    | '/admin/comprobantes'
     | '/admin/configuracion'
     | '/admin/disponibilidad'
     | '/admin/early-access'
@@ -642,6 +654,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminConfiguracionRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/comprobantes': {
+      id: '/admin/comprobantes'
+      path: '/comprobantes'
+      fullPath: '/admin/comprobantes'
+      preLoaderRoute: typeof AdminComprobantesRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/clientes': {
       id: '/admin/clientes'
       path: '/clientes'
@@ -739,6 +758,7 @@ interface AdminRouteChildren {
   AdminBotmakerRoute: typeof AdminBotmakerRoute
   AdminCalendarioRoute: typeof AdminCalendarioRoute
   AdminClientesRoute: typeof AdminClientesRoute
+  AdminComprobantesRoute: typeof AdminComprobantesRoute
   AdminConfiguracionRoute: typeof AdminConfiguracionRoute
   AdminDisponibilidadRoute: typeof AdminDisponibilidadRoute
   AdminEarlyAccessRoute: typeof AdminEarlyAccessRoute
@@ -762,6 +782,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminBotmakerRoute: AdminBotmakerRoute,
   AdminCalendarioRoute: AdminCalendarioRoute,
   AdminClientesRoute: AdminClientesRoute,
+  AdminComprobantesRoute: AdminComprobantesRoute,
   AdminConfiguracionRoute: AdminConfiguracionRoute,
   AdminDisponibilidadRoute: AdminDisponibilidadRoute,
   AdminEarlyAccessRoute: AdminEarlyAccessRoute,

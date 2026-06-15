@@ -17,6 +17,11 @@ import {
   operatorPushBody,
   persistInboundRouting,
 } from "../_shared/botmaker-inbound-routing.ts";
+import {
+  capturePaymentReceiptFromBotmaker,
+  extractInboundReceiptMedia,
+} from "../_shared/payment-receipts.ts";
+import { normalizeArgentinaWhatsAppPhone } from "../_shared/botmaker-outbound.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -58,6 +63,12 @@ async function notifyOperatorPush(
   }
 }
 
+function inboundPreviewText(messageText: string | null, hasReceiptMedia: boolean): string | null {
+  if (messageText?.trim()) return messageText.trim();
+  if (hasReceiptMedia) return "[Comprobante de pago]";
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -77,9 +88,11 @@ Deno.serve(async (req) => {
   const phone = extractPhone(payload);
   const name = extractName(payload);
   const messageText = extractMessageText(payload);
+  const inboundMedia = extractInboundReceiptMedia(payload);
   const channel = extractChannel(payload, phone);
   const senderType = extractSenderType(payload);
   const eventType = extractEventType(payload);
+  const previewText = inboundPreviewText(messageText, !!inboundMedia);
 
   await supabase.from("botmaker_events").insert({
     event_type: eventType,
@@ -88,7 +101,7 @@ Deno.serve(async (req) => {
     conversation_id: conversationId,
     customer_phone: phone,
     customer_name: name,
-    message_text: messageText,
+    message_text: previewText,
     auth_valid: authValid,
     raw_payload: payload,
   });
@@ -116,9 +129,9 @@ Deno.serve(async (req) => {
             customer_phone: phone ?? existing.customer_phone,
             customer_name: name ?? existing.customer_name,
             channel: channel ?? existing.channel,
-            last_message: messageText ?? existing.last_message,
-            last_message_at: messageText ? new Date().toISOString() : existing.last_message_at,
-            last_sender_type: messageText ? senderType : existing.last_sender_type,
+            last_message: previewText ?? existing.last_message,
+            last_message_at: previewText ? new Date().toISOString() : existing.last_message_at,
+            last_sender_type: previewText ? senderType : existing.last_sender_type,
             raw_payload: payload,
           })
           .eq("id", existing.id)
@@ -133,9 +146,9 @@ Deno.serve(async (req) => {
             customer_phone: phone,
             customer_name: name,
             channel,
-            last_message: messageText,
-            last_message_at: messageText ? new Date().toISOString() : null,
-            last_sender_type: messageText ? senderType : null,
+            last_message: previewText,
+            last_message_at: previewText ? new Date().toISOString() : null,
+            last_sender_type: previewText ? senderType : null,
             raw_payload: payload,
           })
           .select()
@@ -144,21 +157,36 @@ Deno.serve(async (req) => {
       }
     }
 
-    if (convoRow && messageText) {
-      await supabase.from("botmaker_messages").insert({
+    if (convoRow && (messageText || inboundMedia)) {
+      const messageType = inboundMedia?.messageType ?? "text";
+      const { data: msgRow } = await supabase.from("botmaker_messages").insert({
         conversation_id: convoRow.id,
         botmaker_message_id: pick(payload, ["messageId", "message.id", "id"]),
         direction: senderType === "user" ? "inbound" : "outbound",
         sender_type: senderType,
-        message_type: "text",
-        message_text: messageText,
+        message_type: messageType,
+        message_text: messageText ?? inboundMedia?.caption ?? previewText,
         customer_phone: phone,
         customer_name: name,
         channel,
         raw_payload: payload,
-      });
+      }).select("id").maybeSingle();
 
-      if (senderType === "user") {
+      if (senderType === "user" && inboundMedia) {
+        try {
+          await capturePaymentReceiptFromBotmaker(supabase, {
+            phone,
+            customerPhoneNormalized: normalizeArgentinaWhatsAppPhone(phone),
+            botmakerMessageId: msgRow?.id ?? null,
+            media: inboundMedia,
+            rawPayload: payload,
+          });
+        } catch (e) {
+          console.error("[botmaker-webhook] payment receipt capture failed", e);
+        }
+      }
+
+      if (senderType === "user" && messageText) {
         const routing = await classifyInboundMessage(supabase, { phone, messageText });
         await persistInboundRouting(
           supabase,

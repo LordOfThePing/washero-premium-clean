@@ -56,3 +56,9 @@ verify_jwt = true
 
 [functions.send-operator-push]
 verify_jwt = false
+
+[functions.approve-payment-receipt]
+verify_jwt = true
+
+[functions.get-payment-receipt-signed-url]
+verify_jwt = true

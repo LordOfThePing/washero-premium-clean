@@ -1028,6 +1028,84 @@ export type Database = {
           },
         ]
       }
+      payment_receipts: {
+        Row: {
+          id: string
+          booking_id: string | null
+          customer_phone: string | null
+          source: string
+          botmaker_message_id: string | null
+          media_url: string | null
+          storage_bucket: string
+          storage_path: string | null
+          mime_type: string | null
+          file_name: string | null
+          file_size: number | null
+          status: string
+          reviewed_by: string | null
+          reviewed_at: string | null
+          notes: string | null
+          raw_payload: Json | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          booking_id?: string | null
+          customer_phone?: string | null
+          source?: string
+          botmaker_message_id?: string | null
+          media_url?: string | null
+          storage_bucket?: string
+          storage_path?: string | null
+          mime_type?: string | null
+          file_name?: string | null
+          file_size?: number | null
+          status?: string
+          reviewed_by?: string | null
+          reviewed_at?: string | null
+          notes?: string | null
+          raw_payload?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          booking_id?: string | null
+          customer_phone?: string | null
+          source?: string
+          botmaker_message_id?: string | null
+          media_url?: string | null
+          storage_bucket?: string
+          storage_path?: string | null
+          mime_type?: string | null
+          file_name?: string | null
+          file_size?: number | null
+          status?: string
+          reviewed_by?: string | null
+          reviewed_at?: string | null
+          notes?: string | null
+          raw_payload?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_receipts_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_receipts_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       private_neighborhoods: {
         Row: {
           access_notes: string | null

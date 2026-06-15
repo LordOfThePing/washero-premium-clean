@@ -2,7 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, CalendarDays, CalendarClock, ClipboardList, Users, Settings,
   MessageSquare, CreditCard, UserCircle, Sparkles, Shield, Map as MapIcon,
-  TrendingUp, FileText, Tag, Bell, MessageCircle, Bot, Cog,
+  TrendingUp, FileText, Tag, Bell, MessageCircle, Bot, Cog, ImageIcon,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
@@ -36,6 +36,7 @@ const ops: NavItem[] = [
 const finance: NavItem[] = [
   { title: "Finanzas", to: "/admin/finanzas", icon: TrendingUp },
   { title: "Facturas", to: "/admin/facturas", icon: FileText },
+  { title: "Comprobantes", to: "/admin/comprobantes", icon: ImageIcon },
 ];
 
 const config: NavItem[] = [
@@ -57,6 +58,8 @@ export function AdminSidebar() {
           ? pathname === "/admin"
           : item.to === "/admin/facturas"
             ? pathname === item.to || pathname.startsWith("/admin/facturas/")
+            : item.to === "/admin/comprobantes"
+              ? pathname === item.to
             : pathname === item.to;
       return (
         <SidebarMenuItem key={item.title + item.to}>
