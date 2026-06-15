@@ -9,7 +9,10 @@ declare module "react" {
           alt?: string;
           poster?: string;
           "auto-rotate"?: boolean;
+          "auto-rotate-delay"?: number;
+          "camera-orbit"?: string;
           "camera-controls"?: boolean;
+          "interpolation-decay"?: string | number;
           "shadow-intensity"?: string | number;
           exposure?: string | number;
           "environment-image"?: string;

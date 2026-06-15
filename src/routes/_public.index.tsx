@@ -12,7 +12,11 @@ import {
 } from "@/components/ui/accordion";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
-import { WasheroMascot3D } from "@/components/brand/WasheroMascot3D";
+import {
+  WasheroAssistantHero,
+  WasheroAssistantMobile,
+  WasheroAssistantProvider,
+} from "@/components/brand/WasheroAssistant";
 import { formatPrice } from "@/lib/booking-badges";
 
 const WA_URL = "https://wa.me/5491176247835";
@@ -64,7 +68,7 @@ export const Route = createFileRoute("/_public/")({
 
 function LandingPage() {
   return (
-    <>
+    <WasheroAssistantProvider>
       <Hero />
       <HowItWorks />
       <Services />
@@ -74,7 +78,7 @@ function LandingPage() {
       <Faq />
       <FinalCta />
       <StickyMobileCta />
-    </>
+    </WasheroAssistantProvider>
   );
 }
 
@@ -84,7 +88,11 @@ function LandingPage() {
 
 function Hero() {
   return (
-    <section className="relative overflow-hidden bg-neutral-950 text-white">
+    <section
+      id="inicio"
+      data-mascot-section="hero"
+      className="relative overflow-hidden bg-neutral-950 text-white"
+    >
       {/* Decorative glow */}
       <div
         aria-hidden
@@ -117,7 +125,7 @@ function Hero() {
 
             <div className="mt-8 flex flex-wrap gap-3">
               <Button size="lg" asChild className="text-base">
-                <Link to="/reservar">
+                <Link to="/reservar" data-mascot-trigger="reservar">
                   Reservar lavado <ArrowRight className="ml-1 h-4 w-4" />
                 </Link>
               </Button>
@@ -127,12 +135,14 @@ function Hero() {
                 asChild
                 className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
               >
-                <a href={WA_URL} target="_blank" rel="noopener">
+                <a href={WA_URL} target="_blank" rel="noopener" data-mascot-trigger="whatsapp">
                   <MessageCircle className="mr-1 h-4 w-4" />
                   Consultar por WhatsApp
                 </a>
               </Button>
             </div>
+
+            <WasheroAssistantMobile />
 
             <div className="mt-8 flex flex-wrap gap-2">
               {["A domicilio", "Reserva online", "Zona Norte", "Servicio premium"].map((t) => (
@@ -147,7 +157,7 @@ function Hero() {
           </div>
 
           <div className="mt-2 w-full md:mt-0 md:justify-self-end md:max-w-[min(100%,22rem)] lg:max-w-[min(100%,26rem)]">
-            <WasheroMascot3D />
+            <WasheroAssistantHero />
           </div>
         </div>
       </div>
@@ -166,7 +176,11 @@ function HowItWorks() {
     { icon: Home, title: "Vamos a tu ubicación", body: "Lavamos tu auto en tu casa, cochera, barrio o empresa." },
   ];
   return (
-    <section className="border-t border-border/60 bg-background">
+    <section
+      id="como-funciona"
+      data-mascot-section="como-funciona"
+      className="border-t border-border/60 bg-background"
+    >
       <div className="mx-auto max-w-6xl px-4 py-16 md:py-20">
         <SectionTitle eyebrow="Simple" title="¿Cómo funciona?" />
         <div className="mt-10 grid gap-4 md:grid-cols-3">
@@ -209,7 +223,11 @@ function Services() {
   });
 
   return (
-    <section id="servicios" className="border-t border-border/60 bg-muted/30">
+    <section
+      id="servicios"
+      data-mascot-section="servicios"
+      className="border-t border-border/60 bg-muted/30"
+    >
       <div className="mx-auto max-w-6xl px-4 py-16 md:py-20">
         <SectionTitle eyebrow="Servicios" title="Elegí tu lavado" />
         <div className="mt-10 grid gap-4 md:grid-cols-2">
@@ -284,7 +302,11 @@ function Coverage() {
   });
 
   return (
-    <section id="zonas" className="border-t border-border/60 bg-background">
+    <section
+      id="zonas"
+      data-mascot-section="zonas"
+      className="border-t border-border/60 bg-background"
+    >
       <div className="mx-auto max-w-6xl px-4 py-16 md:py-20">
         <SectionTitle eyebrow="Cobertura" title="Zonas de cobertura" />
         <p className="mx-auto mt-4 max-w-2xl text-center text-sm text-muted-foreground">
@@ -360,7 +382,11 @@ function Benefits() {
 
 function Launch() {
   return (
-    <section className="border-t border-border/60 bg-background">
+    <section
+      id="reservar"
+      data-mascot-section="reservar"
+      className="border-t border-border/60 bg-background"
+    >
       <div className="mx-auto max-w-4xl px-4 py-16 md:py-20">
         <Card className="border-primary/30 bg-gradient-to-br from-primary/10 via-card to-card">
           <CardContent className="space-y-4 p-8 text-center">
@@ -433,7 +459,10 @@ function Faq() {
 
 function FinalCta() {
   return (
-    <section className="border-t border-border/60 bg-neutral-950 text-white">
+    <section
+      data-mascot-footer
+      className="border-t border-border/60 bg-neutral-950 text-white"
+    >
       <div className="mx-auto max-w-4xl px-4 py-16 text-center md:py-24">
         <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
           ¿Listo para tener tu auto impecable sin moverte?

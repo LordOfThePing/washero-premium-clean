@@ -222,6 +222,282 @@
   .washero-mascot-float {
     animation: none;
   }
+
+  .washero-assistant-desktop,
+  .washero-assistant-bubble,
+  .washero-assistant-mobile-chip {
+    transition: none !important;
+  }
+}
+
+/* Washero mascot assistant */
+.washero-assistant-desktop {
+  transition:
+    opacity 0.45s ease,
+    transform 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    width 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform, opacity;
+}
+
+.washero-assistant-desktop--hero {
+  position: relative;
+  width: 100%;
+}
+
+.washero-assistant-desktop--sticky {
+  position: fixed;
+  right: 1.25rem;
+  top: 28%;
+  z-index: 35;
+  width: 11rem;
+  pointer-events: auto;
+}
+
+.washero-assistant-desktop--hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(12px);
+}
+
+.washero-assistant-desktop-inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.washero-assistant-mascot-trigger {
+  display: block;
+  width: 100%;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  padding: 0;
+  text-align: inherit;
+  border-radius: 1.5rem;
+  transition: transform 0.25s ease;
+}
+
+.washero-assistant-mascot-trigger:hover {
+  transform: scale(1.02);
+}
+
+.washero-assistant-mascot-trigger:focus-visible {
+  outline: 2px solid oklch(0.78 0.18 75 / 70%);
+  outline-offset: 4px;
+}
+
+.washero-mascot--sticky .washero-mascot-float {
+  max-width: 9rem;
+}
+
+.washero-assistant-bubble {
+  position: relative;
+  width: min(100%, 16.5rem);
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid oklch(1 0 0 / 12%);
+  background: linear-gradient(
+    145deg,
+    oklch(0.18 0.01 260 / 88%) 0%,
+    oklch(0.12 0.01 260 / 92%) 100%
+  );
+  box-shadow:
+    0 0 0 1px oklch(0.78 0.18 75 / 12%) inset,
+    0 12px 32px -16px oklch(0 0 0 / 65%);
+  backdrop-filter: blur(16px);
+}
+
+.washero-assistant-bubble--compact {
+  width: min(100%, 12.5rem);
+  padding: 0.65rem 0.8rem;
+}
+
+.washero-assistant-bubble-accent {
+  position: absolute;
+  left: 0;
+  top: 0.85rem;
+  bottom: 0.85rem;
+  width: 3px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    180deg,
+    oklch(0.78 0.18 75),
+    oklch(0.78 0.18 75 / 35%)
+  );
+  box-shadow: 0 0 12px oklch(0.78 0.18 75 / 45%);
+}
+
+.washero-assistant-bubble-text {
+  margin: 0 0 0 0.55rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: oklch(0.93 0.01 260);
+}
+
+.washero-assistant-bubble--compact .washero-assistant-bubble-text {
+  font-size: 0.75rem;
+}
+
+.washero-assistant-bubble-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.65rem 0 0 0.55rem;
+}
+
+.washero-assistant-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.75rem;
+  padding: 0.2rem 0.7rem;
+  border-radius: 9999px;
+  border: 1px solid oklch(0.78 0.18 75 / 45%);
+  background: oklch(0.78 0.18 75 / 18%);
+  color: oklch(0.95 0.02 80);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.washero-assistant-action:hover {
+  background: oklch(0.78 0.18 75 / 28%);
+  border-color: oklch(0.78 0.18 75 / 65%);
+}
+
+.washero-assistant-action--secondary {
+  border-color: oklch(1 0 0 / 18%);
+  background: oklch(1 0 0 / 6%);
+  color: oklch(0.88 0.01 260);
+}
+
+.washero-assistant-action--secondary:hover {
+  background: oklch(1 0 0 / 10%);
+  border-color: oklch(1 0 0 / 28%);
+}
+
+.washero-assistant-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.5rem);
+  z-index: 50;
+  width: min(16rem, 80vw);
+  padding: 0.65rem;
+  border-radius: 1rem;
+  border: 1px solid oklch(1 0 0 / 12%);
+  background: oklch(0.14 0.01 260 / 96%);
+  box-shadow:
+    0 0 0 1px oklch(0.78 0.18 75 / 10%) inset,
+    0 20px 40px -20px oklch(0 0 0 / 70%);
+  backdrop-filter: blur(18px);
+}
+
+.washero-assistant-desktop--sticky .washero-assistant-menu {
+  top: auto;
+  bottom: calc(100% + 0.5rem);
+}
+
+.washero-assistant-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.15rem 0.25rem 0.5rem;
+  border-bottom: 1px solid oklch(1 0 0 / 8%);
+}
+
+.washero-assistant-menu-list {
+  margin: 0;
+  padding: 0.35rem 0 0;
+  list-style: none;
+}
+
+.washero-assistant-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.55rem 0.6rem;
+  border-radius: 0.65rem;
+  color: oklch(0.92 0.01 260);
+  font-size: 0.8125rem;
+  text-decoration: none;
+  text-align: left;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.washero-assistant-menu-item:hover {
+  background: oklch(1 0 0 / 6%);
+}
+
+.washero-assistant-mobile-chip {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 1rem;
+  border: 1px solid oklch(1 0 0 / 12%);
+  background: linear-gradient(
+    145deg,
+    oklch(0.18 0.01 260 / 88%) 0%,
+    oklch(0.12 0.01 260 / 92%) 100%
+  );
+  box-shadow: 0 0 0 1px oklch(0.78 0.18 75 / 10%) inset;
+  color: oklch(0.92 0.01 260);
+  cursor: pointer;
+  text-align: left;
+}
+
+.washero-assistant-mobile-avatar {
+  display: flex;
+  height: 2rem;
+  width: 2rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 9999px;
+  border: 1px solid oklch(0.78 0.18 75 / 35%);
+  background: oklch(1 0 0 / 5%);
+}
+
+.washero-assistant-mobile-label {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: oklch(0.78 0.18 75);
+}
+
+.washero-assistant-mobile-message {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  color: oklch(0.86 0.01 260);
+}
+
+.washero-assistant-mobile-menu {
+  margin-top: 0.5rem;
+}
+
+.washero-assistant-mobile-menu .washero-assistant-menu {
+  position: static;
+  width: 100%;
+}
+
+.washero-mascot-viewer {
+  transition: opacity 0.35s ease;
 }
 
 @media print {

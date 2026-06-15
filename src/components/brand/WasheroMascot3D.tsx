@@ -1,18 +1,26 @@
 import { Sparkles } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  MASCOT_SECTIONS,
+  type MascotModelState,
+} from "@/hooks/useMascotSectionState";
 
 const MODEL_SRC = "/models/washero-mascot.optimized.glb";
 const POSTER_SRC = "/models/washero-mascot-poster.webp";
 
+const DEFAULT_MODEL_STATE: MascotModelState = MASCOT_SECTIONS.hero.model;
+
 function MascotFallback({ compact }: { compact?: boolean }) {
   return (
     <div
-      className={`flex h-full w-full flex-col items-center justify-center gap-2 text-neutral-400 ${compact ? "py-6" : "py-10"}`}
+      className={`flex h-full w-full flex-col items-center justify-center gap-2 text-neutral-400 ${compact ? "py-4" : "py-10"}`}
       aria-hidden
     >
-      <div className="flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/5">
-        <Sparkles className="h-6 w-6 text-primary/80" />
+      <div
+        className={`flex items-center justify-center rounded-full border border-white/10 bg-white/5 ${compact ? "h-10 w-10" : "h-14 w-14"}`}
+      >
+        <Sparkles className={`text-primary/80 ${compact ? "h-5 w-5" : "h-6 w-6"}`} />
       </div>
       <span className="text-xs tracking-wide text-neutral-500">Washero</span>
     </div>
@@ -22,16 +30,18 @@ function MascotFallback({ compact }: { compact?: boolean }) {
 function MascotShell({
   className = "",
   containerRef,
+  compact = false,
   children,
 }: {
   className?: string;
   containerRef?: React.RefObject<HTMLDivElement | null>;
+  compact?: boolean;
   children: ReactNode;
 }) {
   return (
     <div
       ref={containerRef}
-      className={`washero-mascot-float relative mx-auto aspect-square w-full max-w-[420px] ${className}`}
+      className={`washero-mascot-float relative mx-auto aspect-square w-full ${compact ? "max-w-[9rem]" : "max-w-[420px]"} ${className}`}
       aria-label="Washero mascot"
     >
       <div className="washero-mascot-glow" aria-hidden />
@@ -40,11 +50,11 @@ function MascotShell({
   );
 }
 
-function MascotPosterImage() {
+function MascotPosterImage({ compact = false }: { compact?: boolean }) {
   const [hasError, setHasError] = useState(false);
 
   if (hasError) {
-    return <MascotFallback />;
+    return <MascotFallback compact={compact} />;
   }
 
   return (
@@ -56,20 +66,34 @@ function MascotPosterImage() {
       loading="lazy"
       decoding="async"
       onError={() => setHasError(true)}
-      className="block h-full w-full object-contain p-4"
+      className={`block h-full w-full object-contain ${compact ? "p-2" : "p-4"}`}
     />
   );
 }
 
-function MascotPoster({ className = "" }: { className?: string }) {
+function MascotPoster({
+  className = "",
+  compact = false,
+}: {
+  className?: string;
+  compact?: boolean;
+}) {
   return (
-    <MascotShell className={className}>
-      <MascotPosterImage />
+    <MascotShell className={className} compact={compact}>
+      <MascotPosterImage compact={compact} />
     </MascotShell>
   );
 }
 
-function MascotViewer3D({ className = "" }: { className?: string }) {
+function MascotViewer3D({
+  className = "",
+  compact = false,
+  modelState = DEFAULT_MODEL_STATE,
+}: {
+  className?: string;
+  compact?: boolean;
+  modelState?: MascotModelState;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLElement>(null);
   const [isVisible, setIsVisible] = useState(false);
@@ -122,10 +146,16 @@ function MascotViewer3D({ className = "" }: { className?: string }) {
     return () => el.removeEventListener("error", onError);
   }, [isReady]);
 
+  useEffect(() => {
+    const el = viewerRef.current as (HTMLElement & { cameraOrbit?: string }) | null;
+    if (!el || !isReady) return;
+    el.setAttribute("camera-orbit", modelState.cameraOrbit);
+  }, [isReady, modelState.cameraOrbit]);
+
   if (hasError) {
     return (
-      <MascotShell className={className}>
-        <MascotFallback />
+      <MascotShell className={className} compact={compact}>
+        <MascotFallback compact={compact} />
       </MascotShell>
     );
   }
@@ -133,8 +163,8 @@ function MascotViewer3D({ className = "" }: { className?: string }) {
   const showViewer = isVisible && isReady;
 
   return (
-    <MascotShell className={className} containerRef={containerRef}>
-      {!showViewer ? <MascotPosterImage /> : null}
+    <MascotShell className={className} containerRef={containerRef} compact={compact}>
+      {!showViewer ? <MascotPosterImage compact={compact} /> : null}
 
       {showViewer ? (
         <model-viewer
@@ -142,16 +172,19 @@ function MascotViewer3D({ className = "" }: { className?: string }) {
           src={MODEL_SRC}
           poster={POSTER_SRC}
           alt="Mascota Washero"
-          auto-rotate
-          shadow-intensity="0.85"
-          exposure="1.05"
+          auto-rotate={modelState.autoRotate}
+          auto-rotate-delay={modelState.autoRotateDelay}
+          camera-orbit={modelState.cameraOrbit}
+          shadow-intensity={modelState.shadowIntensity}
+          exposure={modelState.exposure}
           environment-image="neutral"
           loading="lazy"
           interaction-prompt="none"
           disable-zoom
           disable-pan
           disable-tap
-          rotation-per-second="12deg"
+          rotation-per-second={modelState.rotationPerSecond}
+          interpolation-decay="200"
           className="washero-mascot-viewer"
         />
       ) : null}
@@ -159,7 +192,15 @@ function MascotViewer3D({ className = "" }: { className?: string }) {
   );
 }
 
-export function WasheroMascot3D({ className = "" }: { className?: string }) {
+export function WasheroMascot3D({
+  className = "",
+  compact = false,
+  modelState = DEFAULT_MODEL_STATE,
+}: {
+  className?: string;
+  compact?: boolean;
+  modelState?: MascotModelState;
+}) {
   const isMobile = useIsMobile();
   const [hasMounted, setHasMounted] = useState(false);
 
@@ -168,12 +209,18 @@ export function WasheroMascot3D({ className = "" }: { className?: string }) {
   }, []);
 
   if (!hasMounted) {
-    return <MascotPoster className={className} />;
+    return <MascotPoster className={className} compact={compact} />;
   }
 
   if (isMobile) {
-    return <MascotPoster className={className} />;
+    return <MascotPoster className={className} compact={compact} />;
   }
 
-  return <MascotViewer3D className={className} />;
+  return (
+    <MascotViewer3D
+      className={className}
+      compact={compact}
+      modelState={modelState}
+    />
+  );
 }
