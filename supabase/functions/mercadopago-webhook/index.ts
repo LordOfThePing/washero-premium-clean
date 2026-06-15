@@ -1,7 +1,7 @@
 // Supabase Edge Function: mercadopago-webhook
 // Receives Mercado Pago notifications and updates payments + bookings.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
-import { schedulePaymentConfirmedWhatsApp } from "../_shared/whatsapp-automation.ts";
+import { scheduleBookingConfirmedWhatsApp } from "../_shared/whatsapp-automation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -125,6 +125,15 @@ Deno.serve(async (req) => {
     return ok({ ok: true, missing_reference: true });
   }
 
+  const { data: bookingBefore } = await admin
+    .from("bookings")
+    .select("booking_status, payment_status")
+    .eq("id", externalRef)
+    .maybeSingle();
+
+  const wasAlreadyPaid = bookingBefore?.payment_status === "paid";
+  const wasAlreadyConfirmed = bookingBefore?.booking_status === "confirmed";
+
   // Upsert payment row by provider_payment_id
   const { data: existingPay } = await admin
     .from("payments")
@@ -154,29 +163,46 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Update bookings.payment_status
+  const bookingUpdate: Record<string, unknown> = {
+    payment_status: newPaymentStatus,
+    updated_at: new Date().toISOString(),
+  };
+  if (newPaymentStatus === "paid" && bookingBefore?.booking_status === "pending") {
+    bookingUpdate.booking_status = "confirmed";
+  }
+
   const { error: updErr } = await admin
     .from("bookings")
-    .update({
-      payment_status: newPaymentStatus,
-      updated_at: new Date().toISOString(),
-    })
+    .update(bookingUpdate)
     .eq("id", externalRef);
 
   if (updErr) {
     console.error("mercadopago-webhook: booking update failed", updErr);
   }
 
-  // On approved, generate invoice (idempotent)
+  let whatsapp_scheduled = false;
   if (newPaymentStatus === "paid") {
     try {
-      const { error: invErr } = await admin.rpc("generate_invoice_for_booking", { _booking_id: externalRef });
+      const { error: invErr } = await admin.rpc("generate_invoice_for_booking", {
+        _booking_id: externalRef,
+      });
       if (invErr) console.error("mercadopago-webhook: invoice generation failed", invErr);
-      else schedulePaymentConfirmedWhatsApp(admin, externalRef);
+
+      // Idempotent: skip when booking was already confirmed + paid (e.g. webhook retry).
+      if (!(wasAlreadyConfirmed && wasAlreadyPaid)) {
+        scheduleBookingConfirmedWhatsApp(admin, externalRef);
+        whatsapp_scheduled = true;
+      }
     } catch (e) {
-      console.error("mercadopago-webhook: invoice exception", e);
+      console.error("mercadopago-webhook: paid booking side-effects exception", e);
     }
   }
 
-  return ok({ ok: true, payment_status: newPaymentStatus, booking_id: externalRef });
+  return ok({
+    ok: true,
+    payment_status: newPaymentStatus,
+    booking_id: externalRef,
+    booking_status: bookingUpdate.booking_status ?? bookingBefore?.booking_status ?? null,
+    whatsapp_scheduled,
+  });
 });

@@ -151,6 +151,17 @@ export function scheduleBookingCreatedWhatsApp(
   );
 }
 
+/** After booking is confirmed (e.g. MercadoPago webhook). Same template + dedupe as create path. */
+export function scheduleBookingConfirmedWhatsApp(
+  admin: SupabaseClient,
+  bookingId: string,
+  opts?: { skipSources?: string[]; allowBotmakerSource?: boolean },
+): void {
+  void notifyBookingConfirmed(admin, bookingId, opts).catch((e) =>
+    console.error("[whatsapp-automation] booking_confirmed", e)
+  );
+}
+
 export async function notifyBookingCreated(
   admin: SupabaseClient,
   bookingId: string,
@@ -185,6 +196,15 @@ export async function notifyBookingCreated(
     },
     messagePreview: buildBookingConfirmedPreview(booking),
   });
+}
+
+/** Sends booking_confirmed_v2 when the booking is actually confirmed (idempotent). */
+export async function notifyBookingConfirmed(
+  admin: SupabaseClient,
+  bookingId: string,
+  opts?: { skipSources?: string[]; allowBotmakerSource?: boolean },
+): Promise<SendBotmakerMessageResult | null> {
+  return notifyBookingCreated(admin, bookingId, opts);
 }
 
 export function schedulePaymentConfirmedWhatsApp(

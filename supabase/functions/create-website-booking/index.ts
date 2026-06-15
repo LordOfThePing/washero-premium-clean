@@ -221,8 +221,13 @@ Deno.serve(async (req) => {
   }
 
   const { booking, service } = result;
-  scheduleBookingCreatedWhatsApp(admin, booking.id);
-  await notifyOperatorPush(booking.id, "booking_assigned_today");
+  // MercadoPago + Transferencia: confirmation WhatsApp waits for payment/admin validation.
+  const deferBookingConfirmationWhatsApp =
+    booking.payment_method === "MercadoPago" || booking.payment_method === "Transferencia";
+  if (!deferBookingConfirmationWhatsApp) {
+    scheduleBookingCreatedWhatsApp(admin, booking.id);
+    await notifyOperatorPush(booking.id, "booking_assigned_today");
+  }
   const baseSummary = {
     service_name: booking.service_name,
     scheduled_date: booking.scheduled_date,
