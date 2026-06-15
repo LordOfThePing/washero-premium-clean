@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { CalendarOff, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,7 @@ import {
   formatPrice,
 } from "@/lib/booking-badges";
 import type { FinanceBooking } from "@/lib/finance/types";
-import { fmtDate, zoneLabel } from "@/lib/finance/utils";
+import { fmtDate, normalizePaymentMethod, zoneLabel } from "@/lib/finance/utils";
 import { paymentReceiptStatusLabels } from "@/lib/payment-receipts";
 
 type Props = {
@@ -31,10 +31,16 @@ function receiptBadge(status: string | undefined) {
   if (!status) return null;
   const label =
     paymentReceiptStatusLabels[status as keyof typeof paymentReceiptStatusLabels] ?? status;
-  const variant =
-    status === "approved" ? "default" : status === "pending_review" ? "secondary" : "outline";
+  const className =
+    status === "approved"
+      ? "bg-green-100 text-green-900 dark:bg-green-500/15 dark:text-green-300"
+      : status === "pending_review"
+        ? "bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-300"
+        : status === "rejected"
+          ? "bg-red-100 text-red-900 dark:bg-red-500/15 dark:text-red-300"
+          : "";
   return (
-    <Badge variant={variant} className="text-[10px]">
+    <Badge variant="secondary" className={`text-[10px] ${className}`}>
       {label}
     </Badge>
   );
@@ -66,16 +72,37 @@ export function BookingsDetailTable({ bookings, receiptStatusByBooking }: Props)
     );
   }, [bookings, search]);
 
+  const needsAction = useMemo(
+    () =>
+      filtered.filter(
+        (b) =>
+          b.payment_status === "pending" ||
+          (normalizePaymentMethod(b.payment_method) === "transfer" &&
+            receiptStatusByBooking.get(b.id) !== "approved"),
+      ).length,
+    [filtered, receiptStatusByBooking],
+  );
+
   return (
     <Card>
-      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <CardTitle className="text-base">Detalle de reservas</CardTitle>
+      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <CardTitle className="text-base">Reservas del período</CardTitle>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Listado para revisar cobros, transferencias y comprobantes.
+            {filtered.length > 0 && needsAction > 0 && (
+              <span className="ml-1 font-medium text-amber-700 dark:text-amber-400">
+                {needsAction} requieren acción.
+              </span>
+            )}
+          </p>
+        </div>
         <div className="relative w-full sm:max-w-xs">
-          <Label className="sr-only">Buscar</Label>
+          <Label className="sr-only">Buscar reserva</Label>
           <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             className="pl-8"
-            placeholder="Cliente, teléfono, barrio…"
+            placeholder="Buscar cliente, teléfono o barrio…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -83,7 +110,15 @@ export function BookingsDetailTable({ bookings, receiptStatusByBooking }: Props)
       </CardHeader>
       <CardContent>
         {filtered.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No hay reservas en el período.</p>
+          <div className="flex flex-col items-center gap-2 rounded-md border border-dashed px-4 py-10 text-center">
+            <CalendarOff className="h-8 w-8 text-muted-foreground/60" />
+            <p className="text-sm font-medium">No hay reservas para mostrar</p>
+            <p className="max-w-sm text-xs text-muted-foreground">
+              {search
+                ? "No encontramos resultados con ese criterio. Probá otro nombre o teléfono."
+                : "No hay reservas activas en el período seleccionado."}
+            </p>
+          </div>
         ) : (
           <>
             <div className="hidden overflow-x-auto md:block">
@@ -102,7 +137,7 @@ export function BookingsDetailTable({ bookings, receiptStatusByBooking }: Props)
                     <TableHead>Pago</TableHead>
                     <TableHead>Reserva</TableHead>
                     <TableHead>Origen</TableHead>
-                    <TableHead>Comp.</TableHead>
+                    <TableHead>Comprobante</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -120,8 +155,10 @@ export function BookingsDetailTable({ bookings, receiptStatusByBooking }: Props)
                         {zoneLabel(b.neighborhood, b.private_neighborhood_name)}
                       </TableCell>
                       <TableCell className="max-w-[120px] truncate">{b.service_name}</TableCell>
-                      <TableCell className="text-right">{b.vehicle_count}</TableCell>
-                      <TableCell className="text-right">{formatPrice(b.price)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{b.vehicle_count}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatPrice(b.price)}
+                      </TableCell>
                       <TableCell className="text-xs">{b.payment_method}</TableCell>
                       <TableCell>
                         <PaymentStatusBadge value={b.payment_status} />
@@ -143,24 +180,25 @@ export function BookingsDetailTable({ bookings, receiptStatusByBooking }: Props)
               {filtered.map((b) => (
                 <div key={b.id} className="rounded-lg border p-3 text-sm">
                   <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-medium">{b.customer_name}</p>
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{b.customer_name}</p>
                       <p className="text-xs text-muted-foreground">
                         {fmtDate(b.scheduled_date)} · {b.scheduled_time?.slice(0, 5)}
                       </p>
                     </div>
-                    <p className="font-semibold">{formatPrice(b.price)}</p>
+                    <p className="shrink-0 font-semibold tabular-nums">{formatPrice(b.price)}</p>
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
+                  <p className="mt-1 truncate text-xs text-muted-foreground">
                     {zoneLabel(b.neighborhood, b.private_neighborhood_name)} · {b.service_name} ·{" "}
                     {b.vehicle_count} veh.
                   </p>
-                  <p className="text-xs">{b.customer_phone}</p>
+                  <p className="text-xs tabular-nums">{b.customer_phone}</p>
                   <div className="mt-2 flex flex-wrap gap-1">
-                    <Badge variant="outline">{b.payment_method}</Badge>
+                    <Badge variant="outline" className="text-[10px]">
+                      {b.payment_method}
+                    </Badge>
                     <PaymentStatusBadge value={b.payment_status} />
                     <BookingStatusBadge value={b.booking_status} />
-                    <BookingSourceBadge value={b.booking_source} />
                     {receiptBadge(receiptStatusByBooking.get(b.id))}
                   </div>
                 </div>

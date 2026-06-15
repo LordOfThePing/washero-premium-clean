@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { CalendarOff, Loader2 } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FinanceHeader } from "@/components/admin/finance/FinanceHeader";
 import { FinanceKPIs } from "@/components/admin/finance/FinanceKPIs";
@@ -12,6 +13,7 @@ import { FinanceAlerts } from "@/components/admin/finance/FinanceAlerts";
 import { FinanceBreakdown } from "@/components/admin/finance/FinanceBreakdown";
 import { PlanillaOperativa } from "@/components/admin/finance/PlanillaOperativa";
 import { BookingsDetailTable } from "@/components/admin/finance/BookingsDetailTable";
+import { FinanceSection } from "@/components/admin/finance/FinanceSection";
 import {
   computeFinanceData,
   receiptStatusByBooking,
@@ -181,41 +183,56 @@ function FinanzasPage() {
     setAssumptions(defaults);
   };
 
+  const handleRetry = () => {
+    qc.invalidateQueries({ queryKey: ["admin", "finanzas"] });
+  };
+
   if (query.isLoading) {
     return (
       <div className="space-y-6">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Cargando finanzas…
+        </div>
         <Skeleton className="h-10 w-64" />
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="h-24" />
+        <div className="grid gap-3 sm:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-28" />
           ))}
         </div>
-        <Skeleton className="h-64" />
+        <Skeleton className="h-48" />
       </div>
     );
   }
 
   if (query.isError) {
     return (
-      <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-6 text-sm">
-        No pudimos cargar finanzas: {(query.error as Error).message}
+      <div className="space-y-4 rounded-lg border border-destructive/40 bg-destructive/5 p-6">
+        <p className="text-sm font-medium">No pudimos cargar finanzas</p>
+        <p className="text-sm text-muted-foreground">{(query.error as Error).message}</p>
+        <Button variant="outline" size="sm" onClick={handleRetry}>
+          Reintentar
+        </Button>
       </div>
     );
   }
 
   const data = query.data!;
   const fin = computed!;
+  const isEmptyPeriod = data.bookings.filter((b) => b.booking_status !== "cancelled").length === 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <FinanceHeader
         period={period}
+        periodFrom={range.from}
+        periodTo={range.to}
         customFrom={customFrom}
         customTo={customTo}
         onPeriodChange={setPeriod}
         onCustomFromChange={setCustomFrom}
         onCustomToChange={setCustomTo}
-        onRefresh={() => qc.invalidateQueries({ queryKey: ["admin", "finanzas"] })}
+        onRefresh={handleRetry}
         isRefreshing={query.isFetching}
         exportDisabled={!computed}
         onExportDailyCash={() => exportDailyCashCsv(fin.dailyCash, periodLabel)}
@@ -229,9 +246,26 @@ function FinanzasPage() {
         </div>
       )}
 
-      <FinanceKPIs kpis={fin.kpis} />
+      {isEmptyPeriod && (
+        <div className="flex items-center gap-3 rounded-lg border border-dashed bg-muted/30 px-4 py-3 text-sm">
+          <CalendarOff className="h-5 w-5 shrink-0 text-muted-foreground" />
+          <p className="text-muted-foreground">
+            No hay reservas activas en este período. Cambiá el filtro de fechas para ver datos.
+          </p>
+        </div>
+      )}
+
+      <FinanceSection
+        title="Resumen"
+        description="Lo esencial: cuánto se vendió, cuánto entró y cuánto falta cobrar."
+      >
+        <FinanceKPIs kpis={fin.kpis} />
+      </FinanceSection>
+
       <FinanceAlerts alerts={fin.alerts} />
+
       <DailyCashTable rows={fin.dailyCash} />
+
       <FinanceBreakdown
         byPaymentMethod={fin.byPaymentMethod}
         byBookingStatus={fin.byBookingStatus}
@@ -239,12 +273,14 @@ function FinanzasPage() {
         topNeighborhoods={fin.topNeighborhoods}
         topDays={fin.topDays}
       />
+
       <PlanillaOperativa
         assumptions={assumptions}
         result={fin.planilla}
         onChange={handleAssumptionsChange}
         onReset={handleResetAssumptions}
       />
+
       <BookingsDetailTable bookings={data.bookings} receiptStatusByBooking={receiptsMap} />
     </div>
   );

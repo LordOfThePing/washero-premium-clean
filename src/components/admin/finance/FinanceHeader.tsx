@@ -10,10 +10,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { PeriodPreset } from "@/lib/finance/types";
-import { PERIOD_LABELS } from "@/lib/finance/utils";
+import { fmtDate, PERIOD_LABELS } from "@/lib/finance/utils";
 
 type Props = {
   period: PeriodPreset;
+  periodFrom: string;
+  periodTo: string;
   customFrom: string;
   customTo: string;
   onPeriodChange: (v: PeriodPreset) => void;
@@ -29,6 +31,8 @@ type Props = {
 
 export function FinanceHeader({
   period,
+  periodFrom,
+  periodTo,
   customFrom,
   customTo,
   onPeriodChange,
@@ -41,37 +45,74 @@ export function FinanceHeader({
   onExportPlanilla,
   exportDisabled,
 }: Props) {
+  const periodLabel =
+    periodFrom === periodTo ? fmtDate(periodFrom) : `${fmtDate(periodFrom)} – ${fmtDate(periodTo)}`;
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-            <TrendingUp className="h-5 w-5" /> Finanzas
+            <TrendingUp className="h-5 w-5 shrink-0" /> Finanzas
           </h1>
           <p className="text-sm text-muted-foreground">
-            Caja, cobros, pendientes y proyección operativa.
+            Caja diaria, cobros y estimación operativa del negocio.
+          </p>
+          <p className="mt-1 text-xs font-medium text-muted-foreground">
+            Período: {periodLabel}
+            {period !== "custom" && <span className="font-normal"> · {PERIOD_LABELS[period]}</span>}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={onRefresh} disabled={isRefreshing}>
-            <RefreshCw className={`mr-1 h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-            Refrescar
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full sm:w-auto"
+            onClick={onRefresh}
+            disabled={isRefreshing}
+          >
+            <RefreshCw className={`mr-1.5 h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+            Actualizar
           </Button>
-          <Button variant="outline" size="sm" onClick={onExportDailyCash} disabled={exportDisabled}>
-            <Download className="mr-1 h-4 w-4" /> Caja CSV
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 sm:flex-none"
+            onClick={onExportDailyCash}
+            disabled={exportDisabled}
+            title="Descargar caja diaria en CSV"
+          >
+            <Download className="mr-1.5 h-4 w-4 shrink-0" />
+            <span className="truncate">Caja CSV</span>
           </Button>
-          <Button variant="outline" size="sm" onClick={onExportBookings} disabled={exportDisabled}>
-            <Download className="mr-1 h-4 w-4" /> Reservas CSV
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 sm:flex-none"
+            onClick={onExportBookings}
+            disabled={exportDisabled}
+            title="Descargar listado de reservas en CSV"
+          >
+            <Download className="mr-1.5 h-4 w-4 shrink-0" />
+            <span className="truncate">Reservas CSV</span>
           </Button>
-          <Button variant="outline" size="sm" onClick={onExportPlanilla} disabled={exportDisabled}>
-            <FileSpreadsheet className="mr-1 h-4 w-4" /> Planilla .xls
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full sm:w-auto"
+            onClick={onExportPlanilla}
+            disabled={exportDisabled}
+            title="Descargar planilla compatible con Excel"
+          >
+            <FileSpreadsheet className="mr-1.5 h-4 w-4 shrink-0" />
+            <span className="truncate">Exportar planilla compatible Excel</span>
           </Button>
         </div>
       </div>
 
       <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-4">
-        <div className="min-w-[180px]">
-          <Label className="text-xs">Período</Label>
+        <div className="w-full min-w-0 sm:w-auto sm:min-w-[180px]">
+          <Label className="text-xs">Ver período</Label>
           <Select value={period} onValueChange={(v) => onPeriodChange(v as PeriodPreset)}>
             <SelectTrigger>
               <SelectValue />
@@ -87,7 +128,7 @@ export function FinanceHeader({
         </div>
         {period === "custom" && (
           <>
-            <div>
+            <div className="w-full sm:w-auto">
               <Label className="text-xs">Desde</Label>
               <Input
                 type="date"
@@ -95,7 +136,7 @@ export function FinanceHeader({
                 onChange={(e) => onCustomFromChange(e.target.value)}
               />
             </div>
-            <div>
+            <div className="w-full sm:w-auto">
               <Label className="text-xs">Hasta</Label>
               <Input
                 type="date"
