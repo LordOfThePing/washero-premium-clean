@@ -34,11 +34,63 @@ export function countOverlappingBookings(
   return taken;
 }
 
+/** Overlap count for a booking that would start at `requestedStartTime` and run `requestedDurationMinutes`. */
+export function countOverlappingBookingsForRequestedInterval(
+  requestedStartTime: string,
+  requestedDurationMinutes: number,
+  bookingsOnDate: BookingOverlapRow[],
+): number {
+  const reqStart = timeToMinutes(requestedStartTime);
+  const reqEnd = reqStart + requestedDurationMinutes;
+  let taken = 0;
+  for (const b of bookingsOnDate) {
+    const bStart = timeToMinutes(b.scheduled_time);
+    const bEnd = bStart + (b.duration_minutes ?? 0);
+    if (bStart < reqEnd && bEnd > reqStart) taken++;
+  }
+  return taken;
+}
+
 export function remainingCapacity(slot: SlotRow, bookingsOnDate: BookingOverlapRow[]): number {
   const taken = countOverlappingBookings(slot, bookingsOnDate);
   return Math.max(0, (slot.capacity ?? 0) - taken);
 }
 
+export function remainingCapacityForRequestedInterval(
+  slot: Pick<SlotRow, "start_time" | "capacity">,
+  requestedDurationMinutes: number,
+  bookingsOnDate: BookingOverlapRow[],
+): number {
+  const taken = countOverlappingBookingsForRequestedInterval(
+    slot.start_time,
+    requestedDurationMinutes,
+    bookingsOnDate,
+  );
+  return Math.max(0, (slot.capacity ?? 0) - taken);
+}
+
+export function maxOperatingDayEndMinutes(slots: Array<{ end_time: string }>): number {
+  let max = 0;
+  for (const s of slots) {
+    const end = timeToMinutes(s.end_time);
+    if (end > max) max = end;
+  }
+  return max;
+}
+
+/** True when requestedStart + duration does not exceed the day's operating end (latest slot end_time). */
+export function requestedIntervalFitsOperatingEnd(
+  operatingDayEndMinutes: number,
+  requestedStartTime: string,
+  requestedDurationMinutes: number,
+): boolean {
+  if (operatingDayEndMinutes <= 0) return false;
+  const reqStart = timeToMinutes(requestedStartTime);
+  const reqEnd = reqStart + requestedDurationMinutes;
+  return reqEnd <= operatingDayEndMinutes;
+}
+
+/** @deprecated Availability uses requestedIntervalFitsOperatingEnd; kept for legacy slot-window checks. */
 export function serviceFitsSlot(
   slot: Pick<SlotRow, "start_time" | "end_time">,
   durationMinutes: number,

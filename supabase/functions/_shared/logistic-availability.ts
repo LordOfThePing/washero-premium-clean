@@ -5,8 +5,10 @@ import {
   type CoreBookingUnitInput,
 } from "./booking-core.ts";
 import {
-  remainingCapacity,
-  serviceFitsSlot,
+  maxOperatingDayEndMinutes,
+  remainingCapacityForRequestedInterval,
+  requestedIntervalFitsOperatingEnd,
+  timeToMinutes,
   type BookingOverlapRow,
   type SlotRow,
 } from "./slot-capacity.ts";
@@ -172,6 +174,19 @@ export async function queryLogisticAvailabilityDays(
     logisticsByDate.set(d, logArr);
   }
 
+  const slotsByDate = new Map<string, Array<{ end_time: string }>>();
+  for (const raw of slots ?? []) {
+    const date = raw.date as string;
+    const arr = slotsByDate.get(date) ?? [];
+    arr.push({ end_time: String(raw.end_time) });
+    slotsByDate.set(date, arr);
+  }
+
+  const operatingDayEndByDate = new Map<string, number>();
+  for (const [date, daySlots] of slotsByDate) {
+    operatingDayEndByDate.set(date, maxOperatingDayEndMinutes(daySlots));
+  }
+
   const daysMap = new Map<string, ScoredLogisticSlot[]>();
   const nowMs = Date.now();
 
@@ -185,10 +200,15 @@ export async function queryLogisticAvailabilityDays(
     };
 
     if (isSlotTooSoonForPublic(slot.date, slot.start_time, nowMs)) continue;
-    if (!serviceFitsSlot(slot, durationMinutes)) continue;
+
+    const operatingDayEnd = operatingDayEndByDate.get(slot.date)
+      ?? timeToMinutes(slot.end_time);
+    if (!requestedIntervalFitsOperatingEnd(operatingDayEnd, slot.start_time, durationMinutes)) {
+      continue;
+    }
 
     const onDate = bookingsByDate.get(slot.date) ?? [];
-    const remaining = remainingCapacity(slot, onDate);
+    const remaining = remainingCapacityForRequestedInterval(slot, durationMinutes, onDate);
     if (remaining <= 0) continue;
 
     const scored = scoreLogisticSlot(

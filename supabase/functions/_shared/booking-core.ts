@@ -5,6 +5,11 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { loadActiveZones, matchZone, type CoverageMatch } from "./coverage.ts";
 import { loadVehiclePricingItem, normalizeVehiclePricingCode } from "./pricing-items.ts";
+import {
+  maxOperatingDayEndMinutes,
+  requestedIntervalFitsOperatingEnd,
+  timeToMinutes,
+} from "./slot-capacity.ts";
 
 export const VEHICLE_TYPES = ["Auto", "SUV", "Pick-up", "Otro"] as const;
 export const PAYMENT_METHODS = ["Pagar después", "Transferencia", "MercadoPago"] as const;
@@ -894,16 +899,28 @@ export async function tryCreateBooking(
     .maybeSingle();
   if (!slot) return { ok: false, reason: "slot_not_found", message: "Ese horario ya no está disponible.", http_status: 409 };
 
-  const toMin = (t: string) => {
-    const [h, m] = String(t).slice(0, 5).split(":").map(Number);
-    return h * 60 + m;
-  };
-
-  const reqStart = toMin(scheduled_time);
+  const reqStart = timeToMinutes(scheduled_time);
   const reqEnd = reqStart + total_duration_minutes;
-  const slotEnd = toMin((slot as any).end_time);
-  if (reqEnd > slotEnd) {
-    return { ok: false, reason: "service_does_not_fit_slot", message: "El servicio elegido no entra en el horario seleccionado.", http_status: 409 };
+
+  const { data: daySlots } = await admin.from("availability_slots")
+    .select("end_time")
+    .eq("date", scheduled_date)
+    .eq("active", true);
+  const operatingDayEndMinutes = Math.max(
+    maxOperatingDayEndMinutes((daySlots ?? []) as Array<{ end_time: string }>),
+    timeToMinutes((slot as { end_time: string }).end_time),
+  );
+  if (!requestedIntervalFitsOperatingEnd(
+    operatingDayEndMinutes,
+    scheduled_time,
+    total_duration_minutes,
+  )) {
+    return {
+      ok: false,
+      reason: "service_does_not_fit_slot",
+      message: "El servicio elegido no entra en el horario seleccionado.",
+      http_status: 409,
+    };
   }
 
   const { data: sameDay } = await admin.from("bookings")
@@ -912,7 +929,7 @@ export async function tryCreateBooking(
     .neq("booking_status", "cancelled");
   let overlapping = 0;
   for (const b of (sameDay ?? []) as any[]) {
-    const bStart = toMin(b.scheduled_time);
+    const bStart = timeToMinutes(b.scheduled_time);
     const bEnd = bStart + (b.duration_minutes ?? 0);
     if (bStart < reqEnd && bEnd > reqStart) overlapping++;
   }
