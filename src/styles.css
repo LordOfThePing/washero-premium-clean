@@ -159,6 +159,67 @@
   touch-action: manipulation;
 }
 
+/* Washero 3D mascot hero */
+@keyframes washero-mascot-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+.washero-mascot-float {
+  animation: washero-mascot-float 6s ease-in-out infinite;
+  will-change: transform;
+}
+
+.washero-mascot-glow {
+  position: absolute;
+  inset: 8%;
+  z-index: 0;
+  border-radius: 9999px;
+  background: radial-gradient(
+    closest-side,
+    oklch(0.78 0.18 75 / 0.5),
+    oklch(0.78 0.18 75 / 0.12) 55%,
+    transparent 75%
+  );
+  filter: blur(28px);
+  pointer-events: none;
+}
+
+.washero-mascot-card {
+  position: relative;
+  z-index: 1;
+  border-radius: 1.5rem;
+  border: 1px solid oklch(1 0 0 / 10%);
+  background: linear-gradient(
+    145deg,
+    oklch(1 0 0 / 6%) 0%,
+    oklch(1 0 0 / 2%) 45%,
+    oklch(0.78 0.18 75 / 4%) 100%
+  );
+  box-shadow:
+    0 0 0 1px oklch(0.78 0.18 75 / 8%) inset,
+    0 24px 48px -24px oklch(0 0 0 / 55%);
+  backdrop-filter: blur(14px);
+}
+
+.washero-mascot-viewer {
+  --poster-color: transparent;
+  --progress-bar-color: oklch(0.78 0.18 75);
+  background-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .washero-mascot-float {
+    animation: none;
+  }
+}
+
 @media print {
   body * {
     visibility: hidden;

@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/accordion";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
+import { WasheroMascot3D } from "@/components/brand/WasheroMascot3D";
 import { formatPrice } from "@/lib/booking-badges";
 
 const WA_URL = "https://wa.me/5491176247835";
@@ -100,47 +101,53 @@ function Hero() {
         }}
       />
       <div className="relative mx-auto max-w-6xl px-4 py-20 md:py-32">
-        <div className="max-w-3xl">
-          <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">
-            <span className="mr-2 h-1.5 w-1.5 rounded-full bg-primary" />
-            Zona Norte · Buenos Aires
-          </Badge>
-          <h1 className="mt-6 text-4xl font-bold leading-tight tracking-tight md:text-6xl">
-            Lavado de autos a{" "}
-            <span className="text-primary">domicilio</span> en Zona Norte
-          </h1>
-          <p className="mt-5 max-w-2xl text-lg text-neutral-300 md:text-xl">
-            Reservá tu lavado online en menos de 1 minuto. Nosotros vamos a tu casa, barrio o empresa.
-          </p>
+        <div className="grid items-center gap-10 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] md:gap-8 lg:gap-12">
+          <div className="max-w-3xl">
+            <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">
+              <span className="mr-2 h-1.5 w-1.5 rounded-full bg-primary" />
+              Zona Norte · Buenos Aires
+            </Badge>
+            <h1 className="mt-6 text-4xl font-bold leading-tight tracking-tight md:text-6xl">
+              Lavado de autos a{" "}
+              <span className="text-primary">domicilio</span> en Zona Norte
+            </h1>
+            <p className="mt-5 max-w-2xl text-lg text-neutral-300 md:text-xl">
+              Reservá tu lavado online en menos de 1 minuto. Nosotros vamos a tu casa, barrio o empresa.
+            </p>
 
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Button size="lg" asChild className="text-base">
-              <Link to="/reservar">
-                Reservar lavado <ArrowRight className="ml-1 h-4 w-4" />
-              </Link>
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              asChild
-              className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
-            >
-              <a href={WA_URL} target="_blank" rel="noopener">
-                <MessageCircle className="mr-1 h-4 w-4" />
-                Consultar por WhatsApp
-              </a>
-            </Button>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Button size="lg" asChild className="text-base">
+                <Link to="/reservar">
+                  Reservar lavado <ArrowRight className="ml-1 h-4 w-4" />
+                </Link>
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                asChild
+                className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+              >
+                <a href={WA_URL} target="_blank" rel="noopener">
+                  <MessageCircle className="mr-1 h-4 w-4" />
+                  Consultar por WhatsApp
+                </a>
+              </Button>
+            </div>
+
+            <div className="mt-8 flex flex-wrap gap-2">
+              {["A domicilio", "Reserva online", "Zona Norte", "Servicio premium"].map((t) => (
+                <span
+                  key={t}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs text-neutral-200"
+                >
+                  <CheckCircle2 className="h-3 w-3 text-primary" /> {t}
+                </span>
+              ))}
+            </div>
           </div>
 
-          <div className="mt-8 flex flex-wrap gap-2">
-            {["A domicilio", "Reserva online", "Zona Norte", "Servicio premium"].map((t) => (
-              <span
-                key={t}
-                className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs text-neutral-200"
-              >
-                <CheckCircle2 className="h-3 w-3 text-primary" /> {t}
-              </span>
-            ))}
+          <div className="mt-2 w-full md:mt-0 md:justify-self-end md:max-w-[min(100%,22rem)] lg:max-w-[min(100%,26rem)]">
+            <WasheroMascot3D />
           </div>
         </div>
       </div>
