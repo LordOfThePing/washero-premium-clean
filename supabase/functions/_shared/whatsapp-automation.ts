@@ -125,6 +125,55 @@ Te recordamos tu lavado Washero:
 Si necesitás modificar algo, respondé este mensaje.`;
 }
 
+export type WasheroTransferBankDetails = {
+  alias: string;
+  cbu: string;
+  holder: string;
+  bank: string;
+};
+
+/** Botmaker approved template for website Transferencia bank instructions. */
+export const BANK_TRANSFER_INFO_TEMPLATE_KEY = "bank_transfer_info";
+
+/** Bank details for Transferencia WhatsApp — from Edge Function secrets only. */
+export function loadWasheroTransferBankDetails(): WasheroTransferBankDetails | null {
+  const alias = (Deno.env.get("WASHERO_TRANSFER_ALIAS") ?? "").trim();
+  const cbu = (Deno.env.get("WASHERO_TRANSFER_CBU") ?? "").trim();
+  const holder = (Deno.env.get("WASHERO_TRANSFER_HOLDER") ?? "").trim();
+  const bank = (Deno.env.get("WASHERO_TRANSFER_BANK") ?? "").trim();
+  if (!alias || !cbu || !holder || !bank) return null;
+  return { alias, cbu, holder, bank };
+}
+
+function formatTransferAmount(price: number): string {
+  return new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    maximumFractionDigits: 0,
+  }).format(price);
+}
+
+export function buildTransferInstructionsPreview(
+  booking: Pick<
+    BookingNotifyRow,
+    "customer_name" | "price" | "scheduled_date" | "scheduled_time"
+  >,
+  bank: WasheroTransferBankDetails,
+): string {
+  const name = firstName(booking.customer_name);
+  return `Hola ${name} 👋
+Para confirmar tu reserva Washero, transferí *${formatTransferAmount(booking.price)}*:
+
+*Alias:* ${bank.alias}
+*CBU/CVU:* ${bank.cbu}
+*Titular:* ${bank.holder}
+*Banco/billetera:* ${bank.bank}
+
+*Turno:* ${fmtDate(booking.scheduled_date)} · ${fmtTime(booking.scheduled_time)}
+
+Respondé este chat con el comprobante. Confirmamos cuando validemos el pago.`;
+}
+
 export async function fetchBookingForNotify(
   admin: SupabaseClient,
   bookingId: string,
@@ -205,6 +254,61 @@ export async function notifyBookingConfirmed(
   opts?: { skipSources?: string[]; allowBotmakerSource?: boolean },
 ): Promise<SendBotmakerMessageResult | null> {
   return notifyBookingCreated(admin, bookingId, opts);
+}
+
+/** Fire-and-forget — bank transfer instructions for website Transferencia bookings. */
+export function scheduleTransferInstructionsWhatsApp(
+  admin: SupabaseClient,
+  bookingId: string,
+): void {
+  void notifyTransferInstructions(admin, bookingId).catch((e) =>
+    console.error("[whatsapp-automation] bank_transfer_info", e)
+  );
+}
+
+export async function notifyTransferInstructions(
+  admin: SupabaseClient,
+  bookingId: string,
+): Promise<SendBotmakerMessageResult | null> {
+  const booking = await fetchBookingForNotify(admin, bookingId);
+  if (!booking?.customer_phone?.trim()) return null;
+  if (booking.payment_method !== "Transferencia") {
+    return { ok: false, status: "skipped", error: "not_transferencia" };
+  }
+  if (booking.payment_status === "paid") {
+    return { ok: false, status: "skipped", error: "already_paid" };
+  }
+
+  if (await hasOutboundTemplateLog(admin, bookingId, BANK_TRANSFER_INFO_TEMPLATE_KEY)) {
+    return { ok: false, status: "skipped", error: "duplicate_template" };
+  }
+
+  const bank = loadWasheroTransferBankDetails();
+  if (!bank) {
+    console.error(
+      "[whatsapp-automation] bank_transfer_info skipped: missing WASHERO_TRANSFER_ALIAS, " +
+        "WASHERO_TRANSFER_CBU, WASHERO_TRANSFER_HOLDER, or WASHERO_TRANSFER_BANK",
+    );
+    return { ok: false, status: "skipped", error: "missing_transfer_bank_config" };
+  }
+
+  return sendBotmakerTemplateMessage(admin, {
+    customerPhone: booking.customer_phone,
+    customerName: booking.customer_name,
+    bookingId,
+    templateKey: BANK_TRANSFER_INFO_TEMPLATE_KEY,
+    variables: {
+      customerName: booking.customer_name,
+      amount: formatTransferAmount(booking.price),
+      alias: bank.alias,
+      cbu: bank.cbu,
+      holder: bank.holder,
+      bank: bank.bank,
+      date: fmtDate(booking.scheduled_date),
+      time: fmtTime(booking.scheduled_time),
+    },
+    messagePreview: buildTransferInstructionsPreview(booking, bank),
+  });
 }
 
 export function schedulePaymentConfirmedWhatsApp(

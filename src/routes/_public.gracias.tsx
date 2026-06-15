@@ -52,6 +52,14 @@ export const Route = createFileRoute("/_public/gracias")({
 
 type PaymentState = "success" | "pending" | "failure" | null;
 
+const TRANSFER_PENDING_COPY = {
+  icon: Clock,
+  tone: "pending" as const,
+  title: "Reserva recibida — pendiente de transferencia",
+  text:
+    "Te enviamos por WhatsApp los datos bancarios. Respondé ese mensaje con el comprobante. La reserva quedará confirmada cuando validemos el pago.",
+};
+
 function paymentCopy(state: PaymentState) {
   switch (state) {
     case "success":
@@ -86,6 +94,16 @@ function paymentCopy(state: PaymentState) {
   }
 }
 
+function resolvePageCopy(payment: PaymentState, last: LastBooking | null) {
+  if (payment === "success" || payment === "pending" || payment === "failure") {
+    return paymentCopy(payment);
+  }
+  if (last?.payment_method === "Transferencia") {
+    return TRANSFER_PENDING_COPY;
+  }
+  return paymentCopy(null);
+}
+
 function GraciasPage() {
   const { payment } = Route.useSearch();
   const [last, setLast] = useState<LastBooking | null>(null);
@@ -100,7 +118,7 @@ function GraciasPage() {
   }, []);
 
   const needsReview = last?.booking_status === "needs_review";
-  const copy = paymentCopy(payment ?? null);
+  const copy = resolvePageCopy(payment ?? null, last);
   const Icon = copy.icon;
 
   const toneClasses =

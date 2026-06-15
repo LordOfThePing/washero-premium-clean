@@ -61,6 +61,7 @@ const DEFAULT_TEMPLATE_SEND_MODE = "trigger_intent";
 /** Human template_key → Botmaker WaTemplate id (intentIdOrName for POST /chats-actions/trigger-intent). */
 export const BOTMAKER_WA_TEMPLATE_RULE_IDS: Record<string, string> = {
   booking_confirmed_v2: "washero:WaTemplate:LFLK4JK6HEG70LE3H676",
+  bank_transfer_info: "bank_transfer_info",
   operator_on_the_way: "washero:WaTemplate:W351COPNNQTW3KTN8G6R",
   operator_arrived_v2: "washero:WaTemplate:8PLHSP6W8DMZFANCEIKD",
   operator_delayed_v2: "washero:WaTemplate:V258IS0PTAG8NAS1KAOL",
@@ -77,6 +78,10 @@ export function resolveBotmakerRuleNameOrId(
   if (explicit) return explicit;
   const key = String(templateKey ?? "").trim();
   if (!key) return null;
+  if (key === "bank_transfer_info") {
+    const envRule = (Deno.env.get("BOTMAKER_WA_TEMPLATE_BANK_TRANSFER_INFO") ?? "").trim();
+    if (envRule) return envRule;
+  }
   return BOTMAKER_WA_TEMPLATE_RULE_IDS[key] ?? null;
 }
 

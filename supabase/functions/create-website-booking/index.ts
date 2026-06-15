@@ -2,7 +2,11 @@
 // Secure server-side booking creation; uses shared booking-core helper.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { tryCreateBooking } from "../_shared/booking-core.ts";
-import { scheduleBookingCreatedWhatsApp } from "../_shared/whatsapp-automation.ts";
+import {
+  loadWasheroTransferBankDetails,
+  scheduleBookingCreatedWhatsApp,
+  scheduleTransferInstructionsWhatsApp,
+} from "../_shared/whatsapp-automation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -338,6 +342,28 @@ Deno.serve(async (req) => {
       status: "booking_created_payment_pending",
       checkout_url: checkoutUrl,
       customer_message: "Reserva recibida. Te redirigimos a Mercado Pago para completar el pago.",
+    });
+  }
+
+  if (booking.payment_method === "Transferencia") {
+    const transferBank = loadWasheroTransferBankDetails();
+    if (!transferBank) {
+      console.error(
+        "[create-website-booking] Transferencia booking created but bank secrets missing " +
+          "(WASHERO_TRANSFER_ALIAS, WASHERO_TRANSFER_CBU, WASHERO_TRANSFER_HOLDER, WASHERO_TRANSFER_BANK)",
+      );
+    } else {
+      scheduleTransferInstructionsWhatsApp(admin, booking.id);
+    }
+
+    return json({
+      ...baseResponse,
+      status: "booking_created_transfer_pending",
+      transfer_instructions_scheduled: !!transferBank,
+      ...(transferBank ? {} : { warning: "transfer_bank_not_configured" }),
+      customer_message: transferBank
+        ? "Reserva recibida. Te enviamos por WhatsApp los datos para transferir."
+        : "Reserva recibida. Te vamos a contactar por WhatsApp con los datos de pago.",
     });
   }
 
