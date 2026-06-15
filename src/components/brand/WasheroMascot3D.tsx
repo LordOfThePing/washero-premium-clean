@@ -8,7 +8,7 @@ const POSTER_SRC = "/models/washero-mascot-poster.webp";
 function MascotFallback({ compact }: { compact?: boolean }) {
   return (
     <div
-      className={`flex flex-col items-center justify-center gap-2 text-neutral-400 ${compact ? "py-6" : "py-10"}`}
+      className={`flex h-full w-full flex-col items-center justify-center gap-2 text-neutral-400 ${compact ? "py-6" : "py-10"}`}
       aria-hidden
     >
       <div className="flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/5">
@@ -31,16 +31,22 @@ function MascotShell({
   return (
     <div
       ref={containerRef}
-      className={`washero-mascot-float relative mx-auto aspect-square w-full max-w-[220px] md:max-w-[26rem] ${className}`}
+      className={`washero-mascot-float relative mx-auto aspect-square w-full max-w-[420px] ${className}`}
       aria-label="Washero mascot"
     >
       <div className="washero-mascot-glow" aria-hidden />
-      <div className="washero-mascot-card absolute inset-0 overflow-hidden">{children}</div>
+      <div className="washero-mascot-card overflow-hidden">{children}</div>
     </div>
   );
 }
 
-function MascotPosterImage({ hidden }: { hidden?: boolean }) {
+function MascotPosterImage() {
+  const [hasError, setHasError] = useState(false);
+
+  if (hasError) {
+    return <MascotFallback />;
+  }
+
   return (
     <img
       src={POSTER_SRC}
@@ -49,9 +55,8 @@ function MascotPosterImage({ hidden }: { hidden?: boolean }) {
       height={512}
       loading="lazy"
       decoding="async"
-      className={`h-full w-full object-contain p-4 transition-opacity duration-700 ${
-        hidden ? "pointer-events-none absolute inset-0 opacity-0" : "opacity-100"
-      }`}
+      onError={() => setHasError(true)}
+      className="block h-full w-full object-contain p-4"
     />
   );
 }
@@ -69,7 +74,6 @@ function MascotViewer3D({ className = "" }: { className?: string }) {
   const viewerRef = useRef<HTMLElement>(null);
   const [isVisible, setIsVisible] = useState(false);
   const [isReady, setIsReady] = useState(false);
-  const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
@@ -112,20 +116,18 @@ function MascotViewer3D({ className = "" }: { className?: string }) {
     const el = viewerRef.current;
     if (!el || !isReady) return;
 
-    const onLoad = () => setIsLoaded(true);
     const onError = () => setHasError(true);
 
-    el.addEventListener("load", onLoad);
     el.addEventListener("error", onError);
-
-    return () => {
-      el.removeEventListener("load", onLoad);
-      el.removeEventListener("error", onError);
-    };
+    return () => el.removeEventListener("error", onError);
   }, [isReady]);
 
   if (hasError) {
-    return <MascotPoster className={className} />;
+    return (
+      <MascotShell className={className}>
+        <MascotFallback />
+      </MascotShell>
+    );
   }
 
   const showViewer = isVisible && isReady;
@@ -134,31 +136,24 @@ function MascotViewer3D({ className = "" }: { className?: string }) {
     <MascotShell className={className} containerRef={containerRef}>
       {!showViewer ? <MascotPosterImage /> : null}
 
-      {showViewer && !isLoaded ? <MascotFallback compact /> : null}
-
       {showViewer ? (
-        <>
-          <MascotPosterImage hidden={isLoaded} />
-          <model-viewer
-            ref={viewerRef}
-            src={MODEL_SRC}
-            poster={POSTER_SRC}
-            alt="Mascota Washero"
-            auto-rotate
-            shadow-intensity="0.85"
-            exposure="1.05"
-            environment-image="neutral"
-            loading="lazy"
-            interaction-prompt="none"
-            disable-zoom
-            disable-pan
-            disable-tap
-            rotation-per-second="12deg"
-            className={`washero-mascot-viewer absolute inset-0 h-full w-full transition-opacity duration-700 ${
-              isLoaded ? "opacity-100" : "pointer-events-none opacity-0"
-            }`}
-          />
-        </>
+        <model-viewer
+          ref={viewerRef}
+          src={MODEL_SRC}
+          poster={POSTER_SRC}
+          alt="Mascota Washero"
+          auto-rotate
+          shadow-intensity="0.85"
+          exposure="1.05"
+          environment-image="neutral"
+          loading="lazy"
+          interaction-prompt="none"
+          disable-zoom
+          disable-pan
+          disable-tap
+          rotation-per-second="12deg"
+          className="washero-mascot-viewer"
+        />
       ) : null}
     </MascotShell>
   );
@@ -172,7 +167,11 @@ export function WasheroMascot3D({ className = "" }: { className?: string }) {
     setHasMounted(true);
   }, []);
 
-  if (!hasMounted || isMobile) {
+  if (!hasMounted) {
+    return <MascotPoster className={className} />;
+  }
+
+  if (isMobile) {
     return <MascotPoster className={className} />;
   }
 
