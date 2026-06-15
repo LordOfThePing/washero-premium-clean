@@ -1,113 +1,251 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
+
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Loader2, TrendingUp } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { FinanceHeader } from "@/components/admin/finance/FinanceHeader";
+import { FinanceKPIs } from "@/components/admin/finance/FinanceKPIs";
+import { DailyCashTable } from "@/components/admin/finance/DailyCashTable";
+import { FinanceAlerts } from "@/components/admin/finance/FinanceAlerts";
+import { FinanceBreakdown } from "@/components/admin/finance/FinanceBreakdown";
+import { PlanillaOperativa } from "@/components/admin/finance/PlanillaOperativa";
+import { BookingsDetailTable } from "@/components/admin/finance/BookingsDetailTable";
+import {
+  computeFinanceData,
+  receiptStatusByBooking,
+  exportDailyCashCsv,
+  exportBookingsCsv,
+  exportPlanillaXls,
+  getPeriodRange,
+  loadPlanillaAssumptions,
+  savePlanillaAssumptions,
+  resetPlanillaAssumptions,
+  todayIso,
+  FINANCE_QUERY_LIMIT,
+  type FinanceBooking,
+  type FinancePayment,
+  type FinanceReceipt,
+  type PeriodPreset,
+  type PlanillaAssumptions,
+} from "@/lib/finance";
 
 export const Route = createFileRoute("/admin/finanzas")({
   component: FinanzasPage,
 });
 
-function fmt(n: number) {
-  return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(n);
+const BOOKING_SELECT =
+  "id, price, payment_method, payment_status, booking_status, scheduled_date, scheduled_time, customer_name, customer_phone, neighborhood, private_neighborhood_name, service_name, vehicle_count, booking_source, marketing_source, created_at";
+
+const PAYMENT_SELECT = "id, amount, booking_id, provider, status, created_at";
+const RECEIPT_SELECT = "id, booking_id, status, created_at";
+const ID_CHUNK = 200;
+
+async function fetchInChunks<T>(
+  ids: string[],
+  fetchChunk: (chunk: string[]) => Promise<T[]>,
+): Promise<T[]> {
+  const all: T[] = [];
+  for (let i = 0; i < ids.length; i += ID_CHUNK) {
+    const chunk = ids.slice(i, i + ID_CHUNK);
+    if (chunk.length === 0) continue;
+    all.push(...(await fetchChunk(chunk)));
+  }
+  return all;
+}
+
+async function fetchPaymentsForBookings(bookingIds: string[]): Promise<FinancePayment[]> {
+  const byId = new Map<string, FinancePayment>();
+
+  const linked = await fetchInChunks(bookingIds, async (chunk) => {
+    const { data, error } = await supabase
+      .from("payments")
+      .select(PAYMENT_SELECT)
+      .in("booking_id", chunk);
+    if (error) throw error;
+    return (data ?? []) as FinancePayment[];
+  });
+  for (const p of linked) byId.set(p.id, p);
+
+  const { data: orphans, error: orphanErr } = await supabase
+    .from("payments")
+    .select(PAYMENT_SELECT)
+    .is("booking_id", null)
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (orphanErr) throw orphanErr;
+  for (const p of (orphans ?? []) as FinancePayment[]) byId.set(p.id, p);
+
+  return [...byId.values()];
+}
+
+async function fetchReceiptsForBookings(bookingIds: string[]): Promise<FinanceReceipt[]> {
+  if (bookingIds.length === 0) return [];
+  return fetchInChunks(bookingIds, async (chunk) => {
+    const { data, error } = await supabase
+      .from("payment_receipts")
+      .select(RECEIPT_SELECT)
+      .in("booking_id", chunk);
+    if (error) throw error;
+    return (data ?? []) as FinanceReceipt[];
+  });
+}
+
+async function fetchFinanceData(from: string, to: string) {
+  const today = todayIso();
+
+  const bookingsRes = await supabase
+    .from("bookings")
+    .select(BOOKING_SELECT)
+    .gte("scheduled_date", from)
+    .lte("scheduled_date", to)
+    .order("scheduled_date", { ascending: true })
+    .order("scheduled_time", { ascending: true })
+    .limit(FINANCE_QUERY_LIMIT);
+
+  if (bookingsRes.error) throw bookingsRes.error;
+
+  const bookings = (bookingsRes.data ?? []) as FinanceBooking[];
+  const bookingsTruncated = bookings.length >= FINANCE_QUERY_LIMIT;
+  const bookingIds = bookings.map((b) => b.id);
+
+  const [payments, receipts, alertBookingsRes] = await Promise.all([
+    fetchPaymentsForBookings(bookingIds),
+    fetchReceiptsForBookings(bookingIds),
+    supabase
+      .from("bookings")
+      .select(BOOKING_SELECT)
+      .lt("scheduled_date", today)
+      .eq("payment_status", "pending")
+      .neq("booking_status", "cancelled")
+      .limit(500),
+  ]);
+
+  if (alertBookingsRes.error) throw alertBookingsRes.error;
+
+  return {
+    bookings,
+    payments,
+    receipts,
+    alertBookings: (alertBookingsRes.data ?? []) as FinanceBooking[],
+    bookingsTruncated,
+  };
 }
 
 function FinanzasPage() {
-  const data = useQuery({
-    queryKey: ["finanzas"],
-    queryFn: async () => {
-      const { data: bookings } = await supabase
-        .from("bookings")
-        .select("price, payment_method, payment_status, booking_status, scheduled_date")
-        .limit(5000);
-      const { data: payments } = await supabase
-        .from("payments")
-        .select("amount, status, provider, created_at")
-        .order("created_at", { ascending: false })
-        .limit(20);
+  const qc = useQueryClient();
+  const [period, setPeriod] = useState<PeriodPreset>("month");
+  const [customFrom, setCustomFrom] = useState(todayIso());
+  const [customTo, setCustomTo] = useState(todayIso());
+  const [assumptions, setAssumptions] = useState<PlanillaAssumptions>(() =>
+    loadPlanillaAssumptions(),
+  );
 
-      const all = bookings ?? [];
-      let total = 0, paid = 0, pending = 0, mp = 0, transfer = 0, later = 0;
-      const byStatus: Record<string, number> = {};
-      for (const b of all) {
-        total += b.price;
-        if (b.payment_status === "paid") paid += b.price;
-        else pending += b.price;
-        if (b.payment_method === "MercadoPago") mp += b.price;
-        else if (b.payment_method === "Transferencia") transfer += b.price;
-        else if (b.payment_method === "Pagar después") later += b.price;
-        byStatus[b.booking_status] = (byStatus[b.booking_status] ?? 0) + 1;
-      }
-      return { total, paid, pending, mp, transfer, later, byStatus, payments: payments ?? [] };
-    },
+  const range = useMemo(
+    () => getPeriodRange(period, customFrom, customTo),
+    [period, customFrom, customTo],
+  );
+
+  const periodLabel = `${range.from}_${range.to}`;
+
+  const query = useQuery({
+    queryKey: ["admin", "finanzas", range.from, range.to],
+    queryFn: () => fetchFinanceData(range.from, range.to),
   });
 
-  if (data.isLoading) {
-    return <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
-      <Loader2 className="h-4 w-4 animate-spin" /> Cargando…
-    </div>;
-  }
-  const d = data.data!;
+  const computed = useMemo(() => {
+    if (!query.data) return null;
+    return computeFinanceData(
+      query.data.bookings,
+      query.data.payments,
+      query.data.receipts,
+      query.data.alertBookings,
+      assumptions,
+      { bookingsTruncated: query.data.bookingsTruncated },
+    );
+  }, [query.data, assumptions]);
 
-  const cards = [
-    { label: "Revenue total", value: d.total },
-    { label: "Cobrado", value: d.paid },
-    { label: "Pendiente de cobro", value: d.pending },
-    { label: "Mercado Pago", value: d.mp },
-    { label: "Transferencia", value: d.transfer },
-    { label: "Pagar después", value: d.later },
-  ];
+  const receiptsMap = useMemo(
+    () => (query.data ? receiptStatusByBooking(query.data.receipts) : new Map()),
+    [query.data],
+  );
+
+  const handleAssumptionsChange = (next: PlanillaAssumptions) => {
+    setAssumptions(next);
+    savePlanillaAssumptions(next);
+  };
+
+  const handleResetAssumptions = () => {
+    const defaults = resetPlanillaAssumptions();
+    setAssumptions(defaults);
+  };
+
+  if (query.isLoading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-10 w-64" />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-24" />
+          ))}
+        </div>
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+
+  if (query.isError) {
+    return (
+      <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-6 text-sm">
+        No pudimos cargar finanzas: {(query.error as Error).message}
+      </div>
+    );
+  }
+
+  const data = query.data!;
+  const fin = computed!;
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-          <TrendingUp className="h-5 w-5" /> Finanzas
-        </h1>
-        <p className="text-sm text-muted-foreground">Visión general de revenue y pagos.</p>
-      </div>
+      <FinanceHeader
+        period={period}
+        customFrom={customFrom}
+        customTo={customTo}
+        onPeriodChange={setPeriod}
+        onCustomFromChange={setCustomFrom}
+        onCustomToChange={setCustomTo}
+        onRefresh={() => qc.invalidateQueries({ queryKey: ["admin", "finanzas"] })}
+        isRefreshing={query.isFetching}
+        exportDisabled={!computed}
+        onExportDailyCash={() => exportDailyCashCsv(fin.dailyCash, periodLabel)}
+        onExportBookings={() => exportBookingsCsv(data.bookings, periodLabel)}
+        onExportPlanilla={() => exportPlanillaXls(fin, data.bookings, assumptions, periodLabel)}
+      />
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {cards.map((c) => (
-          <Card key={c.label}>
-            <CardHeader className="pb-2"><CardTitle className="text-xs text-muted-foreground">{c.label}</CardTitle></CardHeader>
-            <CardContent><div className="text-2xl font-semibold">{fmt(c.value)}</div></CardContent>
-          </Card>
-        ))}
-      </div>
+      {query.isFetching && !query.isLoading && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3 w-3 animate-spin" /> Actualizando datos…
+        </div>
+      )}
 
-      <Card>
-        <CardHeader><CardTitle className="text-base">Reservas por estado</CardTitle></CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(d.byStatus).map(([k, v]) => (
-              <Badge key={k} variant="secondary">{k}: {v}</Badge>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader><CardTitle className="text-base">Últimos pagos</CardTitle></CardHeader>
-        <CardContent>
-          {d.payments.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No hay pagos registrados.</p>
-          ) : (
-            <ul className="divide-y divide-border/60">
-              {d.payments.map((p: any, i: number) => (
-                <li key={i} className="flex items-center justify-between py-2 text-sm">
-                  <div>
-                    <p className="font-medium">{fmt(p.amount)}</p>
-                    <p className="text-xs text-muted-foreground">{p.provider} · {new Date(p.created_at).toLocaleString("es-AR")}</p>
-                  </div>
-                  <Badge variant={p.status === "approved" ? "default" : "outline"}>{p.status}</Badge>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+      <FinanceKPIs kpis={fin.kpis} />
+      <FinanceAlerts alerts={fin.alerts} />
+      <DailyCashTable rows={fin.dailyCash} />
+      <FinanceBreakdown
+        byPaymentMethod={fin.byPaymentMethod}
+        byBookingStatus={fin.byBookingStatus}
+        byBookingSource={fin.byBookingSource}
+        topNeighborhoods={fin.topNeighborhoods}
+        topDays={fin.topDays}
+      />
+      <PlanillaOperativa
+        assumptions={assumptions}
+        result={fin.planilla}
+        onChange={handleAssumptionsChange}
+        onReset={handleResetAssumptions}
+      />
+      <BookingsDetailTable bookings={data.bookings} receiptStatusByBooking={receiptsMap} />
     </div>
   );
 }
