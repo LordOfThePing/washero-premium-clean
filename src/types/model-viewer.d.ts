@@ -22,6 +22,7 @@ declare module "react" {
           "disable-pan"?: boolean;
           "disable-tap"?: boolean;
           "rotation-per-second"?: string;
+          "animation-name"?: string;
         },
         ModelViewerElement
       >;

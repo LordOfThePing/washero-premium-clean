@@ -17,7 +17,11 @@ export interface MascotModelState {
   exposure: string;
   shadowIntensity: string;
   scaleClass: string;
+  /** GLB clip name when the asset ships with animations (none today). */
+  animationName?: string;
 }
+
+export type MascotInteractionMode = "idle" | "hover-reservar" | "hover-whatsapp" | "menu-open";
 
 export interface MascotSectionConfig {
   message: string;
@@ -106,6 +110,36 @@ const HOVER_MESSAGES: Record<Exclude<MascotHoverTrigger, null>, string> = {
   whatsapp: "También podés escribirme por WhatsApp.",
 };
 
+const INTERACTION_MODEL_OVERRIDES: Record<
+  Exclude<MascotInteractionMode, "idle">,
+  Partial<MascotModelState>
+> = {
+  "hover-reservar": {
+    cameraOrbit: "0deg 72deg 92%",
+    rotationPerSecond: "18deg",
+    exposure: "1.15",
+    shadowIntensity: "0.92",
+    autoRotateDelay: 0,
+  },
+  "hover-whatsapp": {
+    cameraOrbit: "28deg 76deg 108%",
+    rotationPerSecond: "14deg",
+    exposure: "1.08",
+    autoRotateDelay: 200,
+  },
+  "menu-open": {
+    autoRotate: false,
+    rotationPerSecond: "0deg",
+    cameraOrbit: "15deg 74deg 100%",
+    exposure: "1.1",
+  },
+};
+
+function mergeModelState(base: MascotModelState, mode: MascotInteractionMode): MascotModelState {
+  if (mode === "idle") return base;
+  return { ...base, ...INTERACTION_MODEL_OVERRIDES[mode] };
+}
+
 const SECTION_SELECTOR = "[data-mascot-section]";
 const FOOTER_SELECTOR = "[data-mascot-footer]";
 
@@ -188,44 +222,45 @@ export function useMascotSectionState() {
   }, []);
 
   useEffect(() => {
-    const reservarTriggers = document.querySelectorAll<HTMLElement>(
-      '[data-mascot-trigger="reservar"]',
-    );
-    const whatsappTriggers = document.querySelectorAll<HTMLElement>(
-      '[data-mascot-trigger="whatsapp"]',
-    );
+    const readTrigger = (target: EventTarget | null): MascotHoverTrigger => {
+      const el = (target as HTMLElement | null)?.closest<HTMLElement>("[data-mascot-trigger]");
+      const value = el?.getAttribute("data-mascot-trigger");
+      if (value === "reservar" || value === "whatsapp") return value;
+      return null;
+    };
 
-    const onReservarEnter = () => setHoverTrigger("reservar");
-    const onWhatsappEnter = () => setHoverTrigger("whatsapp");
-    const onLeave = () => setHoverTrigger(null);
+    const onPointerOver = (e: PointerEvent) => {
+      const trigger = readTrigger(e.target);
+      if (trigger) setHoverTrigger(trigger);
+    };
 
-    for (const el of reservarTriggers) {
-      el.addEventListener("mouseenter", onReservarEnter);
-      el.addEventListener("mouseleave", onLeave);
-      el.addEventListener("focus", onReservarEnter);
-      el.addEventListener("blur", onLeave);
-    }
+    const onPointerOut = (e: PointerEvent) => {
+      const from = readTrigger(e.target);
+      const to = readTrigger(e.relatedTarget);
+      if (from && from !== to) setHoverTrigger(null);
+    };
 
-    for (const el of whatsappTriggers) {
-      el.addEventListener("mouseenter", onWhatsappEnter);
-      el.addEventListener("mouseleave", onLeave);
-      el.addEventListener("focus", onWhatsappEnter);
-      el.addEventListener("blur", onLeave);
-    }
+    const onFocusIn = (e: FocusEvent) => {
+      const trigger = readTrigger(e.target);
+      if (trigger) setHoverTrigger(trigger);
+    };
+
+    const onFocusOut = (e: FocusEvent) => {
+      const from = readTrigger(e.target);
+      const to = readTrigger(e.relatedTarget);
+      if (from && from !== to) setHoverTrigger(null);
+    };
+
+    document.addEventListener("pointerover", onPointerOver);
+    document.addEventListener("pointerout", onPointerOut);
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("focusout", onFocusOut);
 
     return () => {
-      for (const el of reservarTriggers) {
-        el.removeEventListener("mouseenter", onReservarEnter);
-        el.removeEventListener("mouseleave", onLeave);
-        el.removeEventListener("focus", onReservarEnter);
-        el.removeEventListener("blur", onLeave);
-      }
-      for (const el of whatsappTriggers) {
-        el.removeEventListener("mouseenter", onWhatsappEnter);
-        el.removeEventListener("mouseleave", onLeave);
-        el.removeEventListener("focus", onWhatsappEnter);
-        el.removeEventListener("blur", onLeave);
-      }
+      document.removeEventListener("pointerover", onPointerOver);
+      document.removeEventListener("pointerout", onPointerOut);
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("focusout", onFocusOut);
     };
   }, []);
 
@@ -264,17 +299,30 @@ export function useMascotSectionState() {
     return sectionConfig.mobileMessage;
   }, [hoverTrigger, sectionConfig.mobileMessage]);
 
+  const interactionMode: MascotInteractionMode = useMemo(() => {
+    if (menuOpen) return "menu-open";
+    if (hoverTrigger === "reservar") return "hover-reservar";
+    if (hoverTrigger === "whatsapp") return "hover-whatsapp";
+    return "idle";
+  }, [menuOpen, hoverTrigger]);
+
+  const modelState = useMemo(
+    () => mergeModelState(sectionConfig.model, interactionMode),
+    [sectionConfig.model, interactionMode],
+  );
+
   return {
     activeSection,
     isInHero,
     nearFooter,
     hoverTrigger,
+    interactionMode,
     menuOpen,
     toggleMenu,
     closeMenu,
     displayMessage,
     mobileMessage,
-    modelState: sectionConfig.model,
+    modelState,
     layoutMode: isInHero ? ("hero" as const) : ("sticky" as const),
   };
 }

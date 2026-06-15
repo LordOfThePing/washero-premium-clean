@@ -12,6 +12,7 @@ import { WasheroMascot3D } from "@/components/brand/WasheroMascot3D";
 import {
   useMascotSectionState,
   type MascotModelState,
+  type MascotSectionId,
 } from "@/hooks/useMascotSectionState";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -55,7 +56,9 @@ function SpeechBubble({
       aria-atomic="true"
     >
       <div className="washero-assistant-bubble-accent" aria-hidden />
-      <p className="washero-assistant-bubble-text">{message}</p>
+      <p key={message} className="washero-assistant-bubble-text washero-assistant-bubble-text--animate">
+        {message}
+      </p>
       {showQuickActions && !compact ? (
         <div className="washero-assistant-bubble-actions">
           <button type="button" className="washero-assistant-action" onClick={onReservar}>
@@ -161,6 +164,8 @@ function DesktopAssistant({
   menuOpen,
   toggleMenu,
   closeMenu,
+  activeSection,
+  interactionMode,
 }: {
   modelState: MascotModelState;
   message: string;
@@ -169,6 +174,8 @@ function DesktopAssistant({
   menuOpen: boolean;
   toggleMenu: () => void;
   closeMenu: () => void;
+  activeSection: MascotSectionId;
+  interactionMode: ReturnType<typeof useMascotSectionState>["interactionMode"];
 }) {
   const isSticky = layoutMode === "sticky";
 
@@ -211,6 +218,8 @@ function DesktopAssistant({
           <WasheroMascot3D
             modelState={modelState}
             compact={isSticky}
+            activeSection={activeSection}
+            interactionMode={interactionMode}
             className={isSticky ? "washero-mascot--sticky" : ""}
           />
         </button>
@@ -254,7 +263,9 @@ function MobileAssistantChip({
           />
         </span>
         <span className="washero-assistant-mobile-label">Washi</span>
-        <span className="washero-assistant-mobile-message">{message}</span>
+        <span className="washero-assistant-mobile-message washero-assistant-bubble-text--animate" key={message}>
+          {message}
+        </span>
         <ChevronDown
           className={`h-4 w-4 shrink-0 text-neutral-400 transition-transform ${menuOpen ? "rotate-180" : ""}`}
           aria-hidden
@@ -297,6 +308,8 @@ export function WasheroAssistantHero() {
     menuOpen,
     toggleMenu,
     closeMenu,
+    activeSection,
+    interactionMode,
   } = useAssistantContext();
 
   if (!hasMounted || isMobile) return null;
@@ -310,6 +323,8 @@ export function WasheroAssistantHero() {
       menuOpen={menuOpen}
       toggleMenu={toggleMenu}
       closeMenu={closeMenu}
+      activeSection={activeSection}
+      interactionMode={interactionMode}
     />
   );
 }
@@ -364,6 +379,8 @@ export function WasheroAssistant({ className = "" }: { className?: string }) {
         menuOpen={state.menuOpen}
         toggleMenu={state.toggleMenu}
         closeMenu={state.closeMenu}
+        activeSection={state.activeSection}
+        interactionMode={state.interactionMode}
       />
     </div>
   );

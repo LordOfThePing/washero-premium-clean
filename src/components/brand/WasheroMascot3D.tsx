@@ -3,13 +3,39 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   MASCOT_SECTIONS,
+  type MascotInteractionMode,
   type MascotModelState,
+  type MascotSectionId,
 } from "@/hooks/useMascotSectionState";
 
 const MODEL_SRC = "/models/washero-mascot.optimized.glb";
 const POSTER_SRC = "/models/washero-mascot-poster.webp";
 
 const DEFAULT_MODEL_STATE: MascotModelState = MASCOT_SECTIONS.hero.model;
+
+type ModelViewerEl = HTMLElement & {
+  availableAnimations?: string[];
+  animationName?: string;
+  play?: (options?: { repetitions?: number }) => void;
+  pause?: () => void;
+};
+
+function applyModelState(el: ModelViewerEl, state: MascotModelState) {
+  el.setAttribute("camera-orbit", state.cameraOrbit);
+  el.setAttribute("shadow-intensity", state.shadowIntensity);
+  el.setAttribute("exposure", state.exposure);
+  el.setAttribute("rotation-per-second", state.rotationPerSecond);
+  el.toggleAttribute("auto-rotate", state.autoRotate);
+  el.setAttribute("auto-rotate-delay", String(state.autoRotateDelay));
+
+  if (state.animationName) {
+    el.setAttribute("animation-name", state.animationName);
+    el.play?.({ repetitions: Infinity });
+  } else {
+    el.removeAttribute("animation-name");
+    el.pause?.();
+  }
+}
 
 function MascotFallback({ compact }: { compact?: boolean }) {
   return (
@@ -31,17 +57,30 @@ function MascotShell({
   className = "",
   containerRef,
   compact = false,
+  activeSection,
+  interactionMode = "idle",
   children,
 }: {
   className?: string;
   containerRef?: React.RefObject<HTMLDivElement | null>;
   compact?: boolean;
+  activeSection?: MascotSectionId;
+  interactionMode?: MascotInteractionMode;
   children: ReactNode;
 }) {
   return (
     <div
       ref={containerRef}
-      className={`washero-mascot-float relative mx-auto aspect-square w-full ${compact ? "max-w-[9rem]" : "max-w-[420px]"} ${className}`}
+      data-mascot-section-active={activeSection}
+      data-mascot-interaction={interactionMode}
+      className={[
+        "washero-mascot-float relative mx-auto aspect-square w-full",
+        compact ? "max-w-[9rem]" : "max-w-[420px]",
+        interactionMode !== "idle" ? "washero-mascot-float--engaged" : "",
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
       aria-label="Washero mascot"
     >
       <div className="washero-mascot-glow" aria-hidden />
@@ -74,12 +113,21 @@ function MascotPosterImage({ compact = false }: { compact?: boolean }) {
 function MascotPoster({
   className = "",
   compact = false,
+  activeSection,
+  interactionMode,
 }: {
   className?: string;
   compact?: boolean;
+  activeSection?: MascotSectionId;
+  interactionMode?: MascotInteractionMode;
 }) {
   return (
-    <MascotShell className={className} compact={compact}>
+    <MascotShell
+      className={className}
+      compact={compact}
+      activeSection={activeSection}
+      interactionMode={interactionMode}
+    >
       <MascotPosterImage compact={compact} />
     </MascotShell>
   );
@@ -89,16 +137,21 @@ function MascotViewer3D({
   className = "",
   compact = false,
   modelState = DEFAULT_MODEL_STATE,
+  activeSection,
+  interactionMode = "idle",
 }: {
   className?: string;
   compact?: boolean;
   modelState?: MascotModelState;
+  activeSection?: MascotSectionId;
+  interactionMode?: MascotInteractionMode;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const viewerRef = useRef<HTMLElement>(null);
+  const viewerRef = useRef<ModelViewerEl>(null);
   const [isVisible, setIsVisible] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [glbAnimations, setGlbAnimations] = useState<string[]>([]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -141,20 +194,39 @@ function MascotViewer3D({
     if (!el || !isReady) return;
 
     const onError = () => setHasError(true);
+    const onLoad = () => {
+      const names = el.availableAnimations ?? [];
+      setGlbAnimations(names);
+    };
 
     el.addEventListener("error", onError);
-    return () => el.removeEventListener("error", onError);
+    el.addEventListener("load", onLoad);
+    if (el.loaded) onLoad();
+
+    return () => {
+      el.removeEventListener("error", onError);
+      el.removeEventListener("load", onLoad);
+    };
   }, [isReady]);
 
   useEffect(() => {
-    const el = viewerRef.current as (HTMLElement & { cameraOrbit?: string }) | null;
+    const el = viewerRef.current;
     if (!el || !isReady) return;
-    el.setAttribute("camera-orbit", modelState.cameraOrbit);
-  }, [isReady, modelState.cameraOrbit]);
+
+    const resolvedState: MascotModelState = {
+      ...modelState,
+      animationName:
+        modelState.animationName && glbAnimations.includes(modelState.animationName)
+          ? modelState.animationName
+          : undefined,
+    };
+
+    applyModelState(el, resolvedState);
+  }, [isReady, modelState, glbAnimations]);
 
   if (hasError) {
     return (
-      <MascotShell className={className} compact={compact}>
+      <MascotShell className={className} compact={compact} activeSection={activeSection} interactionMode={interactionMode}>
         <MascotFallback compact={compact} />
       </MascotShell>
     );
@@ -163,7 +235,13 @@ function MascotViewer3D({
   const showViewer = isVisible && isReady;
 
   return (
-    <MascotShell className={className} containerRef={containerRef} compact={compact}>
+    <MascotShell
+      className={className}
+      containerRef={containerRef}
+      compact={compact}
+      activeSection={activeSection}
+      interactionMode={interactionMode}
+    >
       {!showViewer ? <MascotPosterImage compact={compact} /> : null}
 
       {showViewer ? (
@@ -196,10 +274,14 @@ export function WasheroMascot3D({
   className = "",
   compact = false,
   modelState = DEFAULT_MODEL_STATE,
+  activeSection,
+  interactionMode = "idle",
 }: {
   className?: string;
   compact?: boolean;
   modelState?: MascotModelState;
+  activeSection?: MascotSectionId;
+  interactionMode?: MascotInteractionMode;
 }) {
   const isMobile = useIsMobile();
   const [hasMounted, setHasMounted] = useState(false);
@@ -209,11 +291,25 @@ export function WasheroMascot3D({
   }, []);
 
   if (!hasMounted) {
-    return <MascotPoster className={className} compact={compact} />;
+    return (
+      <MascotPoster
+        className={className}
+        compact={compact}
+        activeSection={activeSection}
+        interactionMode={interactionMode}
+      />
+    );
   }
 
   if (isMobile) {
-    return <MascotPoster className={className} compact={compact} />;
+    return (
+      <MascotPoster
+        className={className}
+        compact={compact}
+        activeSection={activeSection}
+        interactionMode={interactionMode}
+      />
+    );
   }
 
   return (
@@ -221,6 +317,8 @@ export function WasheroMascot3D({
       className={className}
       compact={compact}
       modelState={modelState}
+      activeSection={activeSection}
+      interactionMode={interactionMode}
     />
   );
 }

@@ -335,7 +335,7 @@ function Coverage() {
 
         <div className="mt-10 text-center">
           <Button size="lg" asChild>
-            <Link to="/reservar">Reservar lavado</Link>
+            <Link to="/reservar" data-mascot-trigger="reservar">Reservar lavado</Link>
           </Button>
         </div>
       </div>
@@ -472,7 +472,7 @@ function FinalCta() {
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           <Button size="lg" asChild>
-            <Link to="/reservar">Reservar lavado</Link>
+            <Link to="/reservar" data-mascot-trigger="reservar">Reservar lavado</Link>
           </Button>
           <Button
             size="lg"
@@ -480,7 +480,7 @@ function FinalCta() {
             asChild
             className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
           >
-            <a href={WA_URL} target="_blank" rel="noopener">
+            <a href={WA_URL} target="_blank" rel="noopener" data-mascot-trigger="whatsapp">
               <MessageCircle className="mr-1 h-4 w-4" /> Consultar por WhatsApp
             </a>
           </Button>
