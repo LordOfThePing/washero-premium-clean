@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import {
+  readLastBookingSummary,
   trackBookingCreatedConversion,
   trackGoogleAdsEvent,
   trackPaymentSuccessConversion,
@@ -28,6 +29,15 @@ type LastBooking = {
 const searchSchema = z.object({
   payment: z.enum(["success", "pending", "failure"]).optional(),
 });
+
+function graciasDevLog(message: string, extra?: Record<string, unknown>) {
+  if (!import.meta.env.DEV) return;
+  if (extra) {
+    console.debug(`[gracias] ${message}`, extra);
+  } else {
+    console.debug(`[gracias] ${message}`);
+  }
+}
 
 function formatARS(value: number) {
   return new Intl.NumberFormat("es-AR", {
@@ -117,11 +127,12 @@ function GraciasPage() {
   const paymentConversionTracked = useRef(false);
 
   useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem("washero:last-booking");
-      if (raw) setLast(JSON.parse(raw) as LastBooking);
-    } catch {
-      // ignore
+    const parsed = readLastBookingSummary();
+    if (parsed) {
+      graciasDevLog("found washero:last-booking", { booking_id: parsed.booking_id });
+      setLast(parsed as LastBooking);
+    } else {
+      graciasDevLog("no last booking found");
     }
   }, []);
 
@@ -131,15 +142,27 @@ function GraciasPage() {
 
     void (async () => {
       try {
-        const raw = sessionStorage.getItem("washero:last-booking");
-        if (!raw) return;
-        const parsed = JSON.parse(raw) as LastBooking;
-        const bookingId = parsed?.booking_id;
-        if (!bookingId) return;
+        const parsed = readLastBookingSummary();
+        if (!parsed) {
+          graciasDevLog("no last booking found");
+          return;
+        }
 
+        const bookingId = typeof parsed.booking_id === "string" ? parsed.booking_id : "";
+        if (!bookingId) {
+          graciasDevLog("no last booking found");
+          return;
+        }
+
+        const price =
+          typeof parsed.price === "number" && Number.isFinite(parsed.price)
+            ? parsed.price
+            : undefined;
+
+        graciasDevLog("retrying booking conversion", { bookingId, price });
         await trackBookingCreatedConversion({
           bookingId,
-          value: parsed.price,
+          value: price,
         });
       } catch {
         // ignore
@@ -159,14 +182,18 @@ function GraciasPage() {
 
     void (async () => {
       try {
-        const raw = sessionStorage.getItem("washero:last-booking");
-        const parsed = raw ? (JSON.parse(raw) as LastBooking) : last;
-        const bookingId = parsed?.booking_id;
+        const parsed = readLastBookingSummary() ?? (last as Record<string, unknown> | null);
+        const bookingId = typeof parsed?.booking_id === "string" ? parsed.booking_id : "";
         if (!bookingId) return;
+
+        const price =
+          typeof parsed?.price === "number" && Number.isFinite(parsed.price)
+            ? parsed.price
+            : undefined;
 
         await trackPaymentSuccessConversion({
           bookingId,
-          value: parsed?.price,
+          value: price,
         });
       } catch {
         // ignore

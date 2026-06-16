@@ -27,9 +27,19 @@ const PAYMENT_CONVERSION_LABEL = String(
 const SCRIPT_ID = "washero-google-ads-gtag";
 const GTAG_REDIRECT_TIMEOUT_MS = 500;
 
+export const LAST_BOOKING_KEY = "washero:last-booking";
 const DEDUPE_PREFIX = "washero:ads:conv:";
 
 let initPromise: Promise<void> | null = null;
+
+function devLog(message: string, extra?: Record<string, unknown>) {
+  if (!import.meta.env.DEV) return;
+  if (extra) {
+    console.debug(`[google-ads] ${message}`, extra);
+  } else {
+    console.debug(`[google-ads] ${message}`);
+  }
+}
 
 export function isGoogleAdsEnabled(): boolean {
   return GOOGLE_ADS_ID.length > 0;
@@ -59,7 +69,7 @@ function conversionDedupeKey(kind: "booking" | "payment", transactionId: string)
 function hasFiredConversion(kind: "booking" | "payment", transactionId: string): boolean {
   if (!isBrowser() || !transactionId) return false;
   try {
-    return sessionStorage.getItem(conversionDedupeKey(kind, transactionId)) === "1";
+    return localStorage.getItem(conversionDedupeKey(kind, transactionId)) === "1";
   } catch {
     return false;
   }
@@ -68,7 +78,7 @@ function hasFiredConversion(kind: "booking" | "payment", transactionId: string):
 function markConversionFired(kind: "booking" | "payment", transactionId: string) {
   if (!isBrowser() || !transactionId) return;
   try {
-    sessionStorage.setItem(conversionDedupeKey(kind, transactionId), "1");
+    localStorage.setItem(conversionDedupeKey(kind, transactionId), "1");
   } catch {
     // ignore
   }
@@ -190,6 +200,11 @@ function fireConversion(input: {
           transaction_id: input.transactionId,
           event_callback: () => {
             window.clearTimeout(timer);
+            devLog("event_callback received", {
+              dedupeKind: input.dedupeKind,
+              transactionId: input.transactionId,
+              send_to: input.sendTo,
+            });
             markConversionFired(input.dedupeKind, input.transactionId);
             resolveOnce();
           },
@@ -211,29 +226,31 @@ export async function trackBookingCreatedConversion(input: {
 }) {
   const sendTo = `${GOOGLE_ADS_ID}/${BOOKING_CONVERSION_LABEL}`;
 
-  if (import.meta.env.DEV) {
-    if (!isBookingConversionConfigured()) {
-      console.debug("[google-ads] booking conversion skipped: missing env vars");
-      return;
-    }
-    if (!input.bookingId) {
-      console.debug("[google-ads] booking conversion skipped: missing booking_id");
-      return;
-    }
-    if (hasFiredConversion("booking", input.bookingId)) {
-      console.debug("[google-ads] booking conversion skipped: already confirmed", {
-        bookingId: input.bookingId,
-      });
-      return;
-    }
-    console.debug("[google-ads] booking conversion attempt", {
-      send_to: sendTo,
-      bookingId: input.bookingId,
+  devLog("Google Ads enabled", { enabled: isGoogleAdsEnabled() });
+
+  if (!isBookingConversionConfigured()) {
+    devLog("skipped because missing env", {
+      googleAdsId: GOOGLE_ADS_ID || "(unset)",
+      bookingConversionLabel: BOOKING_CONVERSION_LABEL || "(unset)",
     });
-  } else {
-    if (!isBookingConversionConfigured() || !input.bookingId) return;
-    if (hasFiredConversion("booking", input.bookingId)) return;
+    return;
   }
+
+  if (!input.bookingId) {
+    devLog("skipped because missing bookingId");
+    return;
+  }
+
+  if (hasFiredConversion("booking", input.bookingId)) {
+    devLog("skipped because already fired", { bookingId: input.bookingId });
+    return;
+  }
+
+  devLog("booking conversion attempt", {
+    send_to: sendTo,
+    bookingId: input.bookingId,
+    value: input.value,
+  });
 
   setEnhancedConversionUserData({
     email: input.email,
@@ -282,10 +299,29 @@ export async function trackPaymentSuccessConversion(input: {
   });
 }
 
-export async function persistLastBookingSummary(summary: Record<string, unknown>) {
+export function readLastBookingSummary(): Record<string, unknown> | null {
+  if (!isBrowser()) return null;
+  try {
+    let raw = localStorage.getItem(LAST_BOOKING_KEY);
+    if (!raw) {
+      raw = sessionStorage.getItem(LAST_BOOKING_KEY);
+      if (raw) {
+        localStorage.setItem(LAST_BOOKING_KEY, raw);
+        sessionStorage.removeItem(LAST_BOOKING_KEY);
+      }
+    }
+    if (!raw) return null;
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+export function persistLastBookingSummary(summary: Record<string, unknown>) {
   if (!isBrowser()) return;
   try {
-    sessionStorage.setItem("washero:last-booking", JSON.stringify(summary));
+    localStorage.setItem(LAST_BOOKING_KEY, JSON.stringify(summary));
+    sessionStorage.removeItem(LAST_BOOKING_KEY);
   } catch {
     // ignore
   }
@@ -305,10 +341,14 @@ export async function completeWebsiteBookingSuccess(input: {
       ? input.summary.price
       : undefined;
 
-  await persistLastBookingSummary({
+  persistLastBookingSummary({
     ...input.summary,
     booking_id: input.bookingId,
     payment_method: input.paymentMethod,
+    price: price ?? input.summary.price,
+    currency: "ARS",
+    created_at: new Date().toISOString(),
+    source: "booking_created",
   });
 
   await trackBookingCreatedConversion({
