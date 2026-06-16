@@ -15,7 +15,12 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { PlacesAutocomplete, type PlaceSelection } from "@/components/PlacesAutocomplete";
 import { cn } from "@/lib/utils";
 import type { BookingAttribution } from "@/lib/attribution";
-import { completeWebsiteBookingSuccess, trackGoogleAdsEvent } from "@/lib/google-ads";
+import {
+  completeWebsiteBookingSuccess,
+  getCreateWebsiteBookingId,
+  parseCreateWebsiteBookingResponse,
+  trackGoogleAdsEvent,
+} from "@/lib/google-ads";
 import {
   COVERAGE_COPY,
   INITIAL_FORM,
@@ -442,18 +447,10 @@ function BookingForm({
     };
 
     const { data, error } = await supabase.functions.invoke("create-website-booking", { body: payload });
-    type Resp = {
-      ok: boolean;
-      status?: string;
-      customer_message?: string;
-      checkout_url?: string | null;
-      summary?: Record<string, unknown>;
-      booking_status?: string;
-      booking_id?: string;
-    };
-    const res = (data ?? null) as Resp | null;
+    const res = parseCreateWebsiteBookingResponse(data);
+    const bookingId = getCreateWebsiteBookingId(res);
 
-    if (error || !res?.ok) {
+    if (!bookingId) {
       setSubmitting(false);
       const status = res?.status ?? "";
       const friendly =
@@ -465,13 +462,12 @@ function BookingForm({
           ? "Ese horario ya no está disponible para el servicio elegido. Elegí otro horario." :
         status === "invalid_extra" ? "Hay un extra inválido. Actualizá la página e intentá nuevamente." :
         (res?.customer_message ?? "No pudimos crear la reserva. Probá nuevamente o escribinos por WhatsApp.");
+      console.error("[Reservar][create-website-booking]", {
+        error: error ? { message: error.message, name: error.name } : null,
+        status,
+        response: res,
+      });
       toast.error(friendly, { action: { label: "WhatsApp", onClick: () => window.open(WHATSAPP_URL, "_blank") } });
-      return;
-    }
-
-    if (!res.booking_id) {
-      setSubmitting(false);
-      toast.error("No pudimos confirmar la reserva. Probá nuevamente o escribinos por WhatsApp.");
       return;
     }
 
@@ -486,11 +482,11 @@ function BookingForm({
     }
 
     setSubmitting(false);
-    await onSuccess(res.checkout_url ?? null, {
-      ...(res.summary ?? {}),
+    await onSuccess(res?.checkout_url ?? null, {
+      ...(res?.summary ?? {}),
       payment_method: payload.payment_method,
-      booking_status: res.booking_status ?? "pending",
-    }, res.booking_id, {
+      booking_status: res?.booking_status ?? "pending",
+    }, bookingId, {
       email: form.customer_email.trim() || null,
       phone: form.customer_phone.trim(),
     });

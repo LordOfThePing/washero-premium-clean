@@ -41,6 +41,44 @@ function devLog(message: string, extra?: Record<string, unknown>) {
   }
 }
 
+export type CreateWebsiteBookingResponse = {
+  ok?: boolean;
+  booking_id?: string;
+  booking_status?: string;
+  checkout_url?: string | null;
+  summary?: Record<string, unknown>;
+  status?: string;
+  customer_message?: string;
+};
+
+export function parseCreateWebsiteBookingResponse(data: unknown): CreateWebsiteBookingResponse | null {
+  if (data == null) return null;
+  if (typeof data === "string") {
+    try {
+      return JSON.parse(data) as CreateWebsiteBookingResponse;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof data === "object") return data as CreateWebsiteBookingResponse;
+  return null;
+}
+
+export function getCreateWebsiteBookingId(res: CreateWebsiteBookingResponse | null): string | null {
+  const id = res?.booking_id;
+  return typeof id === "string" && id.trim().length > 0 ? id.trim() : null;
+}
+
+export function extractBookingPrice(summary: Record<string, unknown> | null | undefined): number | undefined {
+  const raw = summary?.price;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string") {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
 export function isGoogleAdsEnabled(): boolean {
   return GOOGLE_ADS_ID.length > 0;
 }
@@ -201,9 +239,8 @@ function fireConversion(input: {
           event_callback: () => {
             window.clearTimeout(timer);
             devLog("event_callback received", {
-              dedupeKind: input.dedupeKind,
-              transactionId: input.transactionId,
               send_to: input.sendTo,
+              bookingId: input.transactionId,
             });
             markConversionFired(input.dedupeKind, input.transactionId);
             resolveOnce();
@@ -229,7 +266,7 @@ export async function trackBookingCreatedConversion(input: {
   devLog("Google Ads enabled", { enabled: isGoogleAdsEnabled() });
 
   if (!isBookingConversionConfigured()) {
-    devLog("skipped because missing env", {
+    devLog("skipped missing env", {
       googleAdsId: GOOGLE_ADS_ID || "(unset)",
       bookingConversionLabel: BOOKING_CONVERSION_LABEL || "(unset)",
     });
@@ -237,16 +274,16 @@ export async function trackBookingCreatedConversion(input: {
   }
 
   if (!input.bookingId) {
-    devLog("skipped because missing bookingId");
+    devLog("skipped missing bookingId");
     return;
   }
 
   if (hasFiredConversion("booking", input.bookingId)) {
-    devLog("skipped because already fired", { bookingId: input.bookingId });
+    devLog("skipped already fired", { bookingId: input.bookingId });
     return;
   }
 
-  devLog("booking conversion attempt", {
+  devLog("attempting booking conversion", {
     send_to: sendTo,
     bookingId: input.bookingId,
     value: input.value,
@@ -322,11 +359,19 @@ export function persistLastBookingSummary(summary: Record<string, unknown>) {
   try {
     localStorage.setItem(LAST_BOOKING_KEY, JSON.stringify(summary));
     sessionStorage.removeItem(LAST_BOOKING_KEY);
+    devLog("persisted washero:last-booking", {
+      booking_id: summary.booking_id,
+      price: summary.price,
+    });
   } catch {
     // ignore
   }
 }
 
+/**
+ * Called immediately after create-website-booking confirms booking_id.
+ * Persists to localStorage first (sync), fires conversion, then navigates.
+ */
 export async function completeWebsiteBookingSuccess(input: {
   bookingId: string;
   summary: Record<string, unknown>;
@@ -336,27 +381,28 @@ export async function completeWebsiteBookingSuccess(input: {
   checkoutUrl?: string | null;
   navigate: (opts: { to: string }) => void;
 }) {
-  const price =
-    typeof input.summary.price === "number" && Number.isFinite(input.summary.price)
-      ? input.summary.price
-      : undefined;
+  const price = extractBookingPrice(input.summary);
 
   persistLastBookingSummary({
     ...input.summary,
     booking_id: input.bookingId,
     payment_method: input.paymentMethod,
-    price: price ?? input.summary.price,
+    price: price ?? 0,
     currency: "ARS",
     created_at: new Date().toISOString(),
     source: "booking_created",
   });
 
-  await trackBookingCreatedConversion({
-    bookingId: input.bookingId,
-    value: price,
-    email: input.customerEmail,
-    phone: input.customerPhone,
-  });
+  try {
+    await trackBookingCreatedConversion({
+      bookingId: input.bookingId,
+      value: price,
+      email: input.customerEmail,
+      phone: input.customerPhone,
+    });
+  } catch {
+    // Never block navigation if conversion tracking throws.
+  }
 
   if (input.checkoutUrl) {
     window.location.assign(input.checkoutUrl);

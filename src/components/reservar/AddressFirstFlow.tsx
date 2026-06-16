@@ -24,7 +24,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import type { BookingAttribution } from "@/lib/attribution";
-import { completeWebsiteBookingSuccess, trackGoogleAdsEvent } from "@/lib/google-ads";
+import {
+  completeWebsiteBookingSuccess,
+  getCreateWebsiteBookingId,
+  parseCreateWebsiteBookingResponse,
+  trackGoogleAdsEvent,
+} from "@/lib/google-ads";
 import {
   COVERAGE_COPY,
   INITIAL_FORM,
@@ -665,18 +670,10 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
     }
 
     const { data, error } = await supabase.functions.invoke("create-website-booking", { body: payload });
-    type Resp = {
-      ok: boolean;
-      status?: string;
-      customer_message?: string;
-      checkout_url?: string | null;
-      summary?: Record<string, unknown>;
-      booking_status?: string;
-      booking_id?: string;
-    };
-    const res = (data ?? null) as Resp | null;
+    const res = parseCreateWebsiteBookingResponse(data);
+    const bookingId = getCreateWebsiteBookingId(res);
 
-    if (error || !res?.ok) {
+    if (!bookingId) {
       setSubmitting(false);
       const status = res?.status ?? "";
       const friendly =
@@ -709,24 +706,17 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
       return;
     }
 
-    const bookingId = res.booking_id;
-    if (!bookingId) {
-      setSubmitting(false);
-      toast.error("No pudimos confirmar la reserva. Probá nuevamente o escribinos por WhatsApp.");
-      return;
-    }
-
     setSubmitting(false);
     await completeWebsiteBookingSuccess({
       bookingId,
       summary: {
-        ...(res.summary ?? {}),
-        booking_status: res.booking_status ?? "pending",
+        ...(res?.summary ?? {}),
+        booking_status: res?.booking_status ?? "pending",
       },
       paymentMethod: String(payload.payment_method),
       customerEmail: form.customer_email.trim() || null,
       customerPhone: form.customer_phone.trim(),
-      checkoutUrl: res.checkout_url ?? null,
+      checkoutUrl: res?.checkout_url ?? null,
       navigate: (opts) => navigate(opts),
     });
   }
