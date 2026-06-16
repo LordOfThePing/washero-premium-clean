@@ -222,6 +222,9 @@ export type Database = {
           private_neighborhood_name: string | null
           qr_code_slug: string | null
           referrer_url: string | null
+          gclid: string | null
+          gbraid: string | null
+          wbraid: string | null
           scheduled_date: string
           scheduled_time: string
           selected_extras: Json
@@ -275,6 +278,9 @@ export type Database = {
           private_neighborhood_name?: string | null
           qr_code_slug?: string | null
           referrer_url?: string | null
+          gclid?: string | null
+          gbraid?: string | null
+          wbraid?: string | null
           scheduled_date: string
           scheduled_time: string
           selected_extras?: Json
@@ -328,6 +334,9 @@ export type Database = {
           private_neighborhood_name?: string | null
           qr_code_slug?: string | null
           referrer_url?: string | null
+          gclid?: string | null
+          gbraid?: string | null
+          wbraid?: string | null
           scheduled_date?: string
           scheduled_time?: string
           selected_extras?: Json

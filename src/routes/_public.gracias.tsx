@@ -1,14 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { CheckCircle2, MessageCircle, Home, Clock, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { trackGoogleAdsEvent, trackPaymentSuccessConversion } from "@/lib/google-ads";
 
 const WHATSAPP_URL = "https://wa.me/5491176247835";
 
 type LastBooking = {
+  booking_id?: string;
   service_name: string;
   scheduled_date: string;
   scheduled_time: string;
@@ -107,6 +109,7 @@ function resolvePageCopy(payment: PaymentState, last: LastBooking | null) {
 function GraciasPage() {
   const { payment } = Route.useSearch();
   const [last, setLast] = useState<LastBooking | null>(null);
+  const paymentConversionTracked = useRef(false);
 
   useEffect(() => {
     try {
@@ -116,6 +119,33 @@ function GraciasPage() {
       // ignore
     }
   }, []);
+
+  useEffect(() => {
+    trackGoogleAdsEvent("booking_thank_you_view", {
+      payment_state: payment ?? "none",
+    });
+  }, [payment]);
+
+  useEffect(() => {
+    if (payment !== "success" || paymentConversionTracked.current) return;
+    paymentConversionTracked.current = true;
+
+    void (async () => {
+      try {
+        const raw = sessionStorage.getItem("washero:last-booking");
+        const parsed = raw ? (JSON.parse(raw) as LastBooking) : last;
+        const bookingId = parsed?.booking_id;
+        if (!bookingId) return;
+
+        await trackPaymentSuccessConversion({
+          bookingId,
+          value: parsed?.price,
+        });
+      } catch {
+        // ignore
+      }
+    })();
+  }, [payment, last]);
 
   const needsReview = last?.booking_status === "needs_review";
   const copy = resolvePageCopy(payment ?? null, last);

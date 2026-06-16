@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-router";
 
 import appCss from "../styles.css?url";
+import { GoogleAdsTracker } from "@/components/GoogleAdsTracker";
 import { Toaster } from "@/components/ui/sonner";
 
 const WA_URL = "https://wa.me/5491176247835";
@@ -128,6 +129,7 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <GoogleAdsTracker />
       <Outlet />
       <Toaster richColors position="top-center" />
     </QueryClientProvider>

@@ -7,6 +7,9 @@ export type AttributionSearchInput = {
   utm_content?: string;
   utm_term?: string;
   qr?: string;
+  gclid?: string;
+  gbraid?: string;
+  wbraid?: string;
 };
 
 export type BookingAttribution = {
@@ -18,6 +21,10 @@ export type BookingAttribution = {
   qr_code_slug: string | null;
   landing_url: string | null;
   referrer_url: string | null;
+  gclid: string | null;
+  gbraid: string | null;
+  wbraid: string | null;
+  captured_at: number | null;
 };
 
 type StoredAttribution = {
@@ -37,6 +44,10 @@ const EMPTY_ATTRIBUTION: BookingAttribution = {
   qr_code_slug: null,
   landing_url: null,
   referrer_url: null,
+  gclid: null,
+  gbraid: null,
+  wbraid: null,
+  captured_at: null,
 };
 
 function clean(value: unknown) {
@@ -51,11 +62,15 @@ function hasAnyAttribution(data: BookingAttribution) {
     data.marketing_campaign ||
     data.marketing_content ||
     data.marketing_term ||
-    data.qr_code_slug
+    data.qr_code_slug ||
+    data.gclid ||
+    data.gbraid ||
+    data.wbraid
   );
 }
 
 function readStoredAttribution(now = Date.now()): BookingAttribution | null {
+  if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
@@ -65,13 +80,17 @@ function readStoredAttribution(now = Date.now()): BookingAttribution | null {
       window.localStorage.removeItem(STORAGE_KEY);
       return null;
     }
-    return parsed.data;
+    return {
+      ...EMPTY_ATTRIBUTION,
+      ...parsed.data,
+    };
   } catch {
     return null;
   }
 }
 
 function saveAttribution(data: BookingAttribution, now = Date.now()) {
+  if (typeof window === "undefined") return;
   try {
     const payload: StoredAttribution = {
       data,
@@ -83,19 +102,88 @@ function saveAttribution(data: BookingAttribution, now = Date.now()) {
   }
 }
 
-function fromSearch(search: AttributionSearchInput): BookingAttribution {
-  const data: BookingAttribution = {
+function fromSearchInput(search: AttributionSearchInput): BookingAttribution {
+  return {
     marketing_source: clean(search.utm_source),
     marketing_medium: clean(search.utm_medium),
     marketing_campaign: clean(search.utm_campaign),
     marketing_content: clean(search.utm_content),
     marketing_term: clean(search.utm_term),
     qr_code_slug: clean(search.qr),
+    gclid: clean(search.gclid),
+    gbraid: clean(search.gbraid),
+    wbraid: clean(search.wbraid),
     landing_url: typeof window !== "undefined" ? window.location.href : null,
     referrer_url:
       typeof document !== "undefined" && document.referrer ? document.referrer : null,
+    captured_at: Date.now(),
   };
-  return data;
+}
+
+function fromUrlSearchParams(params: URLSearchParams): BookingAttribution {
+  return fromSearchInput({
+    utm_source: params.get("utm_source") ?? undefined,
+    utm_medium: params.get("utm_medium") ?? undefined,
+    utm_campaign: params.get("utm_campaign") ?? undefined,
+    utm_content: params.get("utm_content") ?? undefined,
+    utm_term: params.get("utm_term") ?? undefined,
+    qr: params.get("qr") ?? undefined,
+    gclid: params.get("gclid") ?? undefined,
+    gbraid: params.get("gbraid") ?? undefined,
+    wbraid: params.get("wbraid") ?? undefined,
+  });
+}
+
+function mergeAttribution(
+  stored: BookingAttribution | null,
+  fromUrl: BookingAttribution,
+  now: number,
+): BookingAttribution {
+  const base = stored ?? EMPTY_ATTRIBUTION;
+  const urlHasParams = hasAnyAttribution(fromUrl);
+
+  return {
+    marketing_source: fromUrl.marketing_source ?? base.marketing_source,
+    marketing_medium: fromUrl.marketing_medium ?? base.marketing_medium,
+    marketing_campaign: fromUrl.marketing_campaign ?? base.marketing_campaign,
+    marketing_content: fromUrl.marketing_content ?? base.marketing_content,
+    marketing_term: fromUrl.marketing_term ?? base.marketing_term,
+    qr_code_slug: fromUrl.qr_code_slug ?? base.qr_code_slug,
+    gclid: fromUrl.gclid ?? base.gclid,
+    gbraid: fromUrl.gbraid ?? base.gbraid,
+    wbraid: fromUrl.wbraid ?? base.wbraid,
+    landing_url: urlHasParams ? (fromUrl.landing_url ?? base.landing_url) : base.landing_url,
+    referrer_url: urlHasParams ? (fromUrl.referrer_url ?? base.referrer_url) : base.referrer_url,
+    captured_at: base.captured_at ?? (urlHasParams ? now : null),
+  };
+}
+
+/** Read persisted attribution (client-only). */
+export function getBookingAttribution(): BookingAttribution {
+  if (typeof window === "undefined") return EMPTY_ATTRIBUTION;
+  return readStoredAttribution() ?? EMPTY_ATTRIBUTION;
+}
+
+/**
+ * Capture attribution from the current URL on any page. URL params override
+ * stored values when present; first-touch landing/referrer are preserved unless
+ * a new attributed landing occurs.
+ */
+export function syncAttributionFromWindow(now = Date.now()): BookingAttribution {
+  if (typeof window === "undefined") return EMPTY_ATTRIBUTION;
+
+  const fromUrl = fromUrlSearchParams(new URLSearchParams(window.location.search));
+  const stored = readStoredAttribution(now);
+
+  if (hasAnyAttribution(fromUrl)) {
+    const merged = mergeAttribution(stored, fromUrl, now);
+    if (!merged.captured_at) merged.captured_at = now;
+    saveAttribution(merged, now);
+    return merged;
+  }
+
+  if (stored) return stored;
+  return EMPTY_ATTRIBUTION;
 }
 
 export function useBookingAttribution(search: AttributionSearchInput): BookingAttribution {
@@ -108,6 +196,9 @@ export function useBookingAttribution(search: AttributionSearchInput): BookingAt
         search.utm_content,
         search.utm_term,
         search.qr,
+        search.gclid,
+        search.gbraid,
+        search.wbraid,
       ].join("|"),
     [search],
   );
@@ -116,14 +207,18 @@ export function useBookingAttribution(search: AttributionSearchInput): BookingAt
   useEffect(() => {
     if (typeof window === "undefined") return;
     const now = Date.now();
-    const fromUrl = fromSearch(search);
+    const fromUrl = fromSearchInput(search);
+    const stored = readStoredAttribution(now);
+
     if (hasAnyAttribution(fromUrl)) {
-      saveAttribution(fromUrl, now);
-      setAttribution(fromUrl);
+      const merged = mergeAttribution(stored, fromUrl, now);
+      if (!merged.captured_at) merged.captured_at = now;
+      saveAttribution(merged, now);
+      setAttribution(merged);
       return;
     }
-    const stored = readStoredAttribution(now);
-    setAttribution(stored ?? EMPTY_ATTRIBUTION);
+
+    setAttribution(stored ?? syncAttributionFromWindow(now));
   }, [key, search]);
 
   return attribution;

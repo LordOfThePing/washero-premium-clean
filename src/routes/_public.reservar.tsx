@@ -19,6 +19,9 @@ const searchSchema = z.object({
   utm_content: z.string().optional(),
   utm_term: z.string().optional(),
   qr: z.string().optional(),
+  gclid: z.string().optional(),
+  gbraid: z.string().optional(),
+  wbraid: z.string().optional(),
 });
 
 if (import.meta.env.DEV) {

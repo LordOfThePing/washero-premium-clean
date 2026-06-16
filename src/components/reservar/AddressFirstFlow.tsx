@@ -24,6 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import type { BookingAttribution } from "@/lib/attribution";
+import { completeWebsiteBookingSuccess, trackGoogleAdsEvent } from "@/lib/google-ads";
 import {
   COVERAGE_COPY,
   INITIAL_FORM,
@@ -114,6 +115,14 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
       return haystack.includes(needle);
     });
   }, [privateNeighborhoods.data, privateNeighborhoodSearch]);
+
+  useEffect(() => {
+    trackGoogleAdsEvent("booking_step_view", {
+      step_index: step,
+      step_name: STEPS[step] ?? `step_${step}`,
+      flow: "address_first",
+    });
+  }, [step]);
 
   const selectedVehicle = useMemo(
     () => (pricing.data ?? []).find((p) => p.type === "vehicle_surcharge" && p.code === form.vehicle_code),
@@ -506,6 +515,12 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
       slot_id: slot.slot_id,
       reason: slot.reason,
     });
+    trackGoogleAdsEvent("booking_date_selected", { date: slot.date, flow: "address_first" });
+    trackGoogleAdsEvent("booking_time_selected", {
+      date: slot.date,
+      time: slot.start_time,
+      flow: "address_first",
+    });
   }
 
   function goToServiceStep() {
@@ -517,6 +532,10 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
       toast.error("Ingresá el lote o casa dentro del barrio.");
       return;
     }
+    trackGoogleAdsEvent("booking_address_completed", {
+      address_mode: form.address_mode,
+      flow: "address_first",
+    });
     setStep(1);
   }
 
@@ -533,6 +552,10 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
       toast.error("Elegí el tamaño del segundo auto.");
       return;
     }
+    trackGoogleAdsEvent("booking_service_selected", {
+      service_id: form.service_id,
+      flow: "address_first",
+    });
     setPick(null);
     setStep(2);
   }
@@ -626,6 +649,9 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
       qr_code_slug: attribution?.qr_code_slug ?? null,
       landing_url: attribution?.landing_url ?? null,
       referrer_url: attribution?.referrer_url ?? null,
+      gclid: attribution?.gclid ?? null,
+      gbraid: attribution?.gbraid ?? null,
+      wbraid: attribution?.wbraid ?? null,
     };
 
     if (form.address_mode === "private_neighborhood" && selectedPrivateNeighborhood) {
@@ -646,6 +672,7 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
       checkout_url?: string | null;
       summary?: Record<string, unknown>;
       booking_status?: string;
+      booking_id?: string;
     };
     const res = (data ?? null) as Resp | null;
 
@@ -682,20 +709,26 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
       return;
     }
 
-    try {
-      sessionStorage.setItem(
-        "washero:last-booking",
-        JSON.stringify({ ...(res.summary ?? {}), payment_method: payload.payment_method }),
-      );
-    } catch {
-      /* ignore */
-    }
-
-    if (res.checkout_url) {
-      window.location.assign(res.checkout_url);
+    const bookingId = res.booking_id;
+    if (!bookingId) {
+      setSubmitting(false);
+      toast.error("No pudimos confirmar la reserva. Probá nuevamente o escribinos por WhatsApp.");
       return;
     }
-    navigate({ to: "/gracias" });
+
+    setSubmitting(false);
+    await completeWebsiteBookingSuccess({
+      bookingId,
+      summary: {
+        ...(res.summary ?? {}),
+        booking_status: res.booking_status ?? "pending",
+      },
+      paymentMethod: String(payload.payment_method),
+      customerEmail: form.customer_email.trim() || null,
+      customerPhone: form.customer_phone.trim(),
+      checkoutUrl: res.checkout_url ?? null,
+      navigate: (opts) => navigate(opts),
+    });
   }
 
   return (

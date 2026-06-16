@@ -55,6 +55,9 @@ export type CoreBookingInput = {
   qr_code_slug?: string | null;
   landing_url?: string | null;
   referrer_url?: string | null;
+  gclid?: string | null;
+  gbraid?: string | null;
+  wbraid?: string | null;
   /** Admin / approval paths only — must match bookings check constraints */
   requested_booking_status?: string;
   requested_payment_status?: string;
@@ -729,6 +732,9 @@ export async function tryCreateBooking(
   const qr_code_slug = input.qr_code_slug ? String(input.qr_code_slug).trim() : null;
   const landing_url = input.landing_url ? String(input.landing_url).trim() : null;
   const referrer_url = input.referrer_url ? String(input.referrer_url).trim() : null;
+  const gclid = input.gclid ? String(input.gclid).trim() : null;
+  const gbraid = input.gbraid ? String(input.gbraid).trim() : null;
+  const wbraid = input.wbraid ? String(input.wbraid).trim() : null;
 
   const address_type = input.address_type === "private_neighborhood"
     ? "private_neighborhood"
@@ -1131,6 +1137,9 @@ export async function tryCreateBooking(
     qr_code_slug,
     landing_url,
     referrer_url,
+    gclid,
+    gbraid,
+    wbraid,
   }).select("id,booking_status,price").maybeSingle();
 
   if (insErr || !created) {

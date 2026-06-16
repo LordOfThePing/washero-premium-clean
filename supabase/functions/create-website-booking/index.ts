@@ -58,6 +58,9 @@ type Payload = {
   qr_code_slug?: string | null;
   landing_url?: string | null;
   referrer_url?: string | null;
+  gclid?: string | null;
+  gbraid?: string | null;
+  wbraid?: string | null;
 };
 
 const PUBLIC_MIN_LEAD_MINUTES = 120;
@@ -164,6 +167,9 @@ Deno.serve(async (req) => {
       qr_code_slug: body.qr_code_slug ?? null,
       landing_url: body.landing_url ?? null,
       referrer_url: body.referrer_url ?? null,
+      gclid: body.gclid ?? null,
+      gbraid: body.gbraid ?? null,
+      wbraid: body.wbraid ?? null,
       booking_units: Array.isArray(body.booking_units)
         ? body.booking_units.map((unit) => ({
           vehicle_type: unit.vehicle_type ?? "",

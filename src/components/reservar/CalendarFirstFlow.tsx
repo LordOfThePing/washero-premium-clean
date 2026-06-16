@@ -15,6 +15,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { PlacesAutocomplete, type PlaceSelection } from "@/components/PlacesAutocomplete";
 import { cn } from "@/lib/utils";
 import type { BookingAttribution } from "@/lib/attribution";
+import { completeWebsiteBookingSuccess, trackGoogleAdsEvent } from "@/lib/google-ads";
 import {
   COVERAGE_COPY,
   INITIAL_FORM,
@@ -74,8 +75,26 @@ export function CalendarFirstFlow({ attribution }: { attribution?: BookingAttrib
 
   const slotsForSelected = selectedDate ? (slotsByDate.get(selectedDate) ?? []) : [];
 
-  function openDay(iso: string) { setSelectedDate(iso); setSelectedTime(null); setTimeSheetOpen(true); }
-  function pickTime(time: string) { setSelectedTime(time); setTimeSheetOpen(false); setBookingOpen(true); }
+  function openDay(iso: string) {
+    setSelectedDate(iso);
+    setSelectedTime(null);
+    setTimeSheetOpen(true);
+    trackGoogleAdsEvent("booking_date_selected", { date: iso, flow: "calendar_first" });
+  }
+  function pickTime(time: string) {
+    setSelectedTime(time);
+    setTimeSheetOpen(false);
+    setBookingOpen(true);
+    trackGoogleAdsEvent("booking_time_selected", {
+      date: selectedDate ?? "",
+      time,
+      flow: "calendar_first",
+    });
+    trackGoogleAdsEvent("booking_step_view", {
+      step_name: "Datos y pago",
+      flow: "calendar_first",
+    });
+  }
   function backToTimes() { setBookingOpen(false); setTimeSheetOpen(true); }
 
   return (
@@ -149,10 +168,17 @@ export function CalendarFirstFlow({ attribution }: { attribution?: BookingAttrib
               attribution={attribution}
               onBack={backToTimes}
               onClose={() => setBookingOpen(false)}
-              onSuccess={(checkoutUrl, summary) => {
-                try { sessionStorage.setItem("washero:last-booking", JSON.stringify(summary)); } catch {}
-                if (checkoutUrl) { window.location.assign(checkoutUrl); return; }
-                navigate({ to: "/gracias" });
+              onSuccess={async (checkoutUrl, summary, bookingId, contact) => {
+                if (!bookingId) return;
+                await completeWebsiteBookingSuccess({
+                  bookingId,
+                  summary,
+                  paymentMethod: String(summary.payment_method ?? ""),
+                  customerEmail: contact.email,
+                  customerPhone: contact.phone,
+                  checkoutUrl,
+                  navigate: (opts) => navigate(opts),
+                });
               }}
             />
           )}
@@ -260,7 +286,12 @@ function BookingForm({
   attribution?: BookingAttribution;
   onBack: () => void;
   onClose: () => void;
-  onSuccess: (checkoutUrl: string | null, summary: any) => void;
+  onSuccess: (
+    checkoutUrl: string | null,
+    summary: Record<string, unknown>,
+    bookingId: string,
+    contact: { email: string | null; phone: string },
+  ) => void | Promise<void>;
 }) {
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -268,8 +299,14 @@ function BookingForm({
   const [place, setPlace] = useState<PlaceSelection | null>(null);
   const [coverage, setCoverage] = useState<CoverageState>({ kind: "idle" });
 
-  // Suppress unused onClose warning while keeping the prop API stable
   void onClose;
+
+  useEffect(() => {
+    trackGoogleAdsEvent("booking_step_view", {
+      step_name: "Datos y pago",
+      flow: "calendar_first",
+    });
+  }, []);
 
   // Split pricing
   const vehicles = useMemo(
@@ -399,10 +436,21 @@ function BookingForm({
       qr_code_slug: attribution?.qr_code_slug ?? null,
       landing_url: attribution?.landing_url ?? null,
       referrer_url: attribution?.referrer_url ?? null,
+      gclid: attribution?.gclid ?? null,
+      gbraid: attribution?.gbraid ?? null,
+      wbraid: attribution?.wbraid ?? null,
     };
 
     const { data, error } = await supabase.functions.invoke("create-website-booking", { body: payload });
-    type Resp = { ok: boolean; status?: string; customer_message?: string; checkout_url?: string | null; summary?: any; booking_status?: string };
+    type Resp = {
+      ok: boolean;
+      status?: string;
+      customer_message?: string;
+      checkout_url?: string | null;
+      summary?: Record<string, unknown>;
+      booking_status?: string;
+      booking_id?: string;
+    };
     const res = (data ?? null) as Resp | null;
 
     if (error || !res?.ok) {
@@ -421,10 +469,30 @@ function BookingForm({
       return;
     }
 
-    onSuccess(res.checkout_url ?? null, {
+    if (!res.booking_id) {
+      setSubmitting(false);
+      toast.error("No pudimos confirmar la reserva. Probá nuevamente o escribinos por WhatsApp.");
+      return;
+    }
+
+    if (form.service_id) {
+      trackGoogleAdsEvent("booking_service_selected", {
+        service_id: form.service_id,
+        flow: "calendar_first",
+      });
+    }
+    if (place && coverage.kind === "ok") {
+      trackGoogleAdsEvent("booking_address_completed", { flow: "calendar_first" });
+    }
+
+    setSubmitting(false);
+    await onSuccess(res.checkout_url ?? null, {
       ...(res.summary ?? {}),
       payment_method: payload.payment_method,
       booking_status: res.booking_status ?? "pending",
+    }, res.booking_id, {
+      email: form.customer_email.trim() || null,
+      phone: form.customer_phone.trim(),
     });
   }
 
