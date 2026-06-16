@@ -5,7 +5,11 @@ import { CheckCircle2, MessageCircle, Home, Clock, AlertTriangle } from "lucide-
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { trackGoogleAdsEvent, trackPaymentSuccessConversion } from "@/lib/google-ads";
+import {
+  trackBookingCreatedConversion,
+  trackGoogleAdsEvent,
+  trackPaymentSuccessConversion,
+} from "@/lib/google-ads";
 
 const WHATSAPP_URL = "https://wa.me/5491176247835";
 
@@ -109,6 +113,7 @@ function resolvePageCopy(payment: PaymentState, last: LastBooking | null) {
 function GraciasPage() {
   const { payment } = Route.useSearch();
   const [last, setLast] = useState<LastBooking | null>(null);
+  const bookingConversionAttempted = useRef(false);
   const paymentConversionTracked = useRef(false);
 
   useEffect(() => {
@@ -118,6 +123,28 @@ function GraciasPage() {
     } catch {
       // ignore
     }
+  }, []);
+
+  useEffect(() => {
+    if (bookingConversionAttempted.current) return;
+    bookingConversionAttempted.current = true;
+
+    void (async () => {
+      try {
+        const raw = sessionStorage.getItem("washero:last-booking");
+        if (!raw) return;
+        const parsed = JSON.parse(raw) as LastBooking;
+        const bookingId = parsed?.booking_id;
+        if (!bookingId) return;
+
+        await trackBookingCreatedConversion({
+          bookingId,
+          value: parsed.price,
+        });
+      } catch {
+        // ignore
+      }
+    })();
   }, []);
 
   useEffect(() => {

@@ -175,15 +175,14 @@ function fireConversion(input: {
   return initGoogleAds().then(
     () =>
       new Promise((resolve) => {
-        let settled = false;
-        const finish = () => {
-          if (settled) return;
-          settled = true;
-          markConversionFired(input.dedupeKind, input.transactionId);
+        let resolved = false;
+        const resolveOnce = () => {
+          if (resolved) return;
+          resolved = true;
           resolve();
         };
 
-        const timer = window.setTimeout(finish, GTAG_REDIRECT_TIMEOUT_MS);
+        const timer = window.setTimeout(resolveOnce, GTAG_REDIRECT_TIMEOUT_MS);
 
         const conversionParams: Record<string, unknown> = {
           send_to: input.sendTo,
@@ -191,7 +190,8 @@ function fireConversion(input: {
           transaction_id: input.transactionId,
           event_callback: () => {
             window.clearTimeout(timer);
-            finish();
+            markConversionFired(input.dedupeKind, input.transactionId);
+            resolveOnce();
           },
         };
         if (typeof input.value === "number" && Number.isFinite(input.value) && input.value > 0) {
@@ -209,8 +209,31 @@ export async function trackBookingCreatedConversion(input: {
   email?: string | null;
   phone?: string | null;
 }) {
-  if (!isBookingConversionConfigured() || !input.bookingId) return;
-  if (hasFiredConversion("booking", input.bookingId)) return;
+  const sendTo = `${GOOGLE_ADS_ID}/${BOOKING_CONVERSION_LABEL}`;
+
+  if (import.meta.env.DEV) {
+    if (!isBookingConversionConfigured()) {
+      console.debug("[google-ads] booking conversion skipped: missing env vars");
+      return;
+    }
+    if (!input.bookingId) {
+      console.debug("[google-ads] booking conversion skipped: missing booking_id");
+      return;
+    }
+    if (hasFiredConversion("booking", input.bookingId)) {
+      console.debug("[google-ads] booking conversion skipped: already confirmed", {
+        bookingId: input.bookingId,
+      });
+      return;
+    }
+    console.debug("[google-ads] booking conversion attempt", {
+      send_to: sendTo,
+      bookingId: input.bookingId,
+    });
+  } else {
+    if (!isBookingConversionConfigured() || !input.bookingId) return;
+    if (hasFiredConversion("booking", input.bookingId)) return;
+  }
 
   setEnhancedConversionUserData({
     email: input.email,
@@ -224,7 +247,7 @@ export async function trackBookingCreatedConversion(input: {
   });
 
   await fireConversion({
-    sendTo: `${GOOGLE_ADS_ID}/${BOOKING_CONVERSION_LABEL}`,
+    sendTo,
     value: input.value,
     transactionId: input.bookingId,
     dedupeKind: "booking",
