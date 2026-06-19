@@ -62,3 +62,6 @@ verify_jwt = true
 
 [functions.get-payment-receipt-signed-url]
 verify_jwt = true
+
+[functions.washi-agent]
+verify_jwt = false
