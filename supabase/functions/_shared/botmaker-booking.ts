@@ -202,7 +202,8 @@ function normalizeDate(v: string | null): string | null {
 export function parseSummary(text: string) {
   const customer_name = getField(text, "Nombre completo") ?? getField(text, "Nombre");
   const address = getField(text, "Dirección") ?? getField(text, "Direccion");
-  const neighborhood = getField(text, "Zona");
+  // Fallback for the old Botmaker flow, which may emit "Zona/localidad:" instead of "Zona:".
+  const neighborhood = getField(text, "Zona") ?? getField(text, "Zona\\s*/\\s*localidad");
   const vehicle_type = normalizeVehicle(getField(text, "Vehículo") ?? getField(text, "Vehiculo"));
   const service_type = normalizeService(getField(text, "Servicio"));
   const preferred_date = normalizeDate(getField(text, "Día") ?? getField(text, "Dia"));

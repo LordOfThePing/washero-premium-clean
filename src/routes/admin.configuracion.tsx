@@ -988,7 +988,7 @@ function HealthTab() {
         scheduled_date: tomorrow,
         scheduled_time: "10:30",
         duration_minutes: 60,
-        price: 25000,
+        price: 35000,
         payment_method: "Pagar después",
         notes: tag,
       };
