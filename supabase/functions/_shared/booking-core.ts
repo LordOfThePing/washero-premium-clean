@@ -37,7 +37,7 @@ export type CoreBookingInput = {
   payment_method: string;
   notes?: string | null;
   selected_extras?: string[];
-  source: "website" | "botmaker" | "admin";
+  source: "website" | "botmaker" | "admin" | "whatsapp_agent";
   is_test?: boolean;
   // Optional location fields (Google Places)
   place_id?: string | null;
@@ -76,6 +76,11 @@ export type CoreBookingInput = {
   private_neighborhood_name?: string | null;
   private_lot?: string | null;
   private_extra_details?: string | null;
+  /**
+   * Optional caller-supplied dedup key (e.g. `whatsapp:{conversation_id}:{confirmation_message_id}`).
+   * A replay with the same key returns the original booking instead of creating a second one.
+   */
+  idempotency_key?: string | null;
 };
 
 export type CoreResult =
@@ -135,7 +140,13 @@ export type CoreResult =
     };
 
 function isDate(v: string) { return /^\d{4}-\d{2}-\d{2}$/.test(v); }
-function isTime(v: string) { return /^\d{2}:\d{2}(:\d{2})?$/.test(v); }
+function isTime(v: string) {
+  const m = /^(\d{2}):(\d{2})(?::\d{2})?$/.exec(v);
+  if (!m) return false;
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  return hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59;
+}
 function normTime(v: string) { return v.length === 5 ? `${v}:00` : v; }
 export function foldText(v: unknown) {
   return String(v ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -905,9 +916,6 @@ export async function tryCreateBooking(
     .maybeSingle();
   if (!slot) return { ok: false, reason: "slot_not_found", message: "Ese horario ya no está disponible.", http_status: 409 };
 
-  const reqStart = timeToMinutes(scheduled_time);
-  const reqEnd = reqStart + total_duration_minutes;
-
   const { data: daySlots } = await admin.from("availability_slots")
     .select("end_time")
     .eq("date", scheduled_date)
@@ -929,28 +937,9 @@ export async function tryCreateBooking(
     };
   }
 
-  const { data: sameDay } = await admin.from("bookings")
-    .select("scheduled_time,duration_minutes,booking_status")
-    .eq("scheduled_date", scheduled_date)
-    .neq("booking_status", "cancelled");
-  let overlapping = 0;
-  for (const b of (sameDay ?? []) as any[]) {
-    const bStart = timeToMinutes(b.scheduled_time);
-    const bEnd = bStart + (b.duration_minutes ?? 0);
-    if (bStart < reqEnd && bEnd > reqStart) overlapping++;
-  }
-  if (overlapping >= (slot as any).capacity) {
-    return { ok: false, reason: "slot_full", message: "Ese horario ya se completó.", http_status: 409 };
-  }
-
-  const { data: dup } = await admin.from("bookings").select("id")
-    .eq("customer_phone", customer_phone)
-    .eq("scheduled_date", scheduled_date)
-    .eq("scheduled_time", scheduled_time)
-    .neq("booking_status", "cancelled").limit(1);
-  if (dup && dup.length) {
-    return { ok: false, reason: "duplicate", message: "Ya existe una reserva en ese horario para este teléfono.", http_status: 409 };
-  }
+  // Capacity + duplicate-phone are re-verified authoritatively (under an advisory lock) inside
+  // create_booking_atomic() immediately before insert — see call below. No JS-side check here,
+  // since a check here would be racy and would just duplicate that logic in a second place.
 
   const unitSummaries = pricedUnits.map(buildUnitSummaryEntry);
   const price_breakdown: Record<string, unknown> = {
@@ -1069,7 +1058,7 @@ export async function tryCreateBooking(
   let booking_status: "pending" | "confirmed" | "needs_review" | "in_progress" | "completed" | "cancelled";
   if (input.source === "admin" && input.requested_booking_status && allowedStatuses.has(input.requested_booking_status)) {
     booking_status = input.requested_booking_status as typeof booking_status;
-  } else if (input.source === "botmaker") {
+  } else if (input.source === "botmaker" || input.source === "whatsapp_agent") {
     booking_status = "confirmed";
   } else {
     booking_status = inside_coverage ? "pending" : "needs_review";
@@ -1077,7 +1066,9 @@ export async function tryCreateBooking(
   if (input.source !== "admin" && pricedUnits.some((unit) => unit.vehicle_type === "Otro")) {
     booking_status = "needs_review";
   }
-  if (input.source === "botmaker" && !inside_coverage) booking_status = "needs_review";
+  if ((input.source === "botmaker" || input.source === "whatsapp_agent") && !inside_coverage) {
+    booking_status = "needs_review";
+  }
 
   let payment_status = "pending";
   if (input.requested_payment_status && allowedPaymentStatuses.has(input.requested_payment_status)) {
@@ -1091,7 +1082,7 @@ export async function tryCreateBooking(
     ? `validated_${effective_match_type}`
     : "outside_coverage_or_unverified";
 
-  const { data: created, error: insErr } = await admin.from("bookings").insert({
+  const bookingPayload = {
     customer_id,
     customer_name, customer_phone, customer_email,
     address, neighborhood, vehicle_type: primary.vehicle_type,
@@ -1140,15 +1131,9 @@ export async function tryCreateBooking(
     gclid,
     gbraid,
     wbraid,
-  }).select("id,booking_status,price").maybeSingle();
-
-  if (insErr || !created) {
-    console.error("[booking-core] insert failed", insErr);
-    return { ok: false, reason: "server_error", message: "No pudimos crear la reserva.", http_status: 500 };
-  }
+  };
 
   const bookingUnitRows = pricedUnits.map((unit) => ({
-    booking_id: created.id,
     unit_index: unit.unit_index,
     vehicle_type: unit.vehicle_type,
     service_id: unit.service.id,
@@ -1164,15 +1149,39 @@ export async function tryCreateBooking(
     price_breakdown: unit.unit_price_breakdown,
   }));
 
-  const { error: unitsErr } = await admin.from("booking_units").insert(bookingUnitRows);
-  if (unitsErr) {
-    console.error("[booking-core] booking_units insert failed; rolling back booking", {
-      booking_id: created.id,
-      error: unitsErr,
-    });
-    await admin.from("bookings").delete().eq("id", created.id);
+  // Atomic, lock-protected capacity re-check + insert — see migration
+  // 20260722100000_booking_idempotency_and_atomic_insert.sql for why this can't be a plain
+  // check-then-insert from here.
+  const { data: rpcResult, error: rpcErr } = await admin.rpc("create_booking_atomic", {
+    p_booking: bookingPayload,
+    p_units: bookingUnitRows,
+    p_idempotency_key: input.idempotency_key ?? null,
+  });
+
+  if (rpcErr) {
+    console.error("[booking-core] create_booking_atomic rpc failed", rpcErr);
     return { ok: false, reason: "server_error", message: "No pudimos crear la reserva.", http_status: 500 };
   }
+
+  const result = rpcResult as
+    | { ok: true; already_existed: boolean; booking_id: string; booking_status: string; price: number }
+    | { ok: false; reason: string };
+
+  if (!result?.ok) {
+    const reason = (result as { reason?: string })?.reason ?? "server_error";
+    const messages: Record<string, { message: string; http_status: number }> = {
+      slot_not_found: { message: "Ese horario ya no está disponible.", http_status: 409 },
+      slot_full: { message: "Ese horario ya se completó.", http_status: 409 },
+      duplicate: { message: "Ya existe una reserva en ese horario para este teléfono.", http_status: 409 },
+      server_error: { message: "No pudimos crear la reserva.", http_status: 500 },
+    };
+    const mapped = messages[reason] ?? messages.server_error;
+    const knownReason = (reason in messages ? reason : "server_error") as
+      Extract<CoreResult, { ok: false }>["reason"];
+    return { ok: false, reason: knownReason, ...mapped };
+  }
+
+  const created = { id: result.booking_id, booking_status: result.booking_status, price: result.price };
 
   return {
     ok: true,

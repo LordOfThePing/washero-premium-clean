@@ -68,7 +68,7 @@ function slotStartUtcMsFromBuenosAires(dateIso: string, timeHHMM: string) {
   return Date.UTC(y, m - 1, d, hh + 3, mm, 0, 0);
 }
 
-function isSlotTooSoonForPublic(dateIso: string, timeHHMM: string, nowMs = Date.now()) {
+export function isSlotTooSoonForPublic(dateIso: string, timeHHMM: string, nowMs = Date.now()) {
   const slotMs = slotStartUtcMsFromBuenosAires(dateIso, timeHHMM);
   if (slotMs == null) return true;
   return slotMs < nowMs + PUBLIC_MIN_LEAD_MINUTES * 60_000;

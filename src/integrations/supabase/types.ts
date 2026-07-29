@@ -628,6 +628,189 @@ export type Database = {
           },
         ]
       }
+      whatsapp_agent_outbound_messages: {
+        Row: {
+          conversation_id: string
+          created_at: string
+          error: string | null
+          id: string
+          job_id: string
+          message_text: string
+          provider_message_id: string | null
+          sent_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          conversation_id: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          job_id: string
+          message_text: string
+          provider_message_id?: string | null
+          sent_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          conversation_id?: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          job_id?: string
+          message_text?: string
+          provider_message_id?: string | null
+          sent_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_agent_outbound_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_agent_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_agent_outbound_messages_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: true
+            referencedRelation: "whatsapp_agent_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_agent_jobs: {
+        Row: {
+          attempts: number
+          conversation_id: string
+          created_at: string
+          dry_run: boolean
+          external_message_id: string | null
+          id: string
+          last_error: string | null
+          lease_expires_at: string | null
+          lease_token: string | null
+          locked_at: string | null
+          message_text: string
+          source: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          conversation_id: string
+          created_at?: string
+          dry_run?: boolean
+          external_message_id?: string | null
+          id?: string
+          last_error?: string | null
+          lease_expires_at?: string | null
+          lease_token?: string | null
+          locked_at?: string | null
+          message_text: string
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          conversation_id?: string
+          created_at?: string
+          dry_run?: boolean
+          external_message_id?: string | null
+          id?: string
+          last_error?: string | null
+          lease_expires_at?: string | null
+          lease_token?: string | null
+          locked_at?: string | null
+          message_text?: string
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_agent_jobs_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_agent_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_agent_conversations: {
+        Row: {
+          booking_id: string | null
+          botmaker_conversation_id: string | null
+          created_at: string
+          customer_id: string | null
+          customer_name: string | null
+          customer_phone: string
+          draft: Json
+          id: string
+          is_test: boolean
+          last_activity_at: string
+          last_processed_external_message_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          booking_id?: string | null
+          botmaker_conversation_id?: string | null
+          created_at?: string
+          customer_id?: string | null
+          customer_name?: string | null
+          customer_phone: string
+          draft?: Json
+          id?: string
+          is_test?: boolean
+          last_activity_at?: string
+          last_processed_external_message_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          booking_id?: string | null
+          botmaker_conversation_id?: string | null
+          created_at?: string
+          customer_id?: string | null
+          customer_name?: string | null
+          customer_phone?: string
+          draft?: Json
+          id?: string
+          is_test?: boolean
+          last_activity_at?: string
+          last_processed_external_message_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_agent_conversations_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_agent_conversations_botmaker_conversation_id_fkey"
+            columns: ["botmaker_conversation_id"]
+            isOneToOne: false
+            referencedRelation: "botmaker_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_agent_conversations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversation_assignments: {
         Row: {
           assigned_to: string | null

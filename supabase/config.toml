@@ -65,3 +65,12 @@ verify_jwt = true
 
 [functions.washi-agent]
 verify_jwt = false
+
+[functions.whatsapp-agent-diagnostics]
+verify_jwt = true
+
+[functions.whatsapp-agent-worker]
+verify_jwt = false
+
+[functions.whatsapp-agent-manual-retry]
+verify_jwt = true

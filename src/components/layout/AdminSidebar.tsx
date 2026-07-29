@@ -1,12 +1,36 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  LayoutDashboard, CalendarDays, CalendarClock, ClipboardList, Users, Settings,
-  MessageSquare, CreditCard, UserCircle, Sparkles, Shield, Map as MapIcon,
-  TrendingUp, FileText, Tag, Bell, MessageCircle, Bot, Cog, ImageIcon,
+  LayoutDashboard,
+  CalendarDays,
+  CalendarClock,
+  ClipboardList,
+  Users,
+  Settings,
+  MessageSquare,
+  CreditCard,
+  UserCircle,
+  Sparkles,
+  Shield,
+  Map as MapIcon,
+  TrendingUp,
+  FileText,
+  Tag,
+  Bell,
+  MessageCircle,
+  Bot,
+  Cog,
+  ImageIcon,
 } from "lucide-react";
 import {
-  Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
-  SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { Logo } from "@/components/brand/Logo";
 import type { LucideIcon } from "lucide-react";
@@ -29,9 +53,7 @@ const crm: NavItem[] = [
   { title: "Leads Kipper", to: "/admin/leads-kipper", icon: Shield },
 ];
 
-const ops: NavItem[] = [
-  { title: "Mapa Demanda", to: "/admin/mapa-demanda", icon: MapIcon },
-];
+const ops: NavItem[] = [{ title: "Mapa Demanda", to: "/admin/mapa-demanda", icon: MapIcon }];
 
 const finance: NavItem[] = [
   { title: "Finanzas", to: "/admin/finanzas", icon: TrendingUp },
@@ -44,6 +66,7 @@ const config: NavItem[] = [
   { title: "Notificaciones", to: "/admin/notificaciones", icon: Bell },
   { title: "WhatsApp Config", to: "/admin/whatsapp-config", icon: MessageCircle },
   { title: "Botmaker", to: "/admin/botmaker", icon: Bot },
+  { title: "Agente WhatsApp", to: "/admin/agente-whatsapp", icon: Sparkles },
   { title: "App Config", to: "/admin/app-config", icon: Cog },
   { title: "Configuración", to: "/admin/configuracion", icon: Settings },
 ];
@@ -60,7 +83,7 @@ export function AdminSidebar() {
             ? pathname === item.to || pathname.startsWith("/admin/facturas/")
             : item.to === "/admin/comprobantes"
               ? pathname === item.to
-            : pathname === item.to;
+              : pathname === item.to;
       return (
         <SidebarMenuItem key={item.title + item.to}>
           <SidebarMenuButton asChild isActive={active}>
@@ -77,28 +100,40 @@ export function AdminSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <div className="px-2 py-2"><Logo /></div>
+        <div className="px-2 py-2">
+          <Logo />
+        </div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>Operación</SidebarGroupLabel>
-          <SidebarGroupContent><SidebarMenu>{renderItems(primary)}</SidebarMenu></SidebarGroupContent>
+          <SidebarGroupContent>
+            <SidebarMenu>{renderItems(primary)}</SidebarMenu>
+          </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup>
           <SidebarGroupLabel>CRM &amp; Ventas</SidebarGroupLabel>
-          <SidebarGroupContent><SidebarMenu>{renderItems(crm)}</SidebarMenu></SidebarGroupContent>
+          <SidebarGroupContent>
+            <SidebarMenu>{renderItems(crm)}</SidebarMenu>
+          </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup>
           <SidebarGroupLabel>Demanda</SidebarGroupLabel>
-          <SidebarGroupContent><SidebarMenu>{renderItems(ops)}</SidebarMenu></SidebarGroupContent>
+          <SidebarGroupContent>
+            <SidebarMenu>{renderItems(ops)}</SidebarMenu>
+          </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup>
           <SidebarGroupLabel>Finanzas</SidebarGroupLabel>
-          <SidebarGroupContent><SidebarMenu>{renderItems(finance)}</SidebarMenu></SidebarGroupContent>
+          <SidebarGroupContent>
+            <SidebarMenu>{renderItems(finance)}</SidebarMenu>
+          </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup>
           <SidebarGroupLabel>Configuración</SidebarGroupLabel>
-          <SidebarGroupContent><SidebarMenu>{renderItems(config)}</SidebarMenu></SidebarGroupContent>
+          <SidebarGroupContent>
+            <SidebarMenu>{renderItems(config)}</SidebarMenu>
+          </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
     </Sidebar>

@@ -22,6 +22,8 @@ import {
   extractInboundReceiptMedia,
 } from "../_shared/payment-receipts.ts";
 import { normalizeArgentinaWhatsAppPhone } from "../_shared/botmaker-outbound.ts";
+import { getAgentMode, isDryRunMode, isPhoneEligibleForAgent } from "../_shared/whatsapp-agent/agent-mode.ts";
+import { handleWhatsappAgentInbound, syncHumanTakeoverSignal } from "../_shared/whatsapp-agent/webhook-handler.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -157,11 +159,15 @@ Deno.serve(async (req) => {
       }
     }
 
+    const externalMessageId = pick(payload, ["messageId", "message.id", "id"]);
+    const agentMode = getAgentMode();
+    const agentEligible = isPhoneEligibleForAgent(phone, agentMode);
+
     if (convoRow && (messageText || inboundMedia)) {
       const messageType = inboundMedia?.messageType ?? "text";
       const { data: msgRow } = await supabase.from("botmaker_messages").insert({
         conversation_id: convoRow.id,
-        botmaker_message_id: pick(payload, ["messageId", "message.id", "id"]),
+        botmaker_message_id: externalMessageId,
         direction: senderType === "user" ? "inbound" : "outbound",
         sender_type: senderType,
         message_type: messageType,
@@ -241,7 +247,39 @@ Deno.serve(async (req) => {
       }
     }
 
-    if (convoRow && messageText && isConfirmation(messageText)) {
+    // Agent modes (shadow/canary/active — see agent-mode.ts): eligible phone numbers are routed
+    // to the new in-house Claude-based agent instead of the legacy Botmaker summary-regex flow
+    // below. Every other phone number (and every phone number when WHATSAPP_AGENT_MODE=disabled,
+    // the default) keeps the exact prior behavior.
+    if (convoRow && agentEligible && senderType === "user" && messageText) {
+      try {
+        await handleWhatsappAgentInbound(supabase, {
+          phone: phone!,
+          name,
+          messageText,
+          externalMessageId,
+          botmakerConversationId: String(convoRow.id),
+          isTest: !!payload?.is_test,
+          dryRun: isDryRunMode(agentMode),
+        });
+      } catch (e) {
+        console.error("[botmaker-webhook] whatsapp-agent handling failed", e);
+      }
+    }
+
+    // Independent of eligibility/mode: if a human operator replied from inside Botmaker's own
+    // UI (senderType "agent") for a phone the agent already has an open conversation for, pause
+    // the bot immediately. See webhook-handler.ts's syncHumanTakeoverSignal doc for why this is
+    // read-only w.r.t. conversation creation.
+    if (phone && senderType === "agent") {
+      try {
+        await syncHumanTakeoverSignal(supabase, phone);
+      } catch (e) {
+        console.error("[botmaker-webhook] whatsapp-agent takeover sync failed", e);
+      }
+    }
+
+    if (convoRow && !agentEligible && messageText && isConfirmation(messageText)) {
       const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
       const { data: msgs } = await supabase
         .from("botmaker_messages")

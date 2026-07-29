@@ -16,7 +16,10 @@ export type CoverageZone = {
 
 export type CoverageMatch = {
   zone: CoverageZone | null;
-  match_type: "polygon" | "alias" | "radius" | "none";
+  // "private_neighborhood" is never produced by matchZone() itself — booking-core.ts constructs
+  // it directly for private-neighborhood address bookings, which resolve coverage from the
+  // private_neighborhoods table instead of matching against a zone polygon/alias/radius.
+  match_type: "polygon" | "alias" | "radius" | "none" | "private_neighborhood";
   distance_km: number | null;
 };
 

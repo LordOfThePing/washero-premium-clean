@@ -40,6 +40,7 @@ import { Route as AdminClientesRouteImport } from './routes/admin.clientes'
 import { Route as AdminCalendarioRouteImport } from './routes/admin.calendario'
 import { Route as AdminBotmakerRouteImport } from './routes/admin.botmaker'
 import { Route as AdminAppConfigRouteImport } from './routes/admin.app-config'
+import { Route as AdminAgenteWhatsappRouteImport } from './routes/admin.agente-whatsapp'
 import { Route as PublicReservarRouteImport } from './routes/_public.reservar'
 import { Route as PublicGraciasRouteImport } from './routes/_public.gracias'
 import { Route as OperatorReservaBookingIdRouteImport } from './routes/operator.reserva.$bookingId'
@@ -201,6 +202,11 @@ const AdminAppConfigRoute = AdminAppConfigRouteImport.update({
   path: '/app-config',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminAgenteWhatsappRoute = AdminAgenteWhatsappRouteImport.update({
+  id: '/agente-whatsapp',
+  path: '/agente-whatsapp',
+  getParentRoute: () => AdminRoute,
+} as any)
 const PublicReservarRoute = PublicReservarRouteImport.update({
   id: '/reservar',
   path: '/reservar',
@@ -240,6 +246,7 @@ export interface FileRoutesByFullPath {
   '/operator': typeof OperatorRouteWithChildren
   '/gracias': typeof PublicGraciasRoute
   '/reservar': typeof PublicReservarRoute
+  '/admin/agente-whatsapp': typeof AdminAgenteWhatsappRoute
   '/admin/app-config': typeof AdminAppConfigRoute
   '/admin/botmaker': typeof AdminBotmakerRoute
   '/admin/calendario': typeof AdminCalendarioRoute
@@ -275,6 +282,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/gracias': typeof PublicGraciasRoute
   '/reservar': typeof PublicReservarRoute
+  '/admin/agente-whatsapp': typeof AdminAgenteWhatsappRoute
   '/admin/app-config': typeof AdminAppConfigRoute
   '/admin/botmaker': typeof AdminBotmakerRoute
   '/admin/calendario': typeof AdminCalendarioRoute
@@ -315,6 +323,7 @@ export interface FileRoutesById {
   '/operator': typeof OperatorRouteWithChildren
   '/_public/gracias': typeof PublicGraciasRoute
   '/_public/reservar': typeof PublicReservarRoute
+  '/admin/agente-whatsapp': typeof AdminAgenteWhatsappRoute
   '/admin/app-config': typeof AdminAppConfigRoute
   '/admin/botmaker': typeof AdminBotmakerRoute
   '/admin/calendario': typeof AdminCalendarioRoute
@@ -356,6 +365,7 @@ export interface FileRouteTypes {
     | '/operator'
     | '/gracias'
     | '/reservar'
+    | '/admin/agente-whatsapp'
     | '/admin/app-config'
     | '/admin/botmaker'
     | '/admin/calendario'
@@ -391,6 +401,7 @@ export interface FileRouteTypes {
   to:
     | '/gracias'
     | '/reservar'
+    | '/admin/agente-whatsapp'
     | '/admin/app-config'
     | '/admin/botmaker'
     | '/admin/calendario'
@@ -430,6 +441,7 @@ export interface FileRouteTypes {
     | '/operator'
     | '/_public/gracias'
     | '/_public/reservar'
+    | '/admin/agente-whatsapp'
     | '/admin/app-config'
     | '/admin/botmaker'
     | '/admin/calendario'
@@ -689,6 +701,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminAppConfigRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/agente-whatsapp': {
+      id: '/admin/agente-whatsapp'
+      path: '/agente-whatsapp'
+      fullPath: '/admin/agente-whatsapp'
+      preLoaderRoute: typeof AdminAgenteWhatsappRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/_public/reservar': {
       id: '/_public/reservar'
       path: '/reservar'
@@ -754,6 +773,7 @@ const PublicRouteWithChildren =
   PublicRoute._addFileChildren(PublicRouteChildren)
 
 interface AdminRouteChildren {
+  AdminAgenteWhatsappRoute: typeof AdminAgenteWhatsappRoute
   AdminAppConfigRoute: typeof AdminAppConfigRoute
   AdminBotmakerRoute: typeof AdminBotmakerRoute
   AdminCalendarioRoute: typeof AdminCalendarioRoute
@@ -778,6 +798,7 @@ interface AdminRouteChildren {
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
+  AdminAgenteWhatsappRoute: AdminAgenteWhatsappRoute,
   AdminAppConfigRoute: AdminAppConfigRoute,
   AdminBotmakerRoute: AdminBotmakerRoute,
   AdminCalendarioRoute: AdminCalendarioRoute,

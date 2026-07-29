@@ -1,0 +1,30 @@
+-- Lease ownership through outbound delivery (third-pass correctness fix).
+--
+-- PROBLEM: a job's lease could legitimately be reclaimed by a new worker while the OLD worker's
+-- Botmaker HTTP call was still in flight (a plain fetch has no way to be cancelled once the old
+-- worker's renewLease-based check has passed). Without a way to tell "am I still the legitimate
+-- writer of this specific outbound row", the old worker's eventual result could silently overwrite
+-- whatever the new worker (which reclaimed the job and ran its own attempt) already wrote.
+--
+-- FIX: whatsapp_agent_outbound_messages now carries its own lease_token, stamped when a worker
+-- transitions the row to 'sending' and checked again before the row's FINAL status is persisted
+-- (see outbound.ts's attemptSend). A worker whose job-level lease has since been reclaimed either
+-- (a) fails the immediate renewLease check done right before calling Botmaker — see the
+-- "immediate lease ownership check inside the outbound-send path" requirement — and never calls
+-- Botmaker at all, or (b), in the narrower race where it already passed that check and is
+-- mid-flight when reclaimed, has its final write silently rejected by the lease_token match in
+-- the WHERE clause instead of clobbering a newer worker's result.
+--
+-- This does not, and cannot, guarantee exactly-once delivery — a plain HTTP fetch can't be
+-- cancelled mid-flight, so an old worker's Botmaker call can still complete and actually send a
+-- message even after its write is rejected. The guarantee is narrower and honestly stated: an
+-- obsolete worker cannot INTENTIONALLY initiate delivery once it knows it lost the lease, and
+-- cannot overwrite a result a newer worker already recorded. See outbound.ts's module doc.
+--
+-- Safety: purely additive (one new nullable column). No existing row can violate anything. Safe
+-- against production data, safe to rerun.
+--
+-- ROLLBACK:
+--   alter table public.whatsapp_agent_outbound_messages drop column if exists lease_token;
+
+ALTER TABLE public.whatsapp_agent_outbound_messages ADD COLUMN lease_token uuid;
