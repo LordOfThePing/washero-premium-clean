@@ -226,15 +226,31 @@ async function loadServicesAndPricing(admin: SupabaseClient) {
   return { services: services ?? [], pricing_items };
 }
 
+/** Human-readable coverage sentence built from the ACTIVE coverage_zones rows.
+ *  The DB is the single source of truth; COVERAGE_COPY is only a fallback if the
+ *  table can't be read. Keeps Botmaker from carrying its own stale zone list. */
+export function buildCoverageCopy(zoneNames: string[]): string {
+  const names = zoneNames.map((n) => String(n ?? "").trim()).filter(Boolean);
+  if (!names.length) return COVERAGE_COPY;
+  const list = names.length === 1
+    ? names[0]
+    : `${names.slice(0, -1).join(", ")} y ${names[names.length - 1]}`;
+  return `Por ahora Washero trabaja en ${list}.`;
+}
+
 export async function actionGetBookingInitialData(
   admin: SupabaseClient,
 ): Promise<ToolActionResult> {
   const { services, pricing_items } = await loadServicesAndPricing(admin);
   const vehicles = pricing_items.filter((p) => p.type === "vehicle_surcharge");
   const extras = pricing_items.filter((p) => p.type === "extra");
+  const zones = await loadActiveZones(admin);
+  const coverage_zones = zones.map((z) => ({ id: z.id, name: z.name, display_order: z.display_order }));
   return {
     ok: true,
-    coverage_copy: COVERAGE_COPY,
+    coverage_copy: buildCoverageCopy(coverage_zones.map((z) => z.name)),
+    coverage_zones,
+    vehicle_types: VEHICLE_TYPES,
     min_lead_minutes: PUBLIC_MIN_LEAD_MINUTES,
     max_vehicle_count: MAX_WEBSITE_BOOKING_UNITS,
     second_unit_discount_rate: SECOND_UNIT_DISCOUNT_RATE,
@@ -603,6 +619,42 @@ function requireCustomerPhone(ctx: BotmakerToolsContext): string | null {
   return ctx.customerPhone;
 }
 
+/** Today (YYYY-MM-DD) in Argentina, so "upcoming" is never off-by-one against UTC. */
+export function todayInArgentina(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+/** Historic rows were written by several clients, so customer_phone exists in mixed shapes
+ *  (local 10-digit, 54xxxxxxxxxx, 549xxxxxxxxxx, +549xxxxxxxxxx). Look up all of them so a
+ *  customer always finds their own bookings regardless of which channel created them. */
+export function phoneLookupVariants(phone: string): string[] {
+  const raw = String(phone ?? "").trim();
+  const digits = raw.replace(/\D/g, "");
+  let local = digits;
+  if (local.startsWith("54")) local = local.slice(2);
+  if (local.startsWith("9")) local = local.slice(1);
+  const out = new Set<string>();
+  const add = (v: string) => {
+    if (v && v.replace(/\D/g, "").length >= 6) out.add(v);
+  };
+  add(raw);
+  add(digits);
+  if (local) {
+    add(local);
+    add(`9${local}`);
+    add(`54${local}`);
+    add(`549${local}`);
+    add(`+54${local}`);
+    add(`+549${local}`);
+  }
+  return [...out];
+}
+
 export async function actionGetCustomerBookings(
   admin: SupabaseClient,
   args: Record<string, unknown>,
@@ -613,15 +665,27 @@ export async function actionGetCustomerBookings(
     return { ok: false, error: "missing_phone", message: "No pudimos identificar tu WhatsApp." };
   }
   const limit = Math.min(20, Math.max(1, Number(args.limit) || 5));
-  const { data, error } = await admin
-    .from("bookings")
-    .select(BOOKING_SELECT)
-    .eq("customer_phone", phone)
-    .order("scheduled_date", { ascending: false })
-    .order("created_at", { ascending: false })
+  // Default view is what the bot needs to offer cancel/reschedule: future, still-live bookings.
+  const includeHistory = args.include_past === true || args.include_cancelled === true;
+  const variants = phoneLookupVariants(phone);
+
+  let q = admin.from("bookings").select(BOOKING_SELECT).in("customer_phone", variants);
+  if (!includeHistory) {
+    q = q
+      .gte("scheduled_date", todayInArgentina())
+      .not("booking_status", "in", "(cancelled,completed)");
+  }
+
+  const { data, error } = await q
+    .order("scheduled_date", { ascending: !includeHistory })
+    .order("scheduled_time", { ascending: !includeHistory })
     .limit(limit);
-  if (error) return { ok: false, error: "server_error" };
-  return { ok: true, bookings: data ?? [] };
+
+  if (error) {
+    console.error("[botmaker-tools] get_customer_bookings failed", error);
+    return { ok: false, error: "server_error" };
+  }
+  return { ok: true, bookings: data ?? [], scope: includeHistory ? "all" : "upcoming" };
 }
 
 async function createMercadoPagoCheckout(booking: {
