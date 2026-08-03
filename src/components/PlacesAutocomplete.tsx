@@ -3,165 +3,15 @@ import { Loader2, MapPin, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { extractLocalityCandidates, type CoverageAddressComponent } from "@/lib/coverage-zones";
-
-function readMapsKey(): string | undefined {
-  const raw = import.meta.env.VITE_GOOGLE_MAPS_PUBLIC_KEY;
-  if (typeof raw !== "string") return undefined;
-  const trimmed = raw.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-const MAPS_KEY = readMapsKey();
-const LOAD_TIMEOUT_MS = 8000;
-
-type LoadFailure = "no_key" | "script_failed" | "timeout" | "places_missing";
-
-declare global {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  interface Window {
-    google?: any;
-    __washeroMapsLoading?: Promise<void>;
-  }
-}
-
-function hasPlacesLibrary(): boolean {
-  return Boolean(window.google?.maps?.places);
-}
-
-function findExistingMapsScript(): HTMLScriptElement | null {
-  return document.querySelector<HTMLScriptElement>(
-    'script[src*="maps.googleapis.com/maps/api/js"]',
-  );
-}
-
-function waitForPlaces(deadlineMs: number): Promise<void> {
-  if (hasPlacesLibrary()) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const deadline = Date.now() + deadlineMs;
-    const tick = () => {
-      if (hasPlacesLibrary()) {
-        resolve();
-        return;
-      }
-      if (Date.now() >= deadline) {
-        reject(new Error("places_missing"));
-        return;
-      }
-      window.setTimeout(tick, 50);
-    };
-    tick();
-  });
-}
-
-function loadMapsApi(): Promise<void> {
-  if (typeof window === "undefined") return Promise.reject(new Error("ssr"));
-  if (hasPlacesLibrary()) return Promise.resolve();
-  if (window.__washeroMapsLoading) return window.__washeroMapsLoading;
-
-  if (!MAPS_KEY) {
-    console.error("[PlacesAutocomplete] Missing VITE_GOOGLE_MAPS_PUBLIC_KEY");
-    return Promise.reject(new Error("no_key"));
-  }
-
-  window.__washeroMapsLoading = new Promise<void>((resolve, reject) => {
-    let settled = false;
-
-    const finish = (err?: LoadFailure) => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timeoutId);
-      if (err) {
-        window.__washeroMapsLoading = undefined;
-        reject(new Error(err));
-        return;
-      }
-      resolve();
-    };
-
-    const afterScriptEvent = () => {
-      waitForPlaces(LOAD_TIMEOUT_MS)
-        .then(() => {
-          if (!hasPlacesLibrary()) {
-            console.error("[PlacesAutocomplete] Places library missing after script load");
-            finish("places_missing");
-            return;
-          }
-          finish();
-        })
-        .catch(() => {
-          console.error("[PlacesAutocomplete] Places library missing after script load");
-          finish("places_missing");
-        });
-    };
-
-    const timeoutId = window.setTimeout(() => {
-      console.error("[PlacesAutocomplete] Google Maps script load timed out");
-      finish("timeout");
-    }, LOAD_TIMEOUT_MS);
-
-    const existing = findExistingMapsScript();
-    if (existing) {
-      if (hasPlacesLibrary()) {
-        finish();
-        return;
-      }
-      existing.addEventListener("load", afterScriptEvent, { once: true });
-      existing.addEventListener(
-        "error",
-        () => {
-          console.error("[PlacesAutocomplete] Google Maps script failed to load");
-          finish("script_failed");
-        },
-        { once: true },
-      );
-      // Script may already be loaded (no load event will fire).
-      if (
-        existing.getAttribute("data-washero-maps-ready") === "true" ||
-        existing.readyState === "complete"
-      ) {
-        afterScriptEvent();
-      }
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(MAPS_KEY)}&libraries=places&language=es&region=AR`;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-      script.setAttribute("data-washero-maps-ready", "true");
-      afterScriptEvent();
-    };
-    script.onerror = () => {
-      console.error("[PlacesAutocomplete] Google Maps script failed to load");
-      finish("script_failed");
-    };
-    document.head.appendChild(script);
-  });
-
-  return window.__washeroMapsLoading;
-}
-
-const ERROR_MESSAGES: Record<LoadFailure, string> = {
-  no_key: "Falta configurar Google Maps.",
-  script_failed: "No pudimos cargar Google Maps. Revisá tu conexión e intentá de nuevo.",
-  timeout: "No pudimos cargar Google Maps. Tardó demasiado en cargar. Intentá de nuevo.",
-  places_missing:
-    "No pudimos cargar Google Maps. Revisá que Maps JavaScript API y Places API estén habilitadas.",
-};
-
-function parseLoadFailure(err: unknown): LoadFailure {
-  const code = err instanceof Error ? err.message : "";
-  if (
-    code === "no_key" ||
-    code === "script_failed" ||
-    code === "timeout" ||
-    code === "places_missing"
-  ) {
-    return code;
-  }
-  return "script_failed";
-}
+import {
+  GOOGLE_MAPS_PUBLIC_KEY,
+  GOOGLE_MAPS_PUBLIC_KEY_ENV,
+  MAPS_LOAD_ERROR_MESSAGES,
+  hasPlacesLibrary,
+  loadGoogleMapsApi,
+  parseMapsLoadFailure,
+  type MapsLoadFailure,
+} from "@/lib/google-maps-loader";
 
 export type PlaceSelection = {
   place_id: string;
@@ -191,13 +41,15 @@ export function PlacesAutocomplete({
   const acRef = useRef<any>(null);
   const pacBumpRef = useRef<(() => void) | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "selected" | "error">(
-    MAPS_KEY ? "loading" : "error",
+    GOOGLE_MAPS_PUBLIC_KEY ? "loading" : "error",
   );
-  const [errorKind, setErrorKind] = useState<LoadFailure | null>(MAPS_KEY ? null : "no_key");
+  const [errorKind, setErrorKind] = useState<MapsLoadFailure | null>(
+    GOOGLE_MAPS_PUBLIC_KEY ? null : "no_key",
+  );
 
   useEffect(() => {
-    if (!MAPS_KEY) {
-      console.error("[PlacesAutocomplete] Missing VITE_GOOGLE_MAPS_PUBLIC_KEY");
+    if (!GOOGLE_MAPS_PUBLIC_KEY) {
+      console.error(`[PlacesAutocomplete] Missing ${GOOGLE_MAPS_PUBLIC_KEY_ENV}`);
       setErrorKind("no_key");
       setStatus("error");
       return;
@@ -207,9 +59,10 @@ export function PlacesAutocomplete({
 
     const attachAutocomplete = (): boolean => {
       const input = inputRef.current;
-      if (!input || !window.google?.maps?.places) return false;
+      if (!input || !hasPlacesLibrary()) return false;
       if (acRef.current) return true;
 
+      // Legacy Autocomplete remains the supported client integration in this app.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ac = new (window.google.maps.places as any).Autocomplete(input, {
         componentRestrictions: { country: "ar" },
@@ -268,16 +121,16 @@ export function PlacesAutocomplete({
       return true;
     };
 
-    const fail = (kind: LoadFailure) => {
+    const fail = (kind: MapsLoadFailure) => {
       if (cancelled) return;
       setErrorKind(kind);
       setStatus("error");
     };
 
-    loadMapsApi()
+    loadGoogleMapsApi({ requirePlaces: true })
       .then(() => {
         if (cancelled) return;
-        if (!window.google?.maps?.places) {
+        if (!hasPlacesLibrary()) {
           console.error("[PlacesAutocomplete] Places library missing after load");
           fail("places_missing");
           return;
@@ -306,31 +159,27 @@ export function PlacesAutocomplete({
       })
       .catch((err) => {
         if (cancelled) return;
-        const kind = parseLoadFailure(err);
-        if (kind === "timeout") {
-          console.error("[PlacesAutocomplete] Google Maps script load timed out");
-        } else if (kind === "script_failed") {
-          console.error("[PlacesAutocomplete] Google Maps script failed to load");
-        } else if (kind === "places_missing") {
-          console.error("[PlacesAutocomplete] Places library missing");
-        }
+        const kind = parseMapsLoadFailure(err);
+        console.error(`[PlacesAutocomplete] Google Maps load failed: ${kind}`, err);
         fail(kind);
       });
 
+    const inputEl = inputRef.current;
     return () => {
       cancelled = true;
-      const input = inputRef.current;
       const bump = pacBumpRef.current;
-      if (input && bump) {
-        input.removeEventListener("focus", bump);
-        input.removeEventListener("input", bump);
+      if (inputEl && bump) {
+        inputEl.removeEventListener("focus", bump);
+        inputEl.removeEventListener("input", bump);
       }
       pacBumpRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const errorMessage = errorKind ? ERROR_MESSAGES[errorKind] : ERROR_MESSAGES.script_failed;
+  const errorMessage = errorKind
+    ? MAPS_LOAD_ERROR_MESSAGES[errorKind]
+    : MAPS_LOAD_ERROR_MESSAGES.script_failed;
 
   return (
     <div className="space-y-1.5">
