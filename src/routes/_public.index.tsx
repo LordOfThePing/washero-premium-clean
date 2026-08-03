@@ -1,14 +1,26 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
-  MessageCircle, MapPin, Sparkles, Calendar, Car, Home, Building2,
-  ShieldCheck, Clock, CheckCircle2, ArrowRight,
+  MessageCircle,
+  MapPin,
+  Sparkles,
+  Calendar,
+  Car,
+  Home,
+  Building2,
+  ShieldCheck,
+  Clock,
+  CheckCircle2,
+  ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  Accordion, AccordionContent, AccordionItem, AccordionTrigger,
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
@@ -51,8 +63,14 @@ export const Route = createFileRoute("/_public/")({
           description: "Lavado de autos a domicilio en Zona Norte, Buenos Aires.",
           telephone: "+54 9 11 7624-7835",
           areaServed: [
-            "Maschwitz", "Nordelta", "Escobar", "San Isidro",
-            "Tigre", "Pilar", "Benavídez", "Villa Nueva",
+            "Maschwitz",
+            "Nordelta",
+            "Escobar",
+            "San Isidro",
+            "Tigre",
+            "Pilar",
+            "Benavídez",
+            "Villa Nueva",
           ],
           url: SITE,
         }),
@@ -97,7 +115,9 @@ function Hero() {
       <div
         aria-hidden
         className="pointer-events-none absolute -top-40 left-1/2 h-[600px] w-[600px] -translate-x-1/2 rounded-full opacity-30 blur-3xl"
-        style={{ background: "radial-gradient(closest-side, oklch(0.78 0.18 75 / 0.6), transparent)" }}
+        style={{
+          background: "radial-gradient(closest-side, oklch(0.78 0.18 75 / 0.6), transparent)",
+        }}
       />
       <div
         aria-hidden
@@ -116,11 +136,11 @@ function Hero() {
               Zona Norte · Buenos Aires
             </Badge>
             <h1 className="mt-6 text-4xl font-bold leading-tight tracking-tight md:text-6xl">
-              Lavado de autos a{" "}
-              <span className="text-primary">domicilio</span> en Zona Norte
+              Lavado de autos a <span className="text-primary">domicilio</span> en Zona Norte
             </h1>
             <p className="mt-5 max-w-2xl text-lg text-neutral-300 md:text-xl">
-              Reservá tu lavado online en menos de 1 minuto. Nosotros vamos a tu casa, barrio o empresa.
+              Reservá tu lavado online en menos de 1 minuto. Nosotros vamos a tu casa, barrio o
+              empresa.
             </p>
 
             <div className="mt-8 flex flex-wrap gap-3">
@@ -171,9 +191,21 @@ function Hero() {
 
 function HowItWorks() {
   const steps = [
-    { icon: Car, title: "Elegí tu lavado", body: "Seleccioná el servicio que querés para tu auto." },
-    { icon: Calendar, title: "Reservá día y horario", body: "Elegí un turno disponible desde la web." },
-    { icon: Home, title: "Vamos a tu ubicación", body: "Lavamos tu auto en tu casa, cochera, barrio o empresa." },
+    {
+      icon: Car,
+      title: "Elegí tu lavado",
+      body: "Seleccioná el servicio que querés para tu auto.",
+    },
+    {
+      icon: Calendar,
+      title: "Reservá día y horario",
+      body: "Elegí un turno disponible desde la web.",
+    },
+    {
+      icon: Home,
+      title: "Vamos a tu ubicación",
+      body: "Lavamos tu auto en tu casa, cochera, barrio o empresa.",
+    },
   ];
   return (
     <section
@@ -240,7 +272,8 @@ function Services() {
             <Card className="md:col-span-2 border-border/60">
               <CardContent className="space-y-3 p-6 text-center">
                 <p className="text-sm text-muted-foreground">
-                  No pudimos cargar los servicios en este momento. Escribinos y te lo contamos al instante.
+                  No pudimos cargar los servicios en este momento. Escribinos y te lo contamos al
+                  instante.
                 </p>
                 <Button asChild>
                   <a href={WA_URL} target="_blank" rel="noopener">
@@ -289,16 +322,18 @@ function Services() {
 
 function Coverage() {
   const q = useQuery({
-    queryKey: ["public", "service_areas"],
+    queryKey: ["public", "coverage_zones"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("service_areas")
-        .select("id,name")
+        .from("coverage_zones")
+        .select("id,name,display_order")
         .eq("active", true)
+        .order("display_order")
         .order("name");
       if (error) throw error;
       return data ?? [];
     },
+    staleTime: 30_000,
   });
 
   return (
@@ -319,7 +354,11 @@ function Coverage() {
             Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-8 w-24" />)
           ) : q.error || !q.data || q.data.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Consultá disponibilidad por <a className="text-primary underline" href={WA_URL} target="_blank" rel="noopener">WhatsApp</a>.
+              Consultá disponibilidad por{" "}
+              <a className="text-primary underline" href={WA_URL} target="_blank" rel="noopener">
+                WhatsApp
+              </a>
+              .
             </p>
           ) : (
             q.data.map((a) => (
@@ -335,7 +374,9 @@ function Coverage() {
 
         <div className="mt-10 text-center">
           <Button size="lg" asChild>
-            <Link to="/reservar" data-mascot-trigger="reservar">Reservar lavado</Link>
+            <Link to="/reservar" data-mascot-trigger="reservar">
+              Reservar lavado
+            </Link>
           </Button>
         </div>
       </div>
@@ -350,9 +391,21 @@ function Coverage() {
 function Benefits() {
   const items = [
     { icon: Home, title: "Sin moverte de tu casa", body: "Nosotros vamos a tu ubicación." },
-    { icon: Calendar, title: "Reserva simple", body: "Agendás el lavado online en menos de 1 minuto." },
-    { icon: Building2, title: "Ideal para barrios y empresas", body: "Perfecto para casas, barrios cerrados, oficinas y flotas." },
-    { icon: ShieldCheck, title: "Servicio premium", body: "Cuidamos los detalles para que tu auto quede impecable." },
+    {
+      icon: Calendar,
+      title: "Reserva simple",
+      body: "Agendás el lavado online en menos de 1 minuto.",
+    },
+    {
+      icon: Building2,
+      title: "Ideal para barrios y empresas",
+      body: "Perfecto para casas, barrios cerrados, oficinas y flotas.",
+    },
+    {
+      icon: ShieldCheck,
+      title: "Servicio premium",
+      body: "Cuidamos los detalles para que tu auto quede impecable.",
+    },
   ];
   return (
     <section className="border-t border-border/60 bg-muted/30">
@@ -393,7 +446,8 @@ function Launch() {
             <Badge className="bg-primary text-primary-foreground">Cupos limitados</Badge>
             <h2 className="text-2xl font-bold md:text-3xl">Lanzamiento Washero</h2>
             <p className="mx-auto max-w-xl text-muted-foreground">
-              Estamos comenzando en Zona Norte con cupos limitados por día para asegurar calidad y puntualidad.
+              Estamos comenzando en Zona Norte con cupos limitados por día para asegurar calidad y
+              puntualidad.
             </p>
             <Button size="lg" asChild>
               <Link to="/reservar">Reservar ahora</Link>
@@ -459,10 +513,7 @@ function Faq() {
 
 function FinalCta() {
   return (
-    <section
-      data-mascot-footer
-      className="border-t border-border/60 bg-neutral-950 text-white"
-    >
+    <section data-mascot-footer className="border-t border-border/60 bg-neutral-950 text-white">
       <div className="mx-auto max-w-4xl px-4 py-16 text-center md:py-24">
         <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
           ¿Listo para tener tu auto impecable sin moverte?
@@ -472,7 +523,9 @@ function FinalCta() {
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           <Button size="lg" asChild>
-            <Link to="/reservar" data-mascot-trigger="reservar">Reservar lavado</Link>
+            <Link to="/reservar" data-mascot-trigger="reservar">
+              Reservar lavado
+            </Link>
           </Button>
           <Button
             size="lg"

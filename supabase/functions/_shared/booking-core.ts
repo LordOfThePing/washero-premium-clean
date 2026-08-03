@@ -139,7 +139,9 @@ export type CoreResult =
       http_status: number;
     };
 
-function isDate(v: string) { return /^\d{4}-\d{2}-\d{2}$/.test(v); }
+function isDate(v: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(v);
+}
 function isTime(v: string) {
   const m = /^(\d{2}):(\d{2})(?::\d{2})?$/.exec(v);
   if (!m) return false;
@@ -147,9 +149,14 @@ function isTime(v: string) {
   const mm = Number(m[2]);
   return hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59;
 }
-function normTime(v: string) { return v.length === 5 ? `${v}:00` : v; }
+function normTime(v: string) {
+  return v.length === 5 ? `${v}:00` : v;
+}
 export function foldText(v: unknown) {
-  return String(v ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return String(v ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 }
 
 /** Reverse UTF-8 bytes misread as Latin-1 (e.g. "BÃ¡sico" → "Básico"). */
@@ -177,11 +184,7 @@ export const CANONICAL_SERVICE_BASIC = "Lavado Básico";
 export const CANONICAL_SERVICE_COMPLETE = "Lavado Completo";
 
 export type ServiceCanonicalKey = "basico" | "completo";
-export type ServiceMatchStrategy =
-  | "service_id"
-  | "canonical_key"
-  | "folded_exact"
-  | "folded_fuzzy";
+export type ServiceMatchStrategy = "service_id" | "canonical_key" | "folded_exact" | "folded_fuzzy";
 
 function matchesCompletoAlias(folded: string): boolean {
   if (!folded) return false;
@@ -262,7 +265,8 @@ async function findActiveServiceRow(
   };
 
   if (service_id) {
-    const { data } = await admin.from("services")
+    const { data } = await admin
+      .from("services")
       .select("id,name,base_price,duration_minutes,active")
       .eq("id", service_id)
       .maybeSingle();
@@ -301,13 +305,13 @@ async function findActiveServiceRow(
     pushAttempt(normalized_service_type);
   }
 
-  const { data: rows } = await admin.from("services")
+  const { data: rows } = await admin
+    .from("services")
     .select("id,name,base_price,duration_minutes,active");
   const activeRows = ((rows ?? []) as ServiceRow[]).filter((r) => r.active);
 
   const key =
-    serviceCanonicalKey(normalized_service_type) ??
-    serviceCanonicalKey(input_service_type);
+    serviceCanonicalKey(normalized_service_type) ?? serviceCanonicalKey(input_service_type);
   if (key) {
     const byKey = pickServiceByCanonicalKey(activeRows, key);
     if (byKey) {
@@ -421,7 +425,12 @@ export async function resolveActiveServiceLookup(
   };
 }
 
-function inferDurationMinutes(type: "vehicle_surcharge" | "extra", code: string, name: string, raw: unknown) {
+function inferDurationMinutes(
+  type: "vehicle_surcharge" | "extra",
+  code: string,
+  name: string,
+  raw: unknown,
+) {
   const parsed = Number(raw);
   if (Number.isFinite(parsed) && parsed > 0) return Math.round(parsed);
   const token = `${foldText(code)} ${foldText(name)}`;
@@ -432,7 +441,8 @@ function inferDurationMinutes(type: "vehicle_surcharge" | "extra", code: string,
     return 0;
   }
   if (token.includes("encer")) return 10;
-  if (token.includes("detallado") && token.includes("interior") && token.includes("profundo")) return 20;
+  if (token.includes("detallado") && token.includes("interior") && token.includes("profundo"))
+    return 20;
   if (token.includes("olor")) return 15;
   if (token.includes("barro") || token.includes("muy sucio")) return 15;
   if (token.includes("pelo") && token.includes("mascot")) return 20;
@@ -456,22 +466,37 @@ async function loadVehicleOption(
     };
   }
 
-  const withDuration = await admin.from("pricing_items")
-    .select("amount,code,name,duration_minutes").eq("type", "vehicle_surcharge").eq("active", true);
+  const withDuration = await admin
+    .from("pricing_items")
+    .select("amount,code,name,duration_minutes")
+    .eq("type", "vehicle_surcharge")
+    .eq("active", true);
   const rows = !withDuration.error
     ? (withDuration.data ?? [])
-    : ((await admin.from("pricing_items")
-      .select("amount,code,name")
-      .eq("type", "vehicle_surcharge")
-      .eq("active", true)).data ?? []);
+    : ((
+        await admin
+          .from("pricing_items")
+          .select("amount,code,name")
+          .eq("type", "vehicle_surcharge")
+          .eq("active", true)
+      ).data ?? []);
   const v = foldText(vehicle_type);
   for (const row of rows as any[]) {
-    if (foldText(row.code) === v || foldText(row.name).includes(v) || v.includes(foldText(row.code))) {
+    if (
+      foldText(row.code) === v ||
+      foldText(row.name).includes(v) ||
+      v.includes(foldText(row.code))
+    ) {
       return {
         code: String(row.code ?? ""),
         name: String(row.name ?? "Vehículo"),
         amount: Number(row.amount) || 0,
-        duration_minutes: inferDurationMinutes("vehicle_surcharge", String(row.code ?? ""), String(row.name ?? ""), row.duration_minutes),
+        duration_minutes: inferDurationMinutes(
+          "vehicle_surcharge",
+          String(row.code ?? ""),
+          String(row.name ?? ""),
+          row.duration_minutes,
+        ),
       };
     }
   }
@@ -496,20 +521,34 @@ async function loadExtras(
   | { ok: false; missing: string[] }
 > {
   if (!codes.length) return { ok: true, total: 0, duration_minutes_total: 0, items: [] };
-  const withDuration = await admin.from("pricing_items")
-    .select("code,name,amount,duration_minutes,active").eq("type", "extra").in("code", codes);
+  const withDuration = await admin
+    .from("pricing_items")
+    .select("code,name,amount,duration_minutes,active")
+    .eq("type", "extra")
+    .in("code", codes);
   const rows = !withDuration.error
     ? (withDuration.data ?? [])
-    : ((await admin.from("pricing_items")
-      .select("code,name,amount,active")
-      .eq("type", "extra")
-      .in("code", codes)).data ?? []);
-  const map = new Map<string, { name: string; amount: number; duration_minutes: number; active: boolean }>();
+    : ((
+        await admin
+          .from("pricing_items")
+          .select("code,name,amount,active")
+          .eq("type", "extra")
+          .in("code", codes)
+      ).data ?? []);
+  const map = new Map<
+    string,
+    { name: string; amount: number; duration_minutes: number; active: boolean }
+  >();
   for (const r of rows as any[]) {
     map.set(String(r.code), {
       name: String(r.name ?? "Extra"),
       amount: Number(r.amount) || 0,
-      duration_minutes: inferDurationMinutes("extra", String(r.code ?? ""), String(r.name ?? ""), r.duration_minutes),
+      duration_minutes: inferDurationMinutes(
+        "extra",
+        String(r.code ?? ""),
+        String(r.name ?? ""),
+        r.duration_minutes,
+      ),
       active: !!r.active,
     });
   }
@@ -571,8 +610,11 @@ async function loadActivePrivateNeighborhood(
   admin: SupabaseClient,
   id: string,
 ): Promise<PrivateNeighborhoodRow | null> {
-  const { data } = await admin.from("private_neighborhoods")
-    .select("id,name,active,coverage_zone_id,coverage_zone_name,canonical_address,formatted_address,place_id,lat,lng")
+  const { data } = await admin
+    .from("private_neighborhoods")
+    .select(
+      "id,name,active,coverage_zone_id,coverage_zone_name,canonical_address,formatted_address,place_id,lat,lng",
+    )
     .eq("id", id)
     .maybeSingle();
   const row = data as PrivateNeighborhoodRow | null;
@@ -589,12 +631,14 @@ export function normalizeBookingUnitsInput(opts: {
 }): CoreBookingUnitInput[] {
   const raw = Array.isArray(opts.booking_units) ? opts.booking_units : [];
   if (!raw.length) {
-    return [{
-      vehicle_type: (opts.vehicle_type ?? "").trim(),
-      service_id: opts.service_id ?? null,
-      service_name: opts.service_name ?? null,
-      selected_extras: Array.isArray(opts.selected_extras) ? opts.selected_extras : [],
-    }];
+    return [
+      {
+        vehicle_type: (opts.vehicle_type ?? "").trim(),
+        service_id: opts.service_id ?? null,
+        service_name: opts.service_name ?? null,
+        selected_extras: Array.isArray(opts.selected_extras) ? opts.selected_extras : [],
+      },
+    ];
   }
   return raw.map((unit) => ({
     vehicle_type: String(unit.vehicle_type ?? "").trim(),
@@ -636,13 +680,15 @@ async function priceBookingUnit(
   if (!extrasResult.ok) return { ok: false, reason: "invalid_extra" };
 
   const serviceDuration = Math.max(1, Math.round(Number(service.duration_minutes) || 60));
-  const duration_minutes = serviceDuration + vehicle.duration_minutes + extrasResult.duration_minutes_total;
+  const duration_minutes =
+    serviceDuration + vehicle.duration_minutes + extrasResult.duration_minutes_total;
   const service_price = service.base_price;
   const vehicle_surcharge = vehicle.amount;
   const extras_total = extrasResult.total;
   const subtotal_before_discount = service_price + vehicle_surcharge + extras_total;
   const discount_rate = unitIndex === 2 ? SECOND_UNIT_DISCOUNT_RATE : 0;
-  const discount_amount = discount_rate > 0 ? Math.round(subtotal_before_discount * discount_rate) : 0;
+  const discount_amount =
+    discount_rate > 0 ? Math.round(subtotal_before_discount * discount_rate) : 0;
   const total_price = subtotal_before_discount - discount_amount;
 
   const unit_price_breakdown: Record<string, unknown> = {
@@ -669,7 +715,12 @@ async function priceBookingUnit(
     lines: [
       { label: service.name, amount: service_price },
       ...(vehicle_surcharge > 0
-        ? [{ label: vehicle.name || `Recargo vehículo (${vehicle_type})`, amount: vehicle_surcharge }]
+        ? [
+            {
+              label: vehicle.name || `Recargo vehículo (${vehicle_type})`,
+              amount: vehicle_surcharge,
+            },
+          ]
         : []),
       ...extrasResult.items.map((item) => ({ label: item.name, amount: item.amount })),
       ...(discount_amount > 0
@@ -729,7 +780,9 @@ export async function tryCreateBooking(
 ): Promise<CoreResult> {
   const customer_name = (input.customer_name ?? "").trim();
   const customer_phone = (input.customer_phone ?? "").trim();
-  const customer_email = input.customer_email ? String(input.customer_email).trim().toLowerCase() : null;
+  const customer_email = input.customer_email
+    ? String(input.customer_email).trim().toLowerCase()
+    : null;
   const scheduled_date = (input.scheduled_date ?? "").trim();
   const scheduled_time_raw = (input.scheduled_time ?? "").trim();
   const payment_method = (input.payment_method ?? "").trim();
@@ -737,7 +790,9 @@ export async function tryCreateBooking(
   const enforce_coverage = !!input.enforce_coverage;
   const marketing_source = input.marketing_source ? String(input.marketing_source).trim() : null;
   const marketing_medium = input.marketing_medium ? String(input.marketing_medium).trim() : null;
-  const marketing_campaign = input.marketing_campaign ? String(input.marketing_campaign).trim() : null;
+  const marketing_campaign = input.marketing_campaign
+    ? String(input.marketing_campaign).trim()
+    : null;
   const marketing_content = input.marketing_content ? String(input.marketing_content).trim() : null;
   const marketing_term = input.marketing_term ? String(input.marketing_term).trim() : null;
   const qr_code_slug = input.qr_code_slug ? String(input.qr_code_slug).trim() : null;
@@ -747,9 +802,8 @@ export async function tryCreateBooking(
   const gbraid = input.gbraid ? String(input.gbraid).trim() : null;
   const wbraid = input.wbraid ? String(input.wbraid).trim() : null;
 
-  const address_type = input.address_type === "private_neighborhood"
-    ? "private_neighborhood"
-    : "street";
+  const address_type =
+    input.address_type === "private_neighborhood" ? "private_neighborhood" : "street";
   const private_neighborhood_id = input.private_neighborhood_id
     ? String(input.private_neighborhood_id).trim()
     : "";
@@ -778,10 +832,14 @@ export async function tryCreateBooking(
   const vehicle_type = (input.vehicle_type ?? primaryUnit?.vehicle_type ?? "").trim();
   const service_id = input.service_id
     ? String(input.service_id).trim()
-    : (primaryUnit?.service_id ? String(primaryUnit.service_id).trim() : "");
+    : primaryUnit?.service_id
+      ? String(primaryUnit.service_id).trim()
+      : "";
   const service_name = input.service_name
     ? String(input.service_name).trim()
-    : (primaryUnit?.service_name ? String(primaryUnit.service_name).trim() : "");
+    : primaryUnit?.service_name
+      ? String(primaryUnit.service_name).trim()
+      : "";
 
   const missing: string[] = [];
   if (!customer_name) missing.push("customer_name");
@@ -799,7 +857,14 @@ export async function tryCreateBooking(
   if (!scheduled_date) missing.push("scheduled_date");
   if (!scheduled_time_raw) missing.push("scheduled_time");
   if (!payment_method) missing.push("payment_method");
-  if (missing.length) return { ok: false, reason: "missing_fields", missing, message: "Faltan datos.", http_status: 400 };
+  if (missing.length)
+    return {
+      ok: false,
+      reason: "missing_fields",
+      missing,
+      message: "Faltan datos.",
+      http_status: 400,
+    };
 
   if (input.source === "website" && unitInputs.length > MAX_WEBSITE_BOOKING_UNITS) {
     return {
@@ -811,20 +876,36 @@ export async function tryCreateBooking(
   }
 
   if (!(PAYMENT_METHODS as readonly string[]).includes(payment_method)) {
-    return { ok: false, reason: "invalid_payment", message: "Método de pago inválido.", http_status: 400 };
+    return {
+      ok: false,
+      reason: "invalid_payment",
+      message: "Método de pago inválido.",
+      http_status: 400,
+    };
   }
-  if (!isDate(scheduled_date)) return { ok: false, reason: "invalid_date", message: "Fecha inválida.", http_status: 400 };
-  if (!isTime(scheduled_time_raw)) return { ok: false, reason: "invalid_time", message: "Horario inválido.", http_status: 400 };
+  if (!isDate(scheduled_date))
+    return { ok: false, reason: "invalid_date", message: "Fecha inválida.", http_status: 400 };
+  if (!isTime(scheduled_time_raw))
+    return { ok: false, reason: "invalid_time", message: "Horario inválido.", http_status: 400 };
 
   const todayStr = new Date().toISOString().slice(0, 10);
-  if (scheduled_date < todayStr) return { ok: false, reason: "past_date", message: "La fecha debe ser hoy o posterior.", http_status: 400 };
+  if (scheduled_date < todayStr)
+    return {
+      ok: false,
+      reason: "past_date",
+      message: "La fecha debe ser hoy o posterior.",
+      http_status: 400,
+    };
 
   const scheduled_time = normTime(scheduled_time_raw);
 
   if (address_type === "private_neighborhood") {
     private_neighborhood_row = await loadActivePrivateNeighborhood(admin, private_neighborhood_id);
     if (!private_neighborhood_row) {
-      console.warn("[booking-core] invalid or inactive private_neighborhood_id", private_neighborhood_id);
+      console.warn(
+        "[booking-core] invalid or inactive private_neighborhood_id",
+        private_neighborhood_id,
+      );
       return {
         ok: false,
         reason: "invalid_private_neighborhood",
@@ -871,7 +952,10 @@ export async function tryCreateBooking(
   const surcharge = primary.vehicle_surcharge;
   const extras_total = primary.extras_total;
   const total_duration_minutes = pricedUnits.reduce((sum, unit) => sum + unit.duration_minutes, 0);
-  const subtotal_before_discounts = pricedUnits.reduce((sum, unit) => sum + unit.subtotal_before_discount, 0);
+  const subtotal_before_discounts = pricedUnits.reduce(
+    (sum, unit) => sum + unit.subtotal_before_discount,
+    0,
+  );
   const discount_total = pricedUnits.reduce((sum, unit) => sum + unit.discount_amount, 0);
   const total_price = pricedUnits.reduce((sum, unit) => sum + unit.total_price, 0);
   const vehicle_count = pricedUnits.length;
@@ -880,7 +964,7 @@ export async function tryCreateBooking(
   let cov = matchZone(zones, { lat: address_lat, lng: address_lng, neighborhood });
   if (address_type === "private_neighborhood" && private_neighborhood_row) {
     const zoneFromPreset = preset_coverage_zone_id
-      ? zones.find((z) => z.id === preset_coverage_zone_id) ?? null
+      ? (zones.find((z) => z.id === preset_coverage_zone_id) ?? null)
       : null;
     cov = {
       zone: zoneFromPreset ?? cov.zone,
@@ -890,7 +974,11 @@ export async function tryCreateBooking(
     if (!cov.zone && preset_coverage_zone_name) {
       const byName = zones.find((z) => foldText(z.name) === foldText(preset_coverage_zone_name!));
       if (byName) {
-        cov = { zone: byName, match_type: "private_neighborhood", distance_km: null } as CoverageMatch;
+        cov = {
+          zone: byName,
+          match_type: "private_neighborhood",
+          distance_km: null,
+        } as CoverageMatch;
       }
     }
     if (!neighborhood && cov.zone) neighborhood = cov.zone.name;
@@ -902,21 +990,34 @@ export async function tryCreateBooking(
 
   const inside_coverage = address_type === "private_neighborhood" ? true : !!cov.zone;
   if (enforce_coverage && !inside_coverage) {
-    return { ok: false, reason: "outside_coverage", message: "Esa dirección está fuera de nuestra zona de cobertura.", http_status: 422 };
+    return {
+      ok: false,
+      reason: "outside_coverage",
+      message: "Esa dirección está fuera de nuestra zona de cobertura.",
+      http_status: 422,
+    };
   }
 
-  const { data: areaRows } = await admin.from("service_areas").select("name").eq("active", true);
-  const area_match = (areaRows ?? []).some((a: any) => a.name.trim().toLowerCase() === neighborhood.toLowerCase());
+  const area_match =
+    !!cov.zone || (zones ?? []).some((z) => foldText(z.name) === foldText(neighborhood));
 
-  const { data: slot } = await admin.from("availability_slots")
+  const { data: slot } = await admin
+    .from("availability_slots")
     .select("id,date,start_time,end_time,capacity,active")
     .eq("date", scheduled_date)
     .eq("start_time", scheduled_time)
     .eq("active", true)
     .maybeSingle();
-  if (!slot) return { ok: false, reason: "slot_not_found", message: "Ese horario ya no está disponible.", http_status: 409 };
+  if (!slot)
+    return {
+      ok: false,
+      reason: "slot_not_found",
+      message: "Ese horario ya no está disponible.",
+      http_status: 409,
+    };
 
-  const { data: daySlots } = await admin.from("availability_slots")
+  const { data: daySlots } = await admin
+    .from("availability_slots")
     .select("end_time")
     .eq("date", scheduled_date)
     .eq("active", true);
@@ -924,11 +1025,13 @@ export async function tryCreateBooking(
     maxOperatingDayEndMinutes((daySlots ?? []) as Array<{ end_time: string }>),
     timeToMinutes((slot as { end_time: string }).end_time),
   );
-  if (!requestedIntervalFitsOperatingEnd(
-    operatingDayEndMinutes,
-    scheduled_time,
-    total_duration_minutes,
-  )) {
+  if (
+    !requestedIntervalFitsOperatingEnd(
+      operatingDayEndMinutes,
+      scheduled_time,
+      total_duration_minutes,
+    )
+  ) {
     return {
       ok: false,
       reason: "service_does_not_fit_slot",
@@ -970,9 +1073,8 @@ export async function tryCreateBooking(
       ...unitSummaries.flatMap((unit) => {
         const lines: Array<{ label: string; amount: number }> = [
           {
-            label: vehicle_count > 1
-              ? `${unit.service_name} (${unit.vehicle_type})`
-              : unit.service_name,
+            label:
+              vehicle_count > 1 ? `${unit.service_name} (${unit.vehicle_type})` : unit.service_name,
             amount: unit.service_price,
           },
         ];
@@ -982,7 +1084,9 @@ export async function tryCreateBooking(
             amount: unit.vehicle_surcharge,
           });
         }
-        for (const extra of (unit.price_breakdown.extras as Array<{ name: string; amount: number }> | undefined) ?? []) {
+        for (const extra of (unit.price_breakdown.extras as
+          | Array<{ name: string; amount: number }>
+          | undefined) ?? []) {
           if (extra.amount > 0) lines.push({ label: extra.name, amount: extra.amount });
         }
         if (unit.discount_amount > 0) {
@@ -999,7 +1103,12 @@ export async function tryCreateBooking(
     price_breakdown.botmaker = input.botmaker_meta;
   }
 
-  const { data: existing } = await admin.from("customers").select("id").eq("phone", customer_phone).limit(1).maybeSingle();
+  const { data: existing } = await admin
+    .from("customers")
+    .select("id")
+    .eq("phone", customer_phone)
+    .limit(1)
+    .maybeSingle();
   let customer_id: string | null = null;
   const customerLoc: any = {};
   if (place_id) customerLoc.place_id = place_id;
@@ -1013,18 +1122,30 @@ export async function tryCreateBooking(
 
   if (existing?.id) {
     customer_id = existing.id;
-    await admin.from("customers").update({
-      full_name: customer_name,
-      email: customer_email,
-      address,
-      neighborhood,
-      ...customerLoc,
-      updated_at: new Date().toISOString(),
-    }).eq("id", existing.id);
+    await admin
+      .from("customers")
+      .update({
+        full_name: customer_name,
+        email: customer_email,
+        address,
+        neighborhood,
+        ...customerLoc,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", existing.id);
   } else {
-    const { data: ins } = await admin.from("customers").insert({
-      full_name: customer_name, phone: customer_phone, email: customer_email, address, neighborhood, ...customerLoc,
-    }).select("id").maybeSingle();
+    const { data: ins } = await admin
+      .from("customers")
+      .insert({
+        full_name: customer_name,
+        phone: customer_phone,
+        email: customer_email,
+        address,
+        neighborhood,
+        ...customerLoc,
+      })
+      .select("id")
+      .maybeSingle();
     customer_id = ins?.id ?? null;
   }
 
@@ -1044,19 +1165,36 @@ export async function tryCreateBooking(
       );
     }
     if (unit.discount_amount > 0) {
-      notes_parts.push(`${prefix}Descuento ${Math.round(unit.discount_rate * 100)}%: -$${unit.discount_amount}`);
+      notes_parts.push(
+        `${prefix}Descuento ${Math.round(unit.discount_rate * 100)}%: -$${unit.discount_amount}`,
+      );
     }
   }
   if (input.is_test) notes_parts.push("[TEST]");
   const notes = notes_parts.length ? notes_parts.join(" | ") : null;
 
   const allowedStatuses = new Set([
-    "pending", "confirmed", "in_progress", "completed", "cancelled", "needs_review",
+    "pending",
+    "confirmed",
+    "in_progress",
+    "completed",
+    "cancelled",
+    "needs_review",
   ]);
   const allowedPaymentStatuses = new Set(["pending", "paid", "failed", "refunded", "cancelled"]);
 
-  let booking_status: "pending" | "confirmed" | "needs_review" | "in_progress" | "completed" | "cancelled";
-  if (input.source === "admin" && input.requested_booking_status && allowedStatuses.has(input.requested_booking_status)) {
+  let booking_status:
+    | "pending"
+    | "confirmed"
+    | "needs_review"
+    | "in_progress"
+    | "completed"
+    | "cancelled";
+  if (
+    input.source === "admin" &&
+    input.requested_booking_status &&
+    allowedStatuses.has(input.requested_booking_status)
+  ) {
     booking_status = input.requested_booking_status as typeof booking_status;
   } else if (input.source === "botmaker" || input.source === "whatsapp_agent") {
     booking_status = "confirmed";
@@ -1071,23 +1209,31 @@ export async function tryCreateBooking(
   }
 
   let payment_status = "pending";
-  if (input.requested_payment_status && allowedPaymentStatuses.has(input.requested_payment_status)) {
+  if (
+    input.requested_payment_status &&
+    allowedPaymentStatuses.has(input.requested_payment_status)
+  ) {
     payment_status = input.requested_payment_status;
   }
 
-  const effective_match_type = address_type === "private_neighborhood"
-    ? "private_neighborhood"
-    : cov.match_type;
+  const effective_match_type =
+    address_type === "private_neighborhood" ? "private_neighborhood" : cov.match_type;
   const location_validation_status = inside_coverage
     ? `validated_${effective_match_type}`
     : "outside_coverage_or_unverified";
 
   const bookingPayload = {
     customer_id,
-    customer_name, customer_phone, customer_email,
-    address, neighborhood, vehicle_type: primary.vehicle_type,
-    service_id: primary.service.id, service_name: primary.service.name,
-    scheduled_date, scheduled_time,
+    customer_name,
+    customer_phone,
+    customer_email,
+    address,
+    neighborhood,
+    vehicle_type: primary.vehicle_type,
+    service_id: primary.service.id,
+    service_name: primary.service.name,
+    scheduled_date,
+    scheduled_time,
     duration_minutes: total_duration_minutes,
     price: total_price,
     payment_method,
@@ -1160,11 +1306,22 @@ export async function tryCreateBooking(
 
   if (rpcErr) {
     console.error("[booking-core] create_booking_atomic rpc failed", rpcErr);
-    return { ok: false, reason: "server_error", message: "No pudimos crear la reserva.", http_status: 500 };
+    return {
+      ok: false,
+      reason: "server_error",
+      message: "No pudimos crear la reserva.",
+      http_status: 500,
+    };
   }
 
   const result = rpcResult as
-    | { ok: true; already_existed: boolean; booking_id: string; booking_status: string; price: number }
+    | {
+        ok: true;
+        already_existed: boolean;
+        booking_id: string;
+        booking_status: string;
+        price: number;
+      }
     | { ok: false; reason: string };
 
   if (!result?.ok) {
@@ -1172,16 +1329,25 @@ export async function tryCreateBooking(
     const messages: Record<string, { message: string; http_status: number }> = {
       slot_not_found: { message: "Ese horario ya no está disponible.", http_status: 409 },
       slot_full: { message: "Ese horario ya se completó.", http_status: 409 },
-      duplicate: { message: "Ya existe una reserva en ese horario para este teléfono.", http_status: 409 },
+      duplicate: {
+        message: "Ya existe una reserva en ese horario para este teléfono.",
+        http_status: 409,
+      },
       server_error: { message: "No pudimos crear la reserva.", http_status: 500 },
     };
     const mapped = messages[reason] ?? messages.server_error;
-    const knownReason = (reason in messages ? reason : "server_error") as
-      Extract<CoreResult, { ok: false }>["reason"];
+    const knownReason = (reason in messages ? reason : "server_error") as Extract<
+      CoreResult,
+      { ok: false }
+    >["reason"];
     return { ok: false, reason: knownReason, ...mapped };
   }
 
-  const created = { id: result.booking_id, booking_status: result.booking_status, price: result.price };
+  const created = {
+    id: result.booking_id,
+    booking_status: result.booking_status,
+    price: result.price,
+  };
 
   return {
     ok: true,
@@ -1293,7 +1459,12 @@ export async function resolveLogisticBookingDurationMinutes(
     .select("duration_minutes, active")
     .eq("id", serviceId)
     .maybeSingle();
-  if (svcErr || !svc?.active || typeof svc.duration_minutes !== "number" || svc.duration_minutes <= 0) {
+  if (
+    svcErr ||
+    !svc?.active ||
+    typeof svc.duration_minutes !== "number" ||
+    svc.duration_minutes <= 0
+  ) {
     return { ok: false, error: "invalid_service" };
   }
 

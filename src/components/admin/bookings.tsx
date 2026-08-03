@@ -66,11 +66,7 @@ import {
   ADMIN_VEHICLE_TYPES,
   invokeCreateAdminBooking,
 } from "@/lib/admin-booking";
-import {
-  fetchInvoiceForBooking,
-  fmtInvoiceDate,
-  generateInvoiceForBooking,
-} from "@/lib/invoices";
+import { fetchInvoiceForBooking, fmtInvoiceDate, generateInvoiceForBooking } from "@/lib/invoices";
 import { OperatorAssignmentFields } from "@/components/admin/OperatorAssignmentFields";
 import { BookingWhatsAppActions } from "@/components/admin/BookingWhatsAppActions";
 import { sendBotmakerMessage } from "@/lib/botmaker-notifications";
@@ -206,16 +202,18 @@ export function useLookups() {
     },
   });
   const areas = useQuery({
-    queryKey: ["lookup", "service_areas"],
+    queryKey: ["lookup", "coverage_zones"],
     queryFn: async (): Promise<ServiceArea[]> => {
       const { data, error } = await supabase
-        .from("service_areas")
+        .from("coverage_zones")
         .select("id,name")
         .eq("active", true)
+        .order("display_order")
         .order("name");
       if (error) throw error;
       return data ?? [];
     },
+    staleTime: 30_000,
   });
   return { services, areas };
 }
@@ -391,8 +389,7 @@ export function BookingDetail({
       invalidatePaymentQueries();
       booking.payment_status = newStatus;
     },
-    onError: (e: Error) =>
-      toast.error(e.message || "No pudimos actualizar el estado del pago."),
+    onError: (e: Error) => toast.error(e.message || "No pudimos actualizar el estado del pago."),
   });
 
   const generateInvoice = useMutation({
@@ -402,9 +399,7 @@ export function BookingDetail({
       return inv;
     },
     onSuccess: (inv) => {
-      toast.success(
-        inv.created ? "Factura generada." : "La factura ya existía para esta reserva.",
-      );
+      toast.success(inv.created ? "Factura generada." : "La factura ya existía para esta reserva.");
       invalidatePaymentQueries();
       if (booking.payment_status === "paid") {
         void sendBotmakerMessage({
@@ -419,7 +414,7 @@ export function BookingDetail({
   const lp = latestPayment.data;
   const rawStatus =
     lp?.raw_payload && typeof lp.raw_payload === "object"
-      ? ((lp.raw_payload as Record<string, unknown>).status as string | undefined) ?? null
+      ? (((lp.raw_payload as Record<string, unknown>).status as string | undefined) ?? null)
       : null;
 
   return (
@@ -435,7 +430,10 @@ export function BookingDetail({
           {(booking.booking_source === "admin_subscription" ||
             booking.booking_source === "subscription" ||
             booking.customer_subscription_id) && (
-            <Badge variant="secondary" className="bg-violet-100 text-violet-900 dark:bg-violet-500/15 dark:text-violet-300">
+            <Badge
+              variant="secondary"
+              className="bg-violet-100 text-violet-900 dark:bg-violet-500/15 dark:text-violet-300"
+            >
               Suscripción
             </Badge>
           )}
@@ -503,16 +501,13 @@ export function BookingDetail({
             <p>
               <span className="text-muted-foreground">Campaña:</span>{" "}
               {booking.marketing_campaign ?? "—"} ·{" "}
-              <span className="text-muted-foreground">QR:</span>{" "}
-              {booking.qr_code_slug ?? "—"}
+              <span className="text-muted-foreground">QR:</span> {booking.qr_code_slug ?? "—"}
             </p>
             <p>
-              <span className="text-muted-foreground">Landing:</span>{" "}
-              {booking.landing_url ?? "—"}
+              <span className="text-muted-foreground">Landing:</span> {booking.landing_url ?? "—"}
             </p>
             <p>
-              <span className="text-muted-foreground">Referrer:</span>{" "}
-              {booking.referrer_url ?? "—"}
+              <span className="text-muted-foreground">Referrer:</span> {booking.referrer_url ?? "—"}
             </p>
           </div>
         </div>
@@ -615,9 +610,7 @@ export function BookingDetail({
                 disabled={generateInvoice.isPending}
                 onClick={() => generateInvoice.mutate()}
               >
-                {generateInvoice.isPending && (
-                  <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                )}
+                {generateInvoice.isPending && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
                 Generar factura
               </Button>
             </div>
@@ -649,16 +642,36 @@ export function BookingDetail({
       <div className="space-y-2 border-t pt-3">
         <p className="text-xs font-medium text-muted-foreground">Acciones rápidas</p>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => onQuickStatus("confirmed")}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => onQuickStatus("confirmed")}
+          >
             <CheckCircle2 className="mr-1 h-4 w-4" /> Confirmar
           </Button>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => onQuickStatus("in_progress")}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => onQuickStatus("in_progress")}
+          >
             <PlayCircle className="mr-1 h-4 w-4" /> Iniciar
           </Button>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => onQuickStatus("completed")}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => onQuickStatus("completed")}
+          >
             <CheckCircle2 className="mr-1 h-4 w-4" /> Completar
           </Button>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => onQuickStatus("needs_review")}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => onQuickStatus("needs_review")}
+          >
             <Flag className="mr-1 h-4 w-4" /> Revisar
           </Button>
           <Button size="sm" variant="destructive" disabled={busy} onClick={onCancel}>
@@ -679,9 +692,14 @@ export function BookingDetail({
             <AlertDialogTitle>¿Confirmar cambio de pago?</AlertDialogTitle>
             <AlertDialogDescription>
               El estado del pago pasará de{" "}
-              <strong>{paymentStatusLabels[booking.payment_status] ?? booking.payment_status}</strong>{" "}
-              a <strong>{pendingManual ? paymentStatusLabels[pendingManual] ?? pendingManual : ""}</strong>.
-              Quedará registrado en pagos y comunicaciones.
+              <strong>
+                {paymentStatusLabels[booking.payment_status] ?? booking.payment_status}
+              </strong>{" "}
+              a{" "}
+              <strong>
+                {pendingManual ? (paymentStatusLabels[pendingManual] ?? pendingManual) : ""}
+              </strong>
+              . Quedará registrado en pagos y comunicaciones.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -702,7 +720,6 @@ export function BookingDetail({
     </>
   );
 }
-
 
 // ===========================================================================
 // Edit form (used inside <Dialog>)
@@ -726,7 +743,8 @@ export function BookingEditForm({
     const match = slots.data.find(
       (s) => s.start_time.slice(0, 5) === form.scheduled_time.slice(0, 5),
     );
-    if (!match) return "Este horario no está marcado como disponible. Podés guardar igual como admin.";
+    if (!match)
+      return "Este horario no está marcado como disponible. Podés guardar igual como admin.";
     if (!match.active) return "Este slot está inactivo. Podés guardar igual como admin.";
     return null;
   }, [slots.data, form.scheduled_time]);
@@ -859,7 +877,8 @@ export function BookingCreateForm({
     const match = slots.data.find(
       (s) => s.start_time.slice(0, 5) === form.scheduled_time.slice(0, 5),
     );
-    if (!match) return "Este horario no está en el calendario. Crear la reserva puede fallar si el slot no existe.";
+    if (!match)
+      return "Este horario no está en el calendario. Crear la reserva puede fallar si el slot no existe.";
     if (!match.active) return "Este slot está inactivo. La reserva puede ser rechazada.";
     return null;
   }, [slots.data, form.scheduled_time]);
@@ -888,9 +907,8 @@ export function BookingCreateForm({
       ) {
         throw new Error("Completá los datos obligatorios.");
       }
-      const time = form.scheduled_time.length === 5
-        ? `${form.scheduled_time}:00`
-        : form.scheduled_time;
+      const time =
+        form.scheduled_time.length === 5 ? `${form.scheduled_time}:00` : form.scheduled_time;
       const res = await invokeCreateAdminBooking({
         customer_name: form.customer_name.trim(),
         customer_phone: form.customer_phone.trim(),
@@ -916,9 +934,7 @@ export function BookingCreateForm({
     },
     onSuccess: (res) => {
       toast.success(
-        res.price != null
-          ? `Reserva creada · ${formatPrice(res.price)}`
-          : "Reserva creada.",
+        res.price != null ? `Reserva creada · ${formatPrice(res.price)}` : "Reserva creada.",
       );
       onCreated();
     },
@@ -1216,8 +1232,8 @@ export function CancelBookingDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>¿Cancelar esta reserva?</AlertDialogTitle>
           <AlertDialogDescription>
-            Esta acción cambia el estado de la reserva a "Cancelada". Podés revertirlo
-            después si fue un error.
+            Esta acción cambia el estado de la reserva a "Cancelada". Podés revertirlo después si
+            fue un error.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Plus, Pencil, Trash2, RefreshCw, CheckCircle2, Clock, XCircle, Copy } from "lucide-react";
+import {
+  Loader2,
+  Plus,
+  Pencil,
+  Trash2,
+  RefreshCw,
+  CheckCircle2,
+  Clock,
+  XCircle,
+  Copy,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -14,13 +24,31 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { formatPrice } from "@/lib/booking-badges";
 
@@ -50,12 +78,24 @@ function ConfigPage() {
           <TabsTrigger value="checklist">Checklist lanzamiento</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="servicios"><ServicesTab /></TabsContent>
-        <TabsContent value="zonas"><AreasTab /></TabsContent>
-        <TabsContent value="barrios"><PrivateNeighborhoodsTab /></TabsContent>
-        <TabsContent value="negocio"><BusinessTab /></TabsContent>
-        <TabsContent value="salud"><HealthTab /></TabsContent>
-        <TabsContent value="checklist"><ChecklistTab /></TabsContent>
+        <TabsContent value="servicios">
+          <ServicesTab />
+        </TabsContent>
+        <TabsContent value="zonas">
+          <AreasTab />
+        </TabsContent>
+        <TabsContent value="barrios">
+          <PrivateNeighborhoodsTab />
+        </TabsContent>
+        <TabsContent value="negocio">
+          <BusinessTab />
+        </TabsContent>
+        <TabsContent value="salud">
+          <HealthTab />
+        </TabsContent>
+        <TabsContent value="checklist">
+          <ChecklistTab />
+        </TabsContent>
       </Tabs>
     </div>
   );
@@ -80,15 +120,14 @@ function ServicesTab() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<Service | null>(null);
   const [creating, setCreating] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<{ svc: Service; bookings: number } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ svc: Service; bookings: number } | null>(
+    null,
+  );
 
   const q = useQuery({
     queryKey: ["admin", "services"],
     queryFn: async (): Promise<Service[]> => {
-      const { data, error } = await supabase
-        .from("services")
-        .select("*")
-        .order("name");
+      const { data, error } = await supabase.from("services").select("*").order("name");
       if (error) throw error;
       return data ?? [];
     },
@@ -104,7 +143,10 @@ function ServicesTab() {
         .eq("id", svc.id);
       if (error) throw error;
     },
-    onSuccess: () => { toast.success("Servicio actualizado."); refresh(); },
+    onSuccess: () => {
+      toast.success("Servicio actualizado.");
+      refresh();
+    },
     onError: (e: any) => toast.error(e?.message ?? "Error"),
   });
 
@@ -121,7 +163,11 @@ function ServicesTab() {
       const { error } = await supabase.from("services").delete().eq("id", svc.id);
       if (error) throw error;
     },
-    onSuccess: () => { toast.success("Servicio eliminado."); refresh(); setConfirmDelete(null); },
+    onSuccess: () => {
+      toast.success("Servicio eliminado.");
+      refresh();
+      setConfirmDelete(null);
+    },
     onError: (e: any) => toast.error(e?.message ?? "Error"),
   });
 
@@ -137,9 +183,17 @@ function ServicesTab() {
       {q.isLoading ? (
         <Skeleton className="h-32 w-full" />
       ) : q.error ? (
-        <Card><CardContent className="p-6 text-sm text-destructive">No pudimos cargar los servicios.</CardContent></Card>
+        <Card>
+          <CardContent className="p-6 text-sm text-destructive">
+            No pudimos cargar los servicios.
+          </CardContent>
+        </Card>
       ) : (q.data ?? []).length === 0 ? (
-        <Card><CardContent className="p-6 text-sm text-muted-foreground">No hay servicios todavía.</CardContent></Card>
+        <Card>
+          <CardContent className="p-6 text-sm text-muted-foreground">
+            No hay servicios todavía.
+          </CardContent>
+        </Card>
       ) : (
         <>
           <Card className="hidden md:block">
@@ -159,13 +213,21 @@ function ServicesTab() {
                   {q.data!.map((s) => (
                     <TableRow key={s.id}>
                       <TableCell className="font-medium">{s.name}</TableCell>
-                      <TableCell className="max-w-xs text-sm text-muted-foreground line-clamp-2">{s.description ?? "—"}</TableCell>
+                      <TableCell className="max-w-xs text-sm text-muted-foreground line-clamp-2">
+                        {s.description ?? "—"}
+                      </TableCell>
                       <TableCell>{formatPrice(s.base_price)}</TableCell>
                       <TableCell>{s.duration_minutes} min</TableCell>
-                      <TableCell><Switch checked={s.active} onCheckedChange={() => toggleActive.mutate(s)} /></TableCell>
+                      <TableCell>
+                        <Switch checked={s.active} onCheckedChange={() => toggleActive.mutate(s)} />
+                      </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" onClick={() => setEditing(s)}><Pencil className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="sm" onClick={() => askDelete(s)}><Trash2 className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="sm" onClick={() => setEditing(s)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => askDelete(s)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -181,16 +243,26 @@ function ServicesTab() {
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <div className="font-medium">{s.name}</div>
-                      <div className="text-xs text-muted-foreground">{formatPrice(s.base_price)} · {s.duration_minutes} min</div>
+                      <div className="text-xs text-muted-foreground">
+                        {formatPrice(s.base_price)} · {s.duration_minutes} min
+                      </div>
                     </div>
-                    <Badge variant={s.active ? "secondary" : "outline"}>{s.active ? "Activo" : "Inactivo"}</Badge>
+                    <Badge variant={s.active ? "secondary" : "outline"}>
+                      {s.active ? "Activo" : "Inactivo"}
+                    </Badge>
                   </div>
-                  {s.description && <div className="text-sm text-muted-foreground">{s.description}</div>}
+                  {s.description && (
+                    <div className="text-sm text-muted-foreground">{s.description}</div>
+                  )}
                   <div className="flex items-center justify-between gap-2 pt-2">
                     <Switch checked={s.active} onCheckedChange={() => toggleActive.mutate(s)} />
                     <div className="flex gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => setEditing(s)}><Pencil className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="sm" onClick={() => askDelete(s)}><Trash2 className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="sm" onClick={() => setEditing(s)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => askDelete(s)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 </CardContent>
@@ -200,12 +272,27 @@ function ServicesTab() {
         </>
       )}
 
-      <Dialog open={!!editing || creating} onOpenChange={(o) => { if (!o) { setEditing(null); setCreating(false); } }}>
+      <Dialog
+        open={!!editing || creating}
+        onOpenChange={(o) => {
+          if (!o) {
+            setEditing(null);
+            setCreating(false);
+          }
+        }}
+      >
         <DialogContent className="max-w-lg">
           <ServiceForm
             initial={editing ?? undefined}
-            onClose={() => { setEditing(null); setCreating(false); }}
-            onSaved={() => { refresh(); setEditing(null); setCreating(false); }}
+            onClose={() => {
+              setEditing(null);
+              setCreating(false);
+            }}
+            onSaved={() => {
+              refresh();
+              setEditing(null);
+              setCreating(false);
+            }}
           />
         </DialogContent>
       </Dialog>
@@ -216,7 +303,10 @@ function ServicesTab() {
             <AlertDialogTitle>Eliminar servicio</AlertDialogTitle>
             <AlertDialogDescription>
               {confirmDelete?.bookings ? (
-                <>Este servicio ya tiene <b>{confirmDelete.bookings}</b> reserva(s) asociada(s). Te recomendamos desactivarlo en vez de eliminarlo.</>
+                <>
+                  Este servicio ya tiene <b>{confirmDelete.bookings}</b> reserva(s) asociada(s). Te
+                  recomendamos desactivarlo en vez de eliminarlo.
+                </>
               ) : (
                 <>¿Eliminar “{confirmDelete?.svc.name}”? Esta acción no se puede deshacer.</>
               )}
@@ -225,15 +315,19 @@ function ServicesTab() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             {confirmDelete?.bookings ? (
-              <AlertDialogAction onClick={() => {
-                if (!confirmDelete) return;
-                toggleActive.mutate({ ...confirmDelete.svc, active: true });
-                setConfirmDelete(null);
-              }}>
+              <AlertDialogAction
+                onClick={() => {
+                  if (!confirmDelete) return;
+                  toggleActive.mutate({ ...confirmDelete.svc, active: true });
+                  setConfirmDelete(null);
+                }}
+              >
                 Desactivar
               </AlertDialogAction>
             ) : (
-              <AlertDialogAction onClick={() => confirmDelete && doDelete.mutate(confirmDelete.svc)}>
+              <AlertDialogAction
+                onClick={() => confirmDelete && doDelete.mutate(confirmDelete.svc)}
+              >
                 Eliminar
               </AlertDialogAction>
             )}
@@ -244,7 +338,15 @@ function ServicesTab() {
   );
 }
 
-function ServiceForm({ initial, onClose, onSaved }: { initial?: Service; onClose: () => void; onSaved: () => void }) {
+function ServiceForm({
+  initial,
+  onClose,
+  onSaved,
+}: {
+  initial?: Service;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [basePrice, setBasePrice] = useState(String(initial?.base_price ?? ""));
@@ -280,7 +382,9 @@ function ServiceForm({ initial, onClose, onSaved }: { initial?: Service; onClose
       onSaved();
     } catch (err: any) {
       toast.error(err?.message ?? "Error");
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -292,34 +396,128 @@ function ServiceForm({ initial, onClose, onSaved }: { initial?: Service; onClose
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-3">
-        <div><Label>Nombre *</Label><Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} /></div>
-        <div><Label>Descripción</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} maxLength={500} /></div>
-        <div className="grid grid-cols-2 gap-3">
-          <div><Label>Precio (ARS) *</Label><Input type="number" min={1} value={basePrice} onChange={(e) => setBasePrice(e.target.value)} required /></div>
-          <div><Label>Duración (min) *</Label><Input type="number" min={1} value={duration} onChange={(e) => setDuration(e.target.value)} required /></div>
+        <div>
+          <Label>Nombre *</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} />
         </div>
-        <div className="flex items-center gap-2"><Switch checked={active} onCheckedChange={setActive} /><Label>Activo</Label></div>
+        <div>
+          <Label>Descripción</Label>
+          <Textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={3}
+            maxLength={500}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label>Precio (ARS) *</Label>
+            <Input
+              type="number"
+              min={1}
+              value={basePrice}
+              onChange={(e) => setBasePrice(e.target.value)}
+              required
+            />
+          </div>
+          <div>
+            <Label>Duración (min) *</Label>
+            <Input
+              type="number"
+              min={1}
+              value={duration}
+              onChange={(e) => setDuration(e.target.value)}
+              required
+            />
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Switch checked={active} onCheckedChange={setActive} />
+          <Label>Activo</Label>
+        </div>
       </div>
       <DialogFooter>
-        <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
-        <Button type="submit" disabled={busy}>{busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Guardar</Button>
+        <Button type="button" variant="ghost" onClick={onClose}>
+          Cancelar
+        </Button>
+        <Button type="submit" disabled={busy}>
+          {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Guardar
+        </Button>
       </DialogFooter>
     </form>
   );
 }
 
 // ===========================================================================
-// AREAS
+// AREAS (coverage_zones is the booking source of truth)
 // ===========================================================================
 
 type Area = {
   id: string;
   name: string;
   active: boolean;
+  aliases: string[];
   coverage_notes: string | null;
+  display_order: number;
   created_at: string;
   updated_at: string;
 };
+
+function parseAliases(raw: string): string[] {
+  return [
+    ...new Set(
+      raw
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+async function syncLegacyServiceArea(opts: {
+  name: string;
+  previousName?: string | null;
+  active: boolean;
+  coverage_notes: string | null;
+  remove?: boolean;
+}) {
+  // Keep service_areas aligned for any remaining legacy consumers / health counts.
+  if (opts.remove) {
+    if (opts.previousName) {
+      await supabase.from("service_areas").delete().eq("name", opts.previousName);
+    }
+    await supabase.from("service_areas").delete().eq("name", opts.name);
+    return;
+  }
+  if (opts.previousName && opts.previousName !== opts.name) {
+    const { data: renamedRows, error: renameError } = await supabase
+      .from("service_areas")
+      .update({ name: opts.name, active: opts.active, coverage_notes: opts.coverage_notes })
+      .eq("name", opts.previousName)
+      .select("id");
+    if (renameError) throw renameError;
+    if ((renamedRows ?? []).length > 0) return;
+  }
+  const { data: existing } = await supabase
+    .from("service_areas")
+    .select("id")
+    .eq("name", opts.name)
+    .maybeSingle();
+  if (existing?.id) {
+    const { error } = await supabase
+      .from("service_areas")
+      .update({ active: opts.active, coverage_notes: opts.coverage_notes })
+      .eq("id", existing.id);
+    if (error) throw error;
+    return;
+  }
+  const { error } = await supabase.from("service_areas").insert({
+    name: opts.name,
+    active: opts.active,
+    coverage_notes: opts.coverage_notes,
+  });
+  if (error) throw error;
+}
 
 function AreasTab() {
   const qc = useQueryClient();
@@ -328,55 +526,116 @@ function AreasTab() {
   const [confirmDelete, setConfirmDelete] = useState<{ area: Area; refs: number } | null>(null);
 
   const q = useQuery({
-    queryKey: ["admin", "service_areas"],
+    queryKey: ["admin", "coverage_zones"],
     queryFn: async (): Promise<Area[]> => {
-      const { data, error } = await supabase.from("service_areas").select("*").order("name");
+      const { data, error } = await supabase
+        .from("coverage_zones")
+        .select("id,name,active,aliases,coverage_notes,display_order,created_at,updated_at")
+        .order("display_order")
+        .order("name");
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []).map((row) => ({
+        id: String(row.id),
+        name: String(row.name),
+        active: !!row.active,
+        aliases: Array.isArray(row.aliases) ? row.aliases.map(String) : [],
+        coverage_notes: row.coverage_notes ?? null,
+        display_order: Number(row.display_order) || 0,
+        created_at: String(row.created_at),
+        updated_at: String(row.updated_at),
+      }));
     },
   });
 
-  const refresh = () => qc.invalidateQueries({ queryKey: ["admin", "service_areas"] });
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ["admin", "coverage_zones"] });
+    void qc.invalidateQueries({ queryKey: ["coverage_zones"] });
+    void qc.invalidateQueries({ queryKey: ["lookup", "coverage_zones"] });
+    void qc.invalidateQueries({ queryKey: ["public", "coverage_zones"] });
+    void qc.invalidateQueries({ queryKey: ["admin", "service_areas"] });
+    void qc.invalidateQueries({ queryKey: ["lookup", "service_areas"] });
+    void qc.invalidateQueries({ queryKey: ["public", "service_areas"] });
+  };
 
   const toggleActive = useMutation({
     mutationFn: async (a: Area) => {
-      const { error } = await supabase.from("service_areas").update({ active: !a.active }).eq("id", a.id);
+      const nextActive = !a.active;
+      const { error } = await supabase
+        .from("coverage_zones")
+        .update({ active: nextActive })
+        .eq("id", a.id);
       if (error) throw error;
+      await syncLegacyServiceArea({
+        name: a.name,
+        active: nextActive,
+        coverage_notes: a.coverage_notes,
+      });
     },
-    onSuccess: () => { toast.success("Zona actualizada."); refresh(); },
-    onError: (e: any) => toast.error(e?.message ?? "Error"),
+    onSuccess: () => {
+      toast.success("Zona actualizada.");
+      refresh();
+    },
+    onError: (e: Error) => toast.error(e?.message ?? "Error"),
   });
 
   const askDelete = async (area: Area) => {
     const [b, c] = await Promise.all([
-      supabase.from("bookings").select("id", { count: "exact", head: true }).eq("neighborhood", area.name),
-      supabase.from("customers").select("id", { count: "exact", head: true }).eq("neighborhood", area.name),
+      supabase
+        .from("bookings")
+        .select("id", { count: "exact", head: true })
+        .eq("coverage_zone_id", area.id),
+      supabase
+        .from("customers")
+        .select("id", { count: "exact", head: true })
+        .eq("coverage_zone_id", area.id),
     ]);
     setConfirmDelete({ area, refs: (b.count ?? 0) + (c.count ?? 0) });
   };
 
   const doDelete = useMutation({
     mutationFn: async (a: Area) => {
-      const { error } = await supabase.from("service_areas").delete().eq("id", a.id);
+      const { error } = await supabase.from("coverage_zones").delete().eq("id", a.id);
       if (error) throw error;
+      await syncLegacyServiceArea({
+        name: a.name,
+        active: a.active,
+        coverage_notes: a.coverage_notes,
+        remove: true,
+      });
     },
-    onSuccess: () => { toast.success("Zona eliminada."); refresh(); setConfirmDelete(null); },
-    onError: (e: any) => toast.error(e?.message ?? "Error"),
+    onSuccess: () => {
+      toast.success("Zona eliminada.");
+      refresh();
+      setConfirmDelete(null);
+    },
+    onError: (e: Error) => toast.error(e?.message ?? "Error"),
   });
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <div className="text-sm text-muted-foreground">Zonas donde Washero presta servicio.</div>
-        <Button size="sm" onClick={() => setCreating(true)}><Plus className="mr-2 h-4 w-4" /> Nueva zona</Button>
+        <div className="text-sm text-muted-foreground">
+          Zonas activas usadas por el flujo de reserva pública y validación de direcciones.
+        </div>
+        <Button size="sm" onClick={() => setCreating(true)}>
+          <Plus className="mr-2 h-4 w-4" /> Nueva zona
+        </Button>
       </div>
 
       {q.isLoading ? (
         <Skeleton className="h-32 w-full" />
       ) : q.error ? (
-        <Card><CardContent className="p-6 text-sm text-destructive">No pudimos cargar las zonas.</CardContent></Card>
+        <Card>
+          <CardContent className="p-6 text-sm text-destructive">
+            No pudimos cargar las zonas.
+          </CardContent>
+        </Card>
       ) : (q.data ?? []).length === 0 ? (
-        <Card><CardContent className="p-6 text-sm text-muted-foreground">No hay zonas todavía.</CardContent></Card>
+        <Card>
+          <CardContent className="p-6 text-sm text-muted-foreground">
+            No hay zonas todavía.
+          </CardContent>
+        </Card>
       ) : (
         <>
           <Card className="hidden md:block">
@@ -385,6 +644,7 @@ function AreasTab() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nombre</TableHead>
+                    <TableHead>Alias</TableHead>
                     <TableHead>Notas de cobertura</TableHead>
                     <TableHead>Activa</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
@@ -394,11 +654,22 @@ function AreasTab() {
                   {q.data!.map((a) => (
                     <TableRow key={a.id}>
                       <TableCell className="font-medium">{a.name}</TableCell>
-                      <TableCell className="max-w-md text-sm text-muted-foreground line-clamp-2">{a.coverage_notes ?? "—"}</TableCell>
-                      <TableCell><Switch checked={a.active} onCheckedChange={() => toggleActive.mutate(a)} /></TableCell>
+                      <TableCell className="max-w-xs text-sm text-muted-foreground line-clamp-2">
+                        {a.aliases.length ? a.aliases.join(", ") : "—"}
+                      </TableCell>
+                      <TableCell className="max-w-md text-sm text-muted-foreground line-clamp-2">
+                        {a.coverage_notes ?? "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Switch checked={a.active} onCheckedChange={() => toggleActive.mutate(a)} />
+                      </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" onClick={() => setEditing(a)}><Pencil className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="sm" onClick={() => askDelete(a)}><Trash2 className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="sm" onClick={() => setEditing(a)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => askDelete(a)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -413,14 +684,27 @@ function AreasTab() {
                 <CardContent className="space-y-2 p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="font-medium">{a.name}</div>
-                    <Badge variant={a.active ? "secondary" : "outline"}>{a.active ? "Activa" : "Inactiva"}</Badge>
+                    <Badge variant={a.active ? "secondary" : "outline"}>
+                      {a.active ? "Activa" : "Inactiva"}
+                    </Badge>
                   </div>
-                  {a.coverage_notes && <div className="text-sm text-muted-foreground">{a.coverage_notes}</div>}
+                  {a.aliases.length > 0 && (
+                    <div className="text-sm text-muted-foreground">
+                      Alias: {a.aliases.join(", ")}
+                    </div>
+                  )}
+                  {a.coverage_notes && (
+                    <div className="text-sm text-muted-foreground">{a.coverage_notes}</div>
+                  )}
                   <div className="flex items-center justify-between gap-2 pt-2">
                     <Switch checked={a.active} onCheckedChange={() => toggleActive.mutate(a)} />
                     <div className="flex gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => setEditing(a)}><Pencil className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="sm" onClick={() => askDelete(a)}><Trash2 className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="sm" onClick={() => setEditing(a)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => askDelete(a)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 </CardContent>
@@ -430,13 +714,28 @@ function AreasTab() {
         </>
       )}
 
-      <Dialog open={!!editing || creating} onOpenChange={(o) => { if (!o) { setEditing(null); setCreating(false); } }}>
+      <Dialog
+        open={!!editing || creating}
+        onOpenChange={(o) => {
+          if (!o) {
+            setEditing(null);
+            setCreating(false);
+          }
+        }}
+      >
         <DialogContent className="max-w-lg">
           <AreaForm
             initial={editing ?? undefined}
             existing={q.data ?? []}
-            onClose={() => { setEditing(null); setCreating(false); }}
-            onSaved={() => { refresh(); setEditing(null); setCreating(false); }}
+            onClose={() => {
+              setEditing(null);
+              setCreating(false);
+            }}
+            onSaved={() => {
+              refresh();
+              setEditing(null);
+              setCreating(false);
+            }}
           />
         </DialogContent>
       </Dialog>
@@ -447,7 +746,10 @@ function AreasTab() {
             <AlertDialogTitle>Eliminar zona</AlertDialogTitle>
             <AlertDialogDescription>
               {confirmDelete?.refs ? (
-                <>Esta zona ya tiene <b>{confirmDelete.refs}</b> reserva(s) o cliente(s) asociado(s). Te recomendamos desactivarla.</>
+                <>
+                  Esta zona ya tiene <b>{confirmDelete.refs}</b> reserva(s) o cliente(s)
+                  asociado(s). Te recomendamos desactivarla.
+                </>
               ) : (
                 <>¿Eliminar “{confirmDelete?.area.name}”? Esta acción no se puede deshacer.</>
               )}
@@ -456,15 +758,19 @@ function AreasTab() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             {confirmDelete?.refs ? (
-              <AlertDialogAction onClick={() => {
-                if (!confirmDelete) return;
-                toggleActive.mutate({ ...confirmDelete.area, active: true });
-                setConfirmDelete(null);
-              }}>
+              <AlertDialogAction
+                onClick={() => {
+                  if (!confirmDelete) return;
+                  toggleActive.mutate({ ...confirmDelete.area, active: true });
+                  setConfirmDelete(null);
+                }}
+              >
                 Desactivar
               </AlertDialogAction>
             ) : (
-              <AlertDialogAction onClick={() => confirmDelete && doDelete.mutate(confirmDelete.area)}>
+              <AlertDialogAction
+                onClick={() => confirmDelete && doDelete.mutate(confirmDelete.area)}
+              >
                 Eliminar
               </AlertDialogAction>
             )}
@@ -475,8 +781,19 @@ function AreasTab() {
   );
 }
 
-function AreaForm({ initial, existing, onClose, onSaved }: { initial?: Area; existing: Area[]; onClose: () => void; onSaved: () => void }) {
+function AreaForm({
+  initial,
+  existing,
+  onClose,
+  onSaved,
+}: {
+  initial?: Area;
+  existing: Area[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const [name, setName] = useState(initial?.name ?? "");
+  const [aliases, setAliases] = useState((initial?.aliases ?? []).join(", "));
   const [notes, setNotes] = useState(initial?.coverage_notes ?? "");
   const [active, setActive] = useState(initial?.active ?? true);
   const [busy, setBusy] = useState(false);
@@ -485,37 +802,96 @@ function AreaForm({ initial, existing, onClose, onSaved }: { initial?: Area; exi
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return toast.error("El nombre es obligatorio.");
-    const dup = existing.find((a) => a.name.toLowerCase() === trimmed.toLowerCase() && a.id !== initial?.id);
+    const dup = existing.find(
+      (a) => a.name.toLowerCase() === trimmed.toLowerCase() && a.id !== initial?.id,
+    );
     if (dup) return toast.error("Ya existe una zona con ese nombre.");
     setBusy(true);
     try {
-      const payload = { name: trimmed, coverage_notes: notes.trim() || null, active };
+      const parsedAliases = parseAliases(aliases);
+      const coverage_notes = notes.trim() || null;
+      const payload = {
+        name: trimmed,
+        aliases: parsedAliases,
+        coverage_notes,
+        active,
+        display_order: initial?.display_order ?? existing.length + 1,
+      };
       if (initial) {
-        const { error } = await supabase.from("service_areas").update(payload).eq("id", initial.id);
+        const { error } = await supabase
+          .from("coverage_zones")
+          .update(payload)
+          .eq("id", initial.id);
         if (error) throw error;
+        await syncLegacyServiceArea({
+          name: trimmed,
+          previousName: initial.name,
+          active,
+          coverage_notes,
+        });
         toast.success("Zona actualizada.");
       } else {
-        const { error } = await supabase.from("service_areas").insert(payload);
+        const { error } = await supabase.from("coverage_zones").insert(payload);
         if (error) throw error;
+        await syncLegacyServiceArea({
+          name: trimmed,
+          active,
+          coverage_notes,
+        });
         toast.success("Zona creada.");
       }
       onSaved();
-    } catch (err: any) {
-      toast.error(err?.message ?? "Error");
-    } finally { setBusy(false); }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Error";
+      toast.error(message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
     <form onSubmit={save} className="space-y-3">
-      <DialogHeader><DialogTitle>{initial ? "Editar zona" : "Nueva zona"}</DialogTitle></DialogHeader>
+      <DialogHeader>
+        <DialogTitle>{initial ? "Editar zona" : "Nueva zona"}</DialogTitle>
+        <DialogDescription>
+          Las zonas activas se usan automáticamente en el flujo de reserva pública.
+        </DialogDescription>
+      </DialogHeader>
       <div className="space-y-3">
-        <div><Label>Nombre *</Label><Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} /></div>
-        <div><Label>Notas de cobertura</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} maxLength={500} /></div>
-        <div className="flex items-center gap-2"><Switch checked={active} onCheckedChange={setActive} /><Label>Activa</Label></div>
+        <div>
+          <Label>Nombre *</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} />
+        </div>
+        <div>
+          <Label>Alias (separados por coma)</Label>
+          <Input
+            value={aliases}
+            onChange={(e) => setAliases(e.target.value)}
+            placeholder="Ej: Ingeniero Maschwitz, Ing. Maschwitz"
+            maxLength={300}
+          />
+        </div>
+        <div>
+          <Label>Notas de cobertura</Label>
+          <Textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={3}
+            maxLength={500}
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Switch checked={active} onCheckedChange={setActive} />
+          <Label>Activa</Label>
+        </div>
       </div>
       <DialogFooter>
-        <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
-        <Button type="submit" disabled={busy}>{busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Guardar</Button>
+        <Button type="button" variant="ghost" onClick={onClose}>
+          Cancelar
+        </Button>
+        <Button type="submit" disabled={busy}>
+          {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Guardar
+        </Button>
       </DialogFooter>
     </form>
   );
@@ -551,14 +927,18 @@ function PrivateNeighborhoodsTab() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<PrivateNeighborhood | null>(null);
   const [creating, setCreating] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<{ row: PrivateNeighborhood; bookings: number } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{
+    row: PrivateNeighborhood;
+    bookings: number;
+  } | null>(null);
 
   const zonesQ = useQuery({
-    queryKey: ["admin", "coverage_zones"],
+    queryKey: ["admin", "coverage_zones", "options"],
     queryFn: async (): Promise<CoverageZoneOption[]> => {
       const { data, error } = await supabase
         .from("coverage_zones")
         .select("id,name")
+        .eq("active", true)
         .order("display_order")
         .order("name");
       if (error) throw error;
@@ -595,7 +975,10 @@ function PrivateNeighborhoodsTab() {
         .eq("id", row.id);
       if (error) throw error;
     },
-    onSuccess: () => { toast.success("Barrio actualizado."); refresh(); },
+    onSuccess: () => {
+      toast.success("Barrio actualizado.");
+      refresh();
+    },
     onError: (e: Error) => toast.error(e?.message ?? "Error"),
   });
 
@@ -612,14 +995,16 @@ function PrivateNeighborhoodsTab() {
       const { error } = await supabase.from("private_neighborhoods").delete().eq("id", row.id);
       if (error) throw error;
     },
-    onSuccess: () => { toast.success("Barrio eliminado."); refresh(); setConfirmDelete(null); },
+    onSuccess: () => {
+      toast.success("Barrio eliminado.");
+      refresh();
+      setConfirmDelete(null);
+    },
     onError: (e: Error) => toast.error(e?.message ?? "Error"),
   });
 
   const zoneName = (row: PrivateNeighborhood) =>
-    row.coverage_zone_name
-    ?? zonesQ.data?.find((z) => z.id === row.coverage_zone_id)?.name
-    ?? "—";
+    row.coverage_zone_name ?? zonesQ.data?.find((z) => z.id === row.coverage_zone_id)?.name ?? "—";
 
   return (
     <div className="space-y-3">
@@ -635,9 +1020,17 @@ function PrivateNeighborhoodsTab() {
       {q.isLoading ? (
         <Skeleton className="h-32 w-full" />
       ) : q.error ? (
-        <Card><CardContent className="p-6 text-sm text-destructive">No pudimos cargar los barrios.</CardContent></Card>
+        <Card>
+          <CardContent className="p-6 text-sm text-destructive">
+            No pudimos cargar los barrios.
+          </CardContent>
+        </Card>
       ) : (q.data ?? []).length === 0 ? (
-        <Card><CardContent className="p-6 text-sm text-muted-foreground">No hay barrios cerrados todavía.</CardContent></Card>
+        <Card>
+          <CardContent className="p-6 text-sm text-muted-foreground">
+            No hay barrios cerrados todavía.
+          </CardContent>
+        </Card>
       ) : (
         <>
           <Card className="hidden lg:block">
@@ -662,10 +1055,19 @@ function PrivateNeighborhoodsTab() {
                         {row.formatted_address}
                       </TableCell>
                       <TableCell>{row.display_order}</TableCell>
-                      <TableCell><Switch checked={row.active} onCheckedChange={() => toggleActive.mutate(row)} /></TableCell>
+                      <TableCell>
+                        <Switch
+                          checked={row.active}
+                          onCheckedChange={() => toggleActive.mutate(row)}
+                        />
+                      </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" onClick={() => setEditing(row)}><Pencil className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="sm" onClick={() => askDelete(row)}><Trash2 className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="sm" onClick={() => setEditing(row)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => askDelete(row)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -681,16 +1083,26 @@ function PrivateNeighborhoodsTab() {
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <div className="font-medium">{row.name}</div>
-                      <div className="text-xs text-muted-foreground">{zoneName(row)} · orden {row.display_order}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {zoneName(row)} · orden {row.display_order}
+                      </div>
                     </div>
-                    <Badge variant={row.active ? "secondary" : "outline"}>{row.active ? "Activo" : "Inactivo"}</Badge>
+                    <Badge variant={row.active ? "secondary" : "outline"}>
+                      {row.active ? "Activo" : "Inactivo"}
+                    </Badge>
                   </div>
-                  <div className="text-sm text-muted-foreground line-clamp-2">{row.formatted_address}</div>
+                  <div className="text-sm text-muted-foreground line-clamp-2">
+                    {row.formatted_address}
+                  </div>
                   <div className="flex items-center justify-between gap-2 pt-2">
                     <Switch checked={row.active} onCheckedChange={() => toggleActive.mutate(row)} />
                     <div className="flex gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => setEditing(row)}><Pencil className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="sm" onClick={() => askDelete(row)}><Trash2 className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="sm" onClick={() => setEditing(row)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => askDelete(row)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 </CardContent>
@@ -700,13 +1112,28 @@ function PrivateNeighborhoodsTab() {
         </>
       )}
 
-      <Dialog open={!!editing || creating} onOpenChange={(o) => { if (!o) { setEditing(null); setCreating(false); } }}>
+      <Dialog
+        open={!!editing || creating}
+        onOpenChange={(o) => {
+          if (!o) {
+            setEditing(null);
+            setCreating(false);
+          }
+        }}
+      >
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <PrivateNeighborhoodForm
             initial={editing ?? undefined}
             zones={zonesQ.data ?? []}
-            onClose={() => { setEditing(null); setCreating(false); }}
-            onSaved={() => { refresh(); setEditing(null); setCreating(false); }}
+            onClose={() => {
+              setEditing(null);
+              setCreating(false);
+            }}
+            onSaved={() => {
+              refresh();
+              setEditing(null);
+              setCreating(false);
+            }}
           />
         </DialogContent>
       </Dialog>
@@ -717,7 +1144,10 @@ function PrivateNeighborhoodsTab() {
             <AlertDialogTitle>Eliminar barrio cerrado</AlertDialogTitle>
             <AlertDialogDescription>
               {confirmDelete?.bookings ? (
-                <>Este barrio ya tiene <b>{confirmDelete.bookings}</b> reserva(s). Te recomendamos desactivarlo en vez de eliminarlo.</>
+                <>
+                  Este barrio ya tiene <b>{confirmDelete.bookings}</b> reserva(s). Te recomendamos
+                  desactivarlo en vez de eliminarlo.
+                </>
               ) : (
                 <>¿Eliminar “{confirmDelete?.row.name}”? Esta acción no se puede deshacer.</>
               )}
@@ -726,15 +1156,19 @@ function PrivateNeighborhoodsTab() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             {confirmDelete?.bookings ? (
-              <AlertDialogAction onClick={() => {
-                if (!confirmDelete) return;
-                toggleActive.mutate({ ...confirmDelete.row, active: true });
-                setConfirmDelete(null);
-              }}>
+              <AlertDialogAction
+                onClick={() => {
+                  if (!confirmDelete) return;
+                  toggleActive.mutate({ ...confirmDelete.row, active: true });
+                  setConfirmDelete(null);
+                }}
+              >
                 Desactivar
               </AlertDialogAction>
             ) : (
-              <AlertDialogAction onClick={() => confirmDelete && doDelete.mutate(confirmDelete.row)}>
+              <AlertDialogAction
+                onClick={() => confirmDelete && doDelete.mutate(confirmDelete.row)}
+              >
                 Eliminar
               </AlertDialogAction>
             )}
@@ -810,7 +1244,10 @@ function PrivateNeighborhoodForm({
         display_order: Math.round(orderNum),
       };
       if (initial) {
-        const { error } = await supabase.from("private_neighborhoods").update(payload).eq("id", initial.id);
+        const { error } = await supabase
+          .from("private_neighborhoods")
+          .update(payload)
+          .eq("id", initial.id);
         if (error) throw error;
         toast.success("Barrio actualizado.");
       } else {
@@ -831,7 +1268,8 @@ function PrivateNeighborhoodForm({
       <DialogHeader>
         <DialogTitle>{initial ? "Editar barrio cerrado" : "Nuevo barrio cerrado"}</DialogTitle>
         <DialogDescription>
-          Estos datos normalizan la dirección en la web y vinculan el barrio a una zona de cobertura.
+          Estos datos normalizan la dirección en la web y vinculan el barrio a una zona de
+          cobertura.
         </DialogDescription>
       </DialogHeader>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -841,7 +1279,11 @@ function PrivateNeighborhoodForm({
         </div>
         <div className="sm:col-span-2">
           <Label>Alias (separados por coma)</Label>
-          <Input value={aliases} onChange={(e) => setAliases(e.target.value)} placeholder="Santa Catalina, Barrio Santa Catalina" />
+          <Input
+            value={aliases}
+            onChange={(e) => setAliases(e.target.value)}
+            placeholder="Santa Catalina, Barrio Santa Catalina"
+          />
         </div>
         <div>
           <Label>Zona de cobertura</Label>
@@ -852,21 +1294,35 @@ function PrivateNeighborhoodForm({
           >
             <option value="">Sin zona</option>
             {zones.map((z) => (
-              <option key={z.id} value={z.id}>{z.name}</option>
+              <option key={z.id} value={z.id}>
+                {z.name}
+              </option>
             ))}
           </select>
         </div>
         <div>
           <Label>Orden de visualización</Label>
-          <Input type="number" value={displayOrder} onChange={(e) => setDisplayOrder(e.target.value)} />
+          <Input
+            type="number"
+            value={displayOrder}
+            onChange={(e) => setDisplayOrder(e.target.value)}
+          />
         </div>
         <div className="sm:col-span-2">
           <Label>Dirección canónica *</Label>
-          <Input value={canonicalAddress} onChange={(e) => setCanonicalAddress(e.target.value)} required />
+          <Input
+            value={canonicalAddress}
+            onChange={(e) => setCanonicalAddress(e.target.value)}
+            required
+          />
         </div>
         <div className="sm:col-span-2">
           <Label>Dirección formateada *</Label>
-          <Input value={formattedAddress} onChange={(e) => setFormattedAddress(e.target.value)} required />
+          <Input
+            value={formattedAddress}
+            onChange={(e) => setFormattedAddress(e.target.value)}
+            required
+          />
         </div>
         <div>
           <Label>Place ID (Google)</Label>
@@ -878,11 +1334,23 @@ function PrivateNeighborhoodForm({
         </div>
         <div>
           <Label>Latitud *</Label>
-          <Input type="number" step="any" value={lat} onChange={(e) => setLat(e.target.value)} required />
+          <Input
+            type="number"
+            step="any"
+            value={lat}
+            onChange={(e) => setLat(e.target.value)}
+            required
+          />
         </div>
         <div>
           <Label>Longitud *</Label>
-          <Input type="number" step="any" value={lng} onChange={(e) => setLng(e.target.value)} required />
+          <Input
+            type="number"
+            step="any"
+            value={lng}
+            onChange={(e) => setLng(e.target.value)}
+            required
+          />
         </div>
         <div>
           <Label>Ciudad</Label>
@@ -898,7 +1366,9 @@ function PrivateNeighborhoodForm({
         </div>
       </div>
       <DialogFooter>
-        <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
+        <Button type="button" variant="ghost" onClick={onClose}>
+          Cancelar
+        </Button>
         <Button type="submit" disabled={busy}>
           {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Guardar
         </Button>
@@ -960,18 +1430,29 @@ function HealthTab() {
 
   async function loadCounts() {
     setLoading(true);
-    const tables = ["services", "service_areas", "availability_slots", "bookings", "customers", "booking_requests"] as const;
+    const tables = [
+      "services",
+      "service_areas",
+      "availability_slots",
+      "bookings",
+      "customers",
+      "booking_requests",
+    ] as const;
     const results = await Promise.all(
       tables.map((t) => supabase.from(t).select("id", { count: "exact", head: true })),
     );
     const next: Counts = {};
-    tables.forEach((t, i) => { next[t] = results[i].count ?? 0; });
+    tables.forEach((t, i) => {
+      next[t] = results[i].count ?? 0;
+    });
     setCounts(next);
     setUpdated(new Date());
     setLoading(false);
   }
 
-  useEffect(() => { loadCounts(); }, []);
+  useEffect(() => {
+    loadCounts();
+  }, []);
 
   async function runInsertTests() {
     setRunning(true);
@@ -996,7 +1477,9 @@ function HealthTab() {
       setInsertResult(ok.error ? `FAIL: ${ok.error.message}` : "OK");
 
       const bad = await supabase.from("bookings").insert({ ...base, booking_source: "admin" });
-      setForbiddenResult(bad.error ? `OK (bloqueado: ${bad.error.code})` : "FAIL (insert permitido!)");
+      setForbiddenResult(
+        bad.error ? `OK (bloqueado: ${bad.error.code})` : "FAIL (insert permitido!)",
+      );
 
       // Cleanup as admin
       await supabase.from("bookings").delete().eq("notes", tag);
@@ -1007,9 +1490,13 @@ function HealthTab() {
 
   async function pingEdge() {
     try {
-      const { error } = await supabase.functions.invoke("create-website-booking", { body: { __ping: true } });
+      const { error } = await supabase.functions.invoke("create-website-booking", {
+        body: { __ping: true },
+      });
       // Function should reject ping with 4xx → that means it's reachable.
-      setEdgeResult(error ? `Activa (${error.message?.slice(0, 60) ?? "respuesta de validación"})` : "Activa");
+      setEdgeResult(
+        error ? `Activa (${error.message?.slice(0, 60) ?? "respuesta de validación"})` : "Activa",
+      );
     } catch (e: any) {
       setEdgeResult(`Error: ${e?.message ?? "no alcanzable"}`);
     }
@@ -1030,27 +1517,42 @@ function HealthTab() {
         </CardHeader>
         <CardContent className="space-y-4 text-sm">
           <div className="grid gap-2">
-            <Row label="Supabase project ref" value={<code className="font-mono text-xs">{PROJECT_REF}</code>} />
+            <Row
+              label="Supabase project ref"
+              value={<code className="font-mono text-xs">{PROJECT_REF}</code>}
+            />
             <Row label="services" value={loading ? "…" : String(counts.services)} />
             <Row label="service_areas" value={loading ? "…" : String(counts.service_areas)} />
-            <Row label="availability_slots" value={loading ? "…" : String(counts.availability_slots)} />
+            <Row
+              label="availability_slots"
+              value={loading ? "…" : String(counts.availability_slots)}
+            />
             <Row label="bookings" value={loading ? "…" : String(counts.bookings)} />
             <Row label="customers" value={loading ? "…" : String(counts.customers)} />
             <Row label="booking_requests" value={loading ? "…" : String(counts.booking_requests)} />
-            <Row label="RLS" value={<Badge variant="secondary">Activo en tablas principales</Badge>} />
+            <Row
+              label="RLS"
+              value={<Badge variant="secondary">Activo en tablas principales</Badge>}
+            />
             <Row label="Edge function create-website-booking" value={edgeResult} />
             <Row label="Insert público (válido)" value={insertResult} />
             <Row label="Insert público (bloqueado)" value={forbiddenResult} />
-            {updated && <Row label="Última actualización" value={updated.toLocaleTimeString("es-AR")} />}
+            {updated && (
+              <Row label="Última actualización" value={updated.toLocaleTimeString("es-AR")} />
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={pingEdge}>Probar edge function</Button>
+            <Button size="sm" variant="outline" onClick={pingEdge}>
+              Probar edge function
+            </Button>
             <Button size="sm" onClick={runInsertTests} disabled={running}>
-              {running && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Probar inserts (auto-limpieza)
+              {running && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Probar inserts
+              (auto-limpieza)
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Las filas de prueba se etiquetan con <code>HEALTHCHECK_DELETE_ME_*</code> y se eliminan automáticamente al finalizar.
+            Las filas de prueba se etiquetan con <code>HEALTHCHECK_DELETE_ME_*</code> y se eliminan
+            automáticamente al finalizar.
           </p>
         </CardContent>
       </Card>
@@ -1093,9 +1595,18 @@ function MercadoPagoHealthCard() {
     queryKey: ["admin", "mp-payment-counts"],
     queryFn: async () => {
       const all = await supabase.from("payments").select("id", { count: "exact", head: true });
-      const pend = await supabase.from("payments").select("id", { count: "exact", head: true }).eq("status", "pending");
-      const paid = await supabase.from("payments").select("id", { count: "exact", head: true }).eq("status", "paid");
-      const failed = await supabase.from("payments").select("id", { count: "exact", head: true }).eq("status", "failed");
+      const pend = await supabase
+        .from("payments")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending");
+      const paid = await supabase
+        .from("payments")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "paid");
+      const failed = await supabase
+        .from("payments")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "failed");
       return {
         all: all.count ?? 0,
         pending: pend.count ?? 0,
@@ -1144,26 +1655,37 @@ function MercadoPagoHealthCard() {
           <Row
             label="MERCADOPAGO_ACCESS_TOKEN"
             value={
-              diagnostics.isLoading ? "…" : d?.mercadopago_access_token_configured ? (
+              diagnostics.isLoading ? (
+                "…"
+              ) : d?.mercadopago_access_token_configured ? (
                 <Badge className="bg-green-100 text-green-900 dark:bg-green-500/15 dark:text-green-300">
                   Configurado{d.mercadopago_token_kind ? ` (${d.mercadopago_token_kind})` : ""}
                 </Badge>
               ) : (
-                <Badge variant="outline" className="text-amber-700 dark:text-amber-300">No configurado</Badge>
+                <Badge variant="outline" className="text-amber-700 dark:text-amber-300">
+                  No configurado
+                </Badge>
               )
             }
           />
           <Row
             label="PUBLIC_SITE_URL"
             value={
-              diagnostics.isLoading ? "…" : d?.public_site_url_configured ? (
+              diagnostics.isLoading ? (
+                "…"
+              ) : d?.public_site_url_configured ? (
                 <code className="font-mono text-xs">{d.public_site_url}</code>
               ) : (
-                <Badge variant="outline" className="text-amber-700 dark:text-amber-300">No configurado (usando fallback)</Badge>
+                <Badge variant="outline" className="text-amber-700 dark:text-amber-300">
+                  No configurado (usando fallback)
+                </Badge>
               )
             }
           />
-          <Row label="Webhook URL" value={<code className="break-all font-mono text-[11px]">{MP_WEBHOOK_URL}</code>} />
+          <Row
+            label="Webhook URL"
+            value={<code className="break-all font-mono text-[11px]">{MP_WEBHOOK_URL}</code>}
+          />
           <Row label="Pagos totales" value={counts.isLoading ? "…" : counts.data?.all} />
           <Row label="Pagos pendientes" value={counts.isLoading ? "…" : counts.data?.pending} />
           <Row label="Pagos aprobados" value={counts.isLoading ? "…" : counts.data?.paid} />
@@ -1174,8 +1696,8 @@ function MercadoPagoHealthCard() {
               latestPayment.isLoading
                 ? "…"
                 : latestPayment.data
-                ? `${latestPayment.data.provider} · ${latestPayment.data.status} · ${new Date(latestPayment.data.updated_at).toLocaleString("es-AR")}`
-                : "—"
+                  ? `${latestPayment.data.provider} · ${latestPayment.data.status} · ${new Date(latestPayment.data.updated_at).toLocaleString("es-AR")}`
+                  : "—"
             }
           />
           <Row
@@ -1184,8 +1706,8 @@ function MercadoPagoHealthCard() {
               latestLog.isLoading
                 ? "…"
                 : latestLog.data
-                ? `${new Date(latestLog.data.created_at).toLocaleString("es-AR")} · ${latestLog.data.message_text ?? ""}`
-                : "Sin notificaciones recibidas todavía"
+                  ? `${new Date(latestLog.data.created_at).toLocaleString("es-AR")} · ${latestLog.data.message_text ?? ""}`
+                  : "Sin notificaciones recibidas todavía"
             }
           />
         </div>
@@ -1198,14 +1720,14 @@ function MercadoPagoHealthCard() {
           <code className="block break-all font-mono">{MP_WEBHOOK_URL}</code>
           <p className="pt-1">
             Cuando publiques <code className="font-mono">washero.ar</code>, configurar el secret{" "}
-            <code className="font-mono">PUBLIC_SITE_URL=https://washero.ar</code> en las funciones de Supabase.
+            <code className="font-mono">PUBLIC_SITE_URL=https://washero.ar</code> en las funciones
+            de Supabase.
           </p>
         </div>
       </CardContent>
     </Card>
   );
 }
-
 
 // ===========================================================================
 // CHECKLIST
@@ -1242,12 +1764,17 @@ function ChecklistTab() {
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <span>Checklist de lanzamiento</span>
-          <Badge variant="secondary">{totals.done}/{totals.total} listos</Badge>
+          <Badge variant="secondary">
+            {totals.done}/{totals.total} listos
+          </Badge>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
         {items.map((i) => (
-          <div key={i.label} className="flex items-center justify-between gap-3 rounded-md border p-2 text-sm">
+          <div
+            key={i.label}
+            className="flex items-center justify-between gap-3 rounded-md border p-2 text-sm"
+          >
             <span>{i.label}</span>
             <StatusBadge status={i.status} />
           </div>
@@ -1259,10 +1786,22 @@ function ChecklistTab() {
 
 function StatusBadge({ status }: { status: ItemStatus }) {
   if (status === "done")
-    return <Badge className="gap-1 bg-green-100 text-green-900 dark:bg-green-500/15 dark:text-green-300"><CheckCircle2 className="h-3 w-3" /> Listo</Badge>;
+    return (
+      <Badge className="gap-1 bg-green-100 text-green-900 dark:bg-green-500/15 dark:text-green-300">
+        <CheckCircle2 className="h-3 w-3" /> Listo
+      </Badge>
+    );
   if (status === "pending")
-    return <Badge variant="outline" className="gap-1 text-amber-700 dark:text-amber-300"><Clock className="h-3 w-3" /> Pendiente</Badge>;
-  return <Badge variant="outline" className="gap-1 text-muted-foreground"><XCircle className="h-3 w-3" /> Próximamente</Badge>;
+    return (
+      <Badge variant="outline" className="gap-1 text-amber-700 dark:text-amber-300">
+        <Clock className="h-3 w-3" /> Pendiente
+      </Badge>
+    );
+  return (
+    <Badge variant="outline" className="gap-1 text-muted-foreground">
+      <XCircle className="h-3 w-3" /> Próximamente
+    </Badge>
+  );
 }
 
 // ===========================================================================
@@ -1278,7 +1817,9 @@ function BotmakerHealthCard() {
   const status = useQuery({
     queryKey: ["admin", "botmaker-status"],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("botmaker-diagnostics", { body: { action: "status" } });
+      const { data, error } = await supabase.functions.invoke("botmaker-diagnostics", {
+        body: { action: "status" },
+      });
       if (error) throw error;
       return data as any;
     },
@@ -1288,10 +1829,32 @@ function BotmakerHealthCard() {
     queryKey: ["admin", "botmaker-auto-stats"],
     queryFn: async () => {
       const [convertedAll, needsReviewAll, lastConverted, lastReview] = await Promise.all([
-        supabase.from("booking_requests").select("id", { count: "exact", head: true }).eq("source", "botmaker").eq("status", "converted"),
-        supabase.from("booking_requests").select("id", { count: "exact", head: true }).eq("source", "botmaker").eq("status", "needs_review"),
-        supabase.from("booking_requests").select("created_at,linked_booking_id,raw_payload").eq("source", "botmaker").eq("status", "converted").order("created_at", { ascending: false }).limit(1).maybeSingle(),
-        supabase.from("booking_requests").select("created_at,raw_payload").eq("source", "botmaker").eq("status", "needs_review").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase
+          .from("booking_requests")
+          .select("id", { count: "exact", head: true })
+          .eq("source", "botmaker")
+          .eq("status", "converted"),
+        supabase
+          .from("booking_requests")
+          .select("id", { count: "exact", head: true })
+          .eq("source", "botmaker")
+          .eq("status", "needs_review"),
+        supabase
+          .from("booking_requests")
+          .select("created_at,linked_booking_id,raw_payload")
+          .eq("source", "botmaker")
+          .eq("status", "converted")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from("booking_requests")
+          .select("created_at,raw_payload")
+          .eq("source", "botmaker")
+          .eq("status", "needs_review")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ]);
       return {
         converted: convertedAll.count ?? 0,
@@ -1306,7 +1869,9 @@ function BotmakerHealthCard() {
   async function runAction(action: string) {
     setRunning(action);
     try {
-      const { data, error } = await supabase.functions.invoke("botmaker-diagnostics", { body: { action } });
+      const { data, error } = await supabase.functions.invoke("botmaker-diagnostics", {
+        body: { action },
+      });
       if (error) throw error;
       setResults((p) => ({ ...p, [action]: data }));
       status.refetch();
@@ -1326,46 +1891,135 @@ function BotmakerHealthCard() {
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         <div className="grid gap-2">
-          <Row label="Webhook URL" value={<code className="break-all font-mono text-[11px]">{BOTMAKER_WEBHOOK_URL}</code>} />
-          <Row label="Header esperado" value={<code className="font-mono text-xs">auth-bm-token</code>} />
+          <Row
+            label="Webhook URL"
+            value={<code className="break-all font-mono text-[11px]">{BOTMAKER_WEBHOOK_URL}</code>}
+          />
+          <Row
+            label="Header esperado"
+            value={<code className="font-mono text-xs">auth-bm-token</code>}
+          />
           <Row
             label="BOTMAKER_WEBHOOK_SECRET"
             value={
-              status.isLoading ? "…" : d?.secret_configured ? (
-                <Badge className="bg-green-100 text-green-900 dark:bg-green-500/15 dark:text-green-300">Configurado</Badge>
+              status.isLoading ? (
+                "…"
+              ) : d?.secret_configured ? (
+                <Badge className="bg-green-100 text-green-900 dark:bg-green-500/15 dark:text-green-300">
+                  Configurado
+                </Badge>
               ) : (
-                <Badge variant="outline" className="text-amber-700 dark:text-amber-300">No configurado</Badge>
+                <Badge variant="outline" className="text-amber-700 dark:text-amber-300">
+                  No configurado
+                </Badge>
               )
             }
           />
-          <Row label="Eventos totales" value={status.isLoading ? "…" : d?.counts?.events ?? 0} />
-          <Row label="Eventos válidos" value={status.isLoading ? "…" : d?.counts?.valid_events ?? 0} />
-          <Row label="Eventos inválidos" value={status.isLoading ? "…" : d?.counts?.invalid_events ?? 0} />
-          <Row label="Conversaciones" value={status.isLoading ? "…" : d?.counts?.conversations ?? 0} />
-          <Row label="Mensajes" value={status.isLoading ? "…" : d?.counts?.messages ?? 0} />
-          <Row label="Último evento válido" value={d?.last_valid_event ? new Date(d.last_valid_event).toLocaleString("es-AR") : "—"} />
-          <Row label="Último evento inválido" value={d?.last_invalid_event ? new Date(d.last_invalid_event).toLocaleString("es-AR") : "—"} />
-          <Row label="Última conversación" value={d?.last_conversation?.created_at ? `${new Date(d.last_conversation.created_at).toLocaleString("es-AR")}${d.last_conversation.customer_phone ? ` · ${d.last_conversation.customer_phone}` : ""}` : "—"} />
-          <Row label="Último mensaje" value={d?.last_message?.created_at ? `${new Date(d.last_message.created_at).toLocaleString("es-AR")} · ${d.last_message.sender_type ?? ""}` : "—"} />
-          <Row label="Última solicitud (booking_request)" value={d?.last_booking_request?.created_at ? new Date(d.last_booking_request.created_at).toLocaleString("es-AR") : "—"} />
-          <Row label="Auto-reservas creadas" value={autoStats.isLoading ? "…" : autoStats.data?.converted ?? 0} />
-          <Row label="Solicitudes en revisión" value={autoStats.isLoading ? "…" : autoStats.data?.needs_review ?? 0} />
-          <Row label="Última auto-reserva" value={autoStats.data?.last_converted_at ? new Date(autoStats.data.last_converted_at).toLocaleString("es-AR") : "—"} />
-          <Row label="Último envío a revisión" value={autoStats.data?.last_review_at ? new Date(autoStats.data.last_review_at).toLocaleString("es-AR") : "—"} />
-          <Row label="Último motivo de fallback" value={autoStats.data?.last_fallback_reason ?? "—"} />
+          <Row label="Eventos totales" value={status.isLoading ? "…" : (d?.counts?.events ?? 0)} />
+          <Row
+            label="Eventos válidos"
+            value={status.isLoading ? "…" : (d?.counts?.valid_events ?? 0)}
+          />
+          <Row
+            label="Eventos inválidos"
+            value={status.isLoading ? "…" : (d?.counts?.invalid_events ?? 0)}
+          />
+          <Row
+            label="Conversaciones"
+            value={status.isLoading ? "…" : (d?.counts?.conversations ?? 0)}
+          />
+          <Row label="Mensajes" value={status.isLoading ? "…" : (d?.counts?.messages ?? 0)} />
+          <Row
+            label="Último evento válido"
+            value={d?.last_valid_event ? new Date(d.last_valid_event).toLocaleString("es-AR") : "—"}
+          />
+          <Row
+            label="Último evento inválido"
+            value={
+              d?.last_invalid_event ? new Date(d.last_invalid_event).toLocaleString("es-AR") : "—"
+            }
+          />
+          <Row
+            label="Última conversación"
+            value={
+              d?.last_conversation?.created_at
+                ? `${new Date(d.last_conversation.created_at).toLocaleString("es-AR")}${d.last_conversation.customer_phone ? ` · ${d.last_conversation.customer_phone}` : ""}`
+                : "—"
+            }
+          />
+          <Row
+            label="Último mensaje"
+            value={
+              d?.last_message?.created_at
+                ? `${new Date(d.last_message.created_at).toLocaleString("es-AR")} · ${d.last_message.sender_type ?? ""}`
+                : "—"
+            }
+          />
+          <Row
+            label="Última solicitud (booking_request)"
+            value={
+              d?.last_booking_request?.created_at
+                ? new Date(d.last_booking_request.created_at).toLocaleString("es-AR")
+                : "—"
+            }
+          />
+          <Row
+            label="Auto-reservas creadas"
+            value={autoStats.isLoading ? "…" : (autoStats.data?.converted ?? 0)}
+          />
+          <Row
+            label="Solicitudes en revisión"
+            value={autoStats.isLoading ? "…" : (autoStats.data?.needs_review ?? 0)}
+          />
+          <Row
+            label="Última auto-reserva"
+            value={
+              autoStats.data?.last_converted_at
+                ? new Date(autoStats.data.last_converted_at).toLocaleString("es-AR")
+                : "—"
+            }
+          />
+          <Row
+            label="Último envío a revisión"
+            value={
+              autoStats.data?.last_review_at
+                ? new Date(autoStats.data.last_review_at).toLocaleString("es-AR")
+                : "—"
+            }
+          />
+          <Row
+            label="Último motivo de fallback"
+            value={autoStats.data?.last_fallback_reason ?? "—"}
+          />
         </div>
         <div className="rounded-md border bg-muted/30 p-3 text-xs space-y-1">
-          <p>Botmaker intenta crear reservas automáticamente si hay disponibilidad. Si el horario no está disponible o faltan datos, crea una solicitud para revisión manual.</p>
-          <p>El token de seguridad de Botmaker debe enviarse en <code className="font-mono">auth-bm-token</code> y coincidir exactamente con <code className="font-mono">BOTMAKER_WEBHOOK_SECRET</code> en Supabase.</p>
+          <p>
+            Botmaker intenta crear reservas automáticamente si hay disponibilidad. Si el horario no
+            está disponible o faltan datos, crea una solicitud para revisión manual.
+          </p>
+          <p>
+            El token de seguridad de Botmaker debe enviarse en{" "}
+            <code className="font-mono">auth-bm-token</code> y coincidir exactamente con{" "}
+            <code className="font-mono">BOTMAKER_WEBHOOK_SECRET</code> en Supabase.
+          </p>
         </div>
 
-
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" disabled={running !== null} onClick={() => runAction("test_no_token")}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={running !== null}
+            onClick={() => runAction("test_no_token")}
+          >
             {running === "test_no_token" && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
             Probar webhook sin token (esperado 401)
           </Button>
-          <Button size="sm" variant="outline" disabled={running !== null} onClick={() => runAction("test_message")}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={running !== null}
+            onClick={() => runAction("test_message")}
+          >
             {running === "test_message" && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
             Simular mensaje autenticado
           </Button>
@@ -1383,20 +2037,31 @@ function BotmakerHealthCard() {
 
         <div className="rounded-md border bg-muted/30 p-3 text-xs space-y-1">
           <p className="font-medium">Configuración en Botmaker</p>
-          <p>URL: <code className="font-mono">{BOTMAKER_WEBHOOK_URL}</code></p>
-          <p>Header / Token: usar “Token de seguridad” igual a <code className="font-mono">BOTMAKER_WEBHOOK_SECRET</code>.</p>
+          <p>
+            URL: <code className="font-mono">{BOTMAKER_WEBHOOK_URL}</code>
+          </p>
+          <p>
+            Header / Token: usar “Token de seguridad” igual a{" "}
+            <code className="font-mono">BOTMAKER_WEBHOOK_SECRET</code>.
+          </p>
           <p>Tipo: Mensajes y estados de mensaje.</p>
-          <p>Habilitar: Mensajes del usuario, Mensajes del Bot, Mensajes de Agentes y Mensajes de eventos.</p>
+          <p>
+            Habilitar: Mensajes del usuario, Mensajes del Bot, Mensajes de Agentes y Mensajes de
+            eventos.
+          </p>
           <p className="text-amber-700 dark:text-amber-300">
-            Si “Mensajes del Bot” está deshabilitado, Washero no recibe el resumen y no puede crear booking_requests.
+            Si “Mensajes del Bot” está deshabilitado, Washero no recibe el resumen y no puede crear
+            booking_requests.
           </p>
         </div>
 
         <div className="rounded-md border border-amber-300/50 bg-amber-50 dark:bg-amber-500/10 p-3 text-xs">
-          <p className="font-medium text-amber-900 dark:text-amber-200">MVP recomendado: no usar Code Action</p>
+          <p className="font-medium text-amber-900 dark:text-amber-200">
+            MVP recomendado: no usar Code Action
+          </p>
           <p className="text-amber-800 dark:text-amber-300">
-            Washero escucha el webhook global de Botmaker y crea solicitudes de reserva desde el resumen + confirmación.
-            No es necesario configurar Code Actions en Botmaker.
+            Washero escucha el webhook global de Botmaker y crea solicitudes de reserva desde el
+            resumen + confirmación. No es necesario configurar Code Actions en Botmaker.
           </p>
         </div>
 
@@ -1467,10 +2132,11 @@ function BotmakerPromptBlock() {
         </Button>
       </div>
       <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded bg-background p-2 font-mono text-[11px] leading-relaxed">
-{BOTMAKER_AGENT_PROMPT}
+        {BOTMAKER_AGENT_PROMPT}
       </pre>
       <p className="text-muted-foreground">
-        Pegalo en el Agente IA de Botmaker. Washero detecta el resumen y la confirmación para crear la solicitud de reserva.
+        Pegalo en el Agente IA de Botmaker. Washero detecta el resumen y la confirmación para crear
+        la solicitud de reserva.
       </p>
     </div>
   );

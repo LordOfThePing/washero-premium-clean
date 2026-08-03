@@ -4,8 +4,13 @@ import { supabase } from "@/integrations/supabase/client";
 export const WHATSAPP_NUMBER = "5491176247835";
 export const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUMBER}`;
 
-export const COVERAGE_COPY =
-  "Por ahora Washero trabaja en Maschwitz, Escobar, Benavídez, Garín, Dique Luján, Tigre y Nordelta.";
+export {
+  ACTIVE_COVERAGE_ZONES_QUERY_KEY,
+  coverageZonesQueryOptions,
+  fetchActiveCoverageZones,
+  formatCoverageCopy,
+  sortCoverageZoneNames,
+} from "@/lib/coverage-zones";
 
 export const ADDRESS_FIRST_ENABLED =
   String(import.meta.env.VITE_ADDRESS_FIRST_BOOKING ?? "").toLowerCase() === "true";
@@ -181,11 +186,13 @@ export function buildBookingUnitsPayload(opts: {
   selectedExtras: string[];
   secondVehicleEnabled: boolean;
 }): BookingUnitPayload[] {
-  const units: BookingUnitPayload[] = [{
-    vehicle_type: opts.firstVehicleType,
-    service_id: opts.serviceId,
-    selected_extras: opts.selectedExtras,
-  }];
+  const units: BookingUnitPayload[] = [
+    {
+      vehicle_type: opts.firstVehicleType,
+      service_id: opts.serviceId,
+      selected_extras: opts.selectedExtras,
+    },
+  ];
   if (opts.secondVehicleEnabled && opts.secondVehicleType) {
     units.push({
       vehicle_type: opts.secondVehicleType,
@@ -207,11 +214,29 @@ export const contactSchema = z.object({
 });
 
 export const MONTHS_ES = [
-  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+  "Enero",
+  "Febrero",
+  "Marzo",
+  "Abril",
+  "Mayo",
+  "Junio",
+  "Julio",
+  "Agosto",
+  "Septiembre",
+  "Octubre",
+  "Noviembre",
+  "Diciembre",
 ];
 export const WEEKDAYS_ES = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
-export const WEEKDAYS_LONG = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+export const WEEKDAYS_LONG = [
+  "Domingo",
+  "Lunes",
+  "Martes",
+  "Miércoles",
+  "Jueves",
+  "Viernes",
+  "Sábado",
+];
 export const PUBLIC_MIN_LEAD_MINUTES = 120;
 
 export function formatARS(v: number) {
@@ -270,7 +295,8 @@ function inferDurationMinutes(type: string, code: string, name: string, rawDurat
   }
   if (type === "extra") {
     if (token.includes("encer")) return 10;
-    if (token.includes("detallado") && token.includes("interior") && token.includes("profundo")) return 20;
+    if (token.includes("detallado") && token.includes("interior") && token.includes("profundo"))
+      return 20;
     if (token.includes("olor")) return 15;
     if (token.includes("barro") || token.includes("muy sucio")) return 15;
     if (token.includes("pelo") && token.includes("mascot")) return 20;
@@ -310,7 +336,9 @@ export function filterTooSoonSlots<T extends { date: string; start_time: string 
   slots: T[],
   minLeadMinutes = PUBLIC_MIN_LEAD_MINUTES,
 ) {
-  return slots.filter((slot) => !isSlotTooSoonForPublic(slot.date, slot.start_time, minLeadMinutes));
+  return slots.filter(
+    (slot) => !isSlotTooSoonForPublic(slot.date, slot.start_time, minLeadMinutes),
+  );
 }
 
 export async function fetchPrivateNeighborhoods(): Promise<PrivateNeighborhood[]> {

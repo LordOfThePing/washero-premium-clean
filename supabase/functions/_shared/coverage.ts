@@ -1,5 +1,4 @@
 // Coverage matching helpers shared by website + botmaker booking paths.
-// deno-lint-ignore-file no-explicit-any
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 export type CoverageZone = {
@@ -9,7 +8,7 @@ export type CoverageZone = {
   center_lat: number | null;
   center_lng: number | null;
   radius_km: number;
-  polygon_geojson: any | null;
+  polygon_geojson: unknown | null;
   display_order: number;
   active: boolean;
 };
@@ -23,8 +22,33 @@ export type CoverageMatch = {
   distance_km: number | null;
 };
 
-const fold = (s: string) =>
-  String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+export type CoverageAddressComponent = {
+  longText?: string;
+  shortText?: string;
+  long_name?: string;
+  short_name?: string;
+  types?: string[];
+};
+
+const LOCALITY_COMPONENT_TYPES = new Set([
+  "locality",
+  "sublocality",
+  "sublocality_level_1",
+  "neighborhood",
+  "postal_town",
+  "administrative_area_level_2",
+]);
+
+const REJECTED_BROAD_COMPONENT_TYPES = new Set(["administrative_area_level_1", "country"]);
+
+export const fold = (s: string) =>
+  String(s ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[.,/#'"´`]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
 function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
   const toRad = (d: number) => (d * Math.PI) / 180;
@@ -38,27 +62,66 @@ function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): nu
 }
 
 // Ray-casting on a GeoJSON Polygon or MultiPolygon (lng,lat coordinate order).
-function pointInPolygon(lat: number, lng: number, geo: any): boolean {
-  if (!geo || !geo.type) return false;
+function pointInPolygon(lat: number, lng: number, geo: unknown): boolean {
+  if (!geo || typeof geo !== "object") return false;
+  const g = geo as { type?: string; coordinates?: unknown };
+  if (!g.type) return false;
   const polys: number[][][][] =
-    geo.type === "Polygon" ? [geo.coordinates] :
-    geo.type === "MultiPolygon" ? geo.coordinates :
-    [];
+    g.type === "Polygon"
+      ? [g.coordinates as number[][][]]
+      : g.type === "MultiPolygon"
+        ? (g.coordinates as number[][][][])
+        : [];
   for (const poly of polys) {
-    const ring = poly[0]; // outer ring; ignore holes for our use case
+    const ring = poly?.[0]; // outer ring; ignore holes for our use case
     if (!Array.isArray(ring)) continue;
     let inside = false;
     for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-      const [xi, yi] = ring[i];
-      const [xj, yj] = ring[j];
+      const [xi, yi] = ring[i] ?? [];
+      const [xj, yj] = ring[j] ?? [];
+      if (
+        typeof xi !== "number" ||
+        typeof yi !== "number" ||
+        typeof xj !== "number" ||
+        typeof yj !== "number"
+      ) {
+        continue;
+      }
       const intersect =
-        (yi > lat) !== (yj > lat) &&
-        lng < ((xj - xi) * (lat - yi)) / ((yj - yi) || 1e-12) + xi;
+        yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi || 1e-12) + xi;
       if (intersect) inside = !inside;
     }
     if (inside) return true;
   }
   return false;
+}
+
+export function extractLocalityCandidates(
+  components: CoverageAddressComponent[] | null | undefined,
+  extras: Array<string | null | undefined> = [],
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (raw: string | null | undefined) => {
+    const value = String(raw ?? "").trim();
+    if (!value) return;
+    const key = fold(value);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push(value);
+  };
+
+  for (const component of components ?? []) {
+    const types = Array.isArray(component.types) ? component.types : [];
+    const isLocality = types.some((t) => LOCALITY_COMPONENT_TYPES.has(t));
+    const isBroadOnly = !isLocality && types.some((t) => REJECTED_BROAD_COMPONENT_TYPES.has(t));
+    if (!isLocality || isBroadOnly) continue;
+    push(component.longText ?? component.long_name);
+    push(component.shortText ?? component.short_name);
+  }
+
+  for (const extra of extras) push(extra);
+  return out;
 }
 
 export async function loadActiveZones(admin: SupabaseClient): Promise<CoverageZone[]> {
@@ -72,9 +135,15 @@ export async function loadActiveZones(admin: SupabaseClient): Promise<CoverageZo
 
 export function matchZone(
   zones: CoverageZone[],
-  args: { lat?: number | null; lng?: number | null; neighborhood?: string | null },
+  args: {
+    lat?: number | null;
+    lng?: number | null;
+    neighborhood?: string | null;
+    localityCandidates?: Array<string | null | undefined>;
+  },
 ): CoverageMatch {
-  const { lat, lng, neighborhood } = args;
+  const { lat, lng, neighborhood, localityCandidates } = args;
+
   // 1) polygon
   if (typeof lat === "number" && typeof lng === "number") {
     for (const z of zones) {
@@ -83,16 +152,21 @@ export function matchZone(
       }
     }
   }
-  // 2) alias
-  const nb = fold(neighborhood ?? "");
-  if (nb) {
+
+  // 2) exact normalized equality against locality-like candidates + aliases
+  const candidates = [...(localityCandidates ?? []), neighborhood]
+    .map((value) => fold(String(value ?? "")))
+    .filter(Boolean);
+  const uniqueCandidates = [...new Set(candidates)];
+  if (uniqueCandidates.length > 0) {
     for (const z of zones) {
-      const names = [z.name, ...(z.aliases ?? [])].map(fold);
-      if (names.some((n) => n && (n === nb || nb.includes(n) || n.includes(nb)))) {
+      const names = [z.name, ...(z.aliases ?? [])].map(fold).filter(Boolean);
+      if (names.some((n) => uniqueCandidates.includes(n))) {
         return { zone: z, match_type: "alias", distance_km: null };
       }
     }
   }
+
   // 3) radius
   if (typeof lat === "number" && typeof lng === "number") {
     let best: { zone: CoverageZone; dist: number } | null = null;
@@ -107,4 +181,16 @@ export function matchZone(
     if (best) return { zone: best.zone, match_type: "radius", distance_km: best.dist };
   }
   return { zone: null, match_type: "none", distance_km: null };
+}
+
+export function formatCoverageCopy(zoneNames: string[]): string {
+  const names = [...new Set(zoneNames.map((n) => n.trim()).filter(Boolean))];
+  if (names.length === 0) {
+    return "Por ahora no hay zonas de cobertura activas. Escribinos por WhatsApp y te ayudamos.";
+  }
+  if (names.length === 1) return `Por ahora Washero trabaja en ${names[0]}.`;
+  if (names.length === 2) return `Por ahora Washero trabaja en ${names[0]} y ${names[1]}.`;
+  const head = names.slice(0, -1).join(", ");
+  const last = names[names.length - 1]!;
+  return `Por ahora Washero trabaja en ${head} y ${last}.`;
 }

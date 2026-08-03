@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2, MapPin, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { extractLocalityCandidates, type CoverageAddressComponent } from "@/lib/coverage-zones";
 
 function readMapsKey(): string | undefined {
   const raw = import.meta.env.VITE_GOOGLE_MAPS_PUBLIC_KEY;
@@ -17,7 +18,10 @@ type LoadFailure = "no_key" | "script_failed" | "timeout" | "places_missing";
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  interface Window { google?: any; __washeroMapsLoading?: Promise<void> }
+  interface Window {
+    google?: any;
+    __washeroMapsLoading?: Promise<void>;
+  }
 }
 
 function hasPlacesLibrary(): boolean {
@@ -111,7 +115,10 @@ function loadMapsApi(): Promise<void> {
         { once: true },
       );
       // Script may already be loaded (no load event will fire).
-      if (existing.getAttribute("data-washero-maps-ready") === "true" || existing.readyState === "complete") {
+      if (
+        existing.getAttribute("data-washero-maps-ready") === "true" ||
+        existing.readyState === "complete"
+      ) {
         afterScriptEvent();
       }
       return;
@@ -145,7 +152,12 @@ const ERROR_MESSAGES: Record<LoadFailure, string> = {
 
 function parseLoadFailure(err: unknown): LoadFailure {
   const code = err instanceof Error ? err.message : "";
-  if (code === "no_key" || code === "script_failed" || code === "timeout" || code === "places_missing") {
+  if (
+    code === "no_key" ||
+    code === "script_failed" ||
+    code === "timeout" ||
+    code === "places_missing"
+  ) {
     return code;
   }
   return "script_failed";
@@ -157,6 +169,8 @@ export type PlaceSelection = {
   lat: number;
   lng: number;
   neighborhood: string | null;
+  locality_candidates: string[];
+  address_components: CoverageAddressComponent[];
 };
 
 export function PlacesAutocomplete({
@@ -220,23 +234,31 @@ export function PlacesAutocomplete({
           setStatus("ready");
           return;
         }
-        // Try to extract a neighborhood-like component
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const comps: any[] = p.address_components ?? [];
+        const comps: CoverageAddressComponent[] = (p.address_components ?? []).map(
+          (c: { long_name?: string; short_name?: string; types?: string[] }) => ({
+            long_name: c.long_name,
+            short_name: c.short_name,
+            types: c.types,
+          }),
+        );
         const findType = (t: string) => comps.find((c) => c.types?.includes(t))?.long_name ?? null;
         const neighborhood =
+          findType("locality") ||
           findType("sublocality_level_1") ||
           findType("sublocality") ||
           findType("neighborhood") ||
-          findType("locality") ||
+          findType("postal_town") ||
           findType("administrative_area_level_2") ||
           null;
+        const locality_candidates = extractLocalityCandidates(comps, [neighborhood]);
         const sel: PlaceSelection = {
           place_id: p.place_id,
           formatted_address: p.formatted_address ?? "",
           lat: p.geometry.location.lat(),
           lng: p.geometry.location.lng(),
           neighborhood,
+          locality_candidates,
+          address_components: comps,
         };
         onChange(sel.formatted_address);
         onSelect(sel);
@@ -334,7 +356,8 @@ export function PlacesAutocomplete({
           "flex items-center gap-1 text-xs",
           status === "selected" && "text-emerald-600",
           status === "error" && "text-destructive",
-          (status === "loading" || status === "ready" || status === "idle") && "text-muted-foreground",
+          (status === "loading" || status === "ready" || status === "idle") &&
+            "text-muted-foreground",
         )}
       >
         {status === "loading" && (

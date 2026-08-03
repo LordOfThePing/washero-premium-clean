@@ -31,7 +31,6 @@ import {
   trackGoogleAdsEvent,
 } from "@/lib/google-ads";
 import {
-  COVERAGE_COPY,
   INITIAL_FORM,
   PAYMENTS,
   SECOND_UNIT_DISCOUNT_RATE,
@@ -41,15 +40,18 @@ import {
   buildPrivateNeighborhoodDisplayAddress,
   computeUnitPricing,
   contactSchema,
+  coverageZonesQueryOptions,
   fetchLogisticAvailability,
   fetchPricing,
   fetchPrivateNeighborhoods,
   fetchServices,
   filterTooSoonSlots,
   formatARS,
+  formatCoverageCopy,
   formatDayLong,
   formatDayShort,
   isoFromDate,
+  sortCoverageZoneNames,
   type FormState,
   type LogisticSlot,
   type PrivateNeighborhood,
@@ -97,8 +99,17 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
   const [focusDate, setFocusDate] = useState<string>(() => isoFromDate(new Date()));
   const [showOtherSlots, setShowOtherSlots] = useState(false);
 
+  const coverageZones = useQuery(coverageZonesQueryOptions());
+  const coverageCopy = useMemo(
+    () => formatCoverageCopy(sortCoverageZoneNames(coverageZones.data ?? [])),
+    [coverageZones.data],
+  );
   const services = useQuery({ queryKey: ["services"], queryFn: fetchServices, staleTime: 60_000 });
-  const pricing = useQuery({ queryKey: ["pricing_items"], queryFn: fetchPricing, staleTime: 60_000 });
+  const pricing = useQuery({
+    queryKey: ["pricing_items"],
+    queryFn: fetchPricing,
+    staleTime: 60_000,
+  });
   const privateNeighborhoods = useQuery({
     queryKey: ["private_neighborhoods"],
     queryFn: fetchPrivateNeighborhoods,
@@ -130,11 +141,17 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
   }, [step]);
 
   const selectedVehicle = useMemo(
-    () => (pricing.data ?? []).find((p) => p.type === "vehicle_surcharge" && p.code === form.vehicle_code),
+    () =>
+      (pricing.data ?? []).find(
+        (p) => p.type === "vehicle_surcharge" && p.code === form.vehicle_code,
+      ),
     [pricing.data, form.vehicle_code],
   );
   const selectedSecondVehicle = useMemo(
-    () => (pricing.data ?? []).find((p) => p.type === "vehicle_surcharge" && p.code === form.second_vehicle_code),
+    () =>
+      (pricing.data ?? []).find(
+        (p) => p.type === "vehicle_surcharge" && p.code === form.second_vehicle_code,
+      ),
     [pricing.data, form.second_vehicle_code],
   );
 
@@ -171,7 +188,8 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
     });
   }, [form.second_vehicle_enabled, selectedSecondVehicle, selectedService]);
 
-  const estimatedDurationMinutes = firstUnitPricing.durationMinutes + (secondUnitPricing?.durationMinutes ?? 0);
+  const estimatedDurationMinutes =
+    firstUnitPricing.durationMinutes + (secondUnitPricing?.durationMinutes ?? 0);
   const subtotalBeforeDiscounts = firstUnitPricing.subtotal + (secondUnitPricing?.subtotal ?? 0);
   const discountTotal = secondUnitPricing?.discountAmount ?? 0;
   const total = firstUnitPricing.total + (secondUnitPricing?.total ?? 0);
@@ -213,9 +231,10 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
       : !!selectedPrivateNeighborhood && !!form.private_lot.trim();
 
   const firstVehicleType = form.vehicle_code ? VEHICLE_CODE_TO_TYPE[form.vehicle_code] : undefined;
-  const secondVehicleType = form.second_vehicle_enabled && form.second_vehicle_code
-    ? VEHICLE_CODE_TO_TYPE[form.second_vehicle_code]
-    : undefined;
+  const secondVehicleType =
+    form.second_vehicle_enabled && form.second_vehicle_code
+      ? VEHICLE_CODE_TO_TYPE[form.second_vehicle_code]
+      : undefined;
 
   const bookingUnitsPayload = useMemo(() => {
     if (!form.service_id || !firstVehicleType) return undefined;
@@ -298,7 +317,13 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
 
   useEffect(() => {
     setPick(null);
-  }, [form.service_id, form.vehicle_code, form.second_vehicle_enabled, form.second_vehicle_code, form.extras]);
+  }, [
+    form.service_id,
+    form.vehicle_code,
+    form.second_vehicle_enabled,
+    form.second_vehicle_code,
+    form.extras,
+  ]);
 
   useEffect(() => {
     if (form.second_vehicle_enabled && !form.second_vehicle_code && form.vehicle_code) {
@@ -316,6 +341,27 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
     setCoverage({ kind: "validating" });
     (async () => {
       try {
+        if (coverageZones.isError) {
+          console.error("[AddressFirstFlow] coverage zones query failed", coverageZones.error);
+          setCoverage({
+            kind: "error",
+            message:
+              "No pudimos cargar las zonas de cobertura. Probá nuevamente o escribinos por WhatsApp.",
+          });
+          return;
+        }
+        if (!coverageZones.data && (coverageZones.isLoading || coverageZones.isFetching)) {
+          setCoverage({ kind: "validating" });
+          return;
+        }
+        if (!coverageZones.data) {
+          setCoverage({
+            kind: "error",
+            message:
+              "No pudimos cargar las zonas de cobertura. Probá nuevamente o escribinos por WhatsApp.",
+          });
+          return;
+        }
         const { data, error } = await supabase.functions.invoke("validate-address-location", {
           body: {
             address_type: "street",
@@ -324,12 +370,19 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
             lat: place.lat,
             lng: place.lng,
             neighborhood: place.neighborhood,
+            locality_candidates: place.locality_candidates,
+            address_components: place.address_components,
           },
         });
         if (cancelled) return;
-        type Resp = { ok: boolean; inside_coverage: boolean; zone: { id: string; name: string } | null };
+        type Resp = {
+          ok: boolean;
+          inside_coverage: boolean;
+          zone: { id: string; name: string } | null;
+        };
         const res = (data ?? null) as Resp | null;
         if (error || !res?.ok) {
+          console.error("[AddressFirstFlow] validate-address-location failed", error, res);
           setCoverage({
             kind: "error",
             message: "No pudimos validar la dirección. Probá nuevamente o escribinos por WhatsApp.",
@@ -341,7 +394,8 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
         } else {
           setCoverage({ kind: "outside" });
         }
-      } catch {
+      } catch (err) {
+        console.error("[AddressFirstFlow] coverage validation exception", err);
         if (!cancelled) {
           setCoverage({
             kind: "error",
@@ -353,7 +407,15 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
     return () => {
       cancelled = true;
     };
-  }, [form.address_mode, place]);
+  }, [
+    form.address_mode,
+    place,
+    coverageZones.data,
+    coverageZones.error,
+    coverageZones.isError,
+    coverageZones.isFetching,
+    coverageZones.isLoading,
+  ]);
 
   useEffect(() => {
     if (form.address_mode !== "private_neighborhood") return;
@@ -382,15 +444,16 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
         if (error || !res?.ok || !res.inside_coverage) {
           setCoverage({
             kind: "error",
-            message: "El barrio seleccionado no está disponible. Elegí otro o escribinos por WhatsApp.",
+            message:
+              "El barrio seleccionado no está disponible. Elegí otro o escribinos por WhatsApp.",
           });
           return;
         }
         const zoneName =
-          res.zone?.name
-          ?? selectedPrivateNeighborhood?.coverage_zone_name
-          ?? selectedPrivateNeighborhood?.name
-          ?? "";
+          res.zone?.name ??
+          selectedPrivateNeighborhood?.coverage_zone_name ??
+          selectedPrivateNeighborhood?.name ??
+          "";
         setCoverage({
           kind: "ok",
           zone_id: res.zone?.id ?? selectedPrivateNeighborhood?.coverage_zone_id ?? null,
@@ -441,7 +504,8 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
   }, [focusDate]);
 
   useEffect(() => {
-    if (!import.meta.env.DEV || !logistic.data || !resolvedLocation || coverage.kind !== "ok") return;
+    if (!import.meta.env.DEV || !logistic.data || !resolvedLocation || coverage.kind !== "ok")
+      return;
     const firstDay = logistic.data[0];
     console.log("[Reservar][logistic-debug]", {
       address_lat: resolvedLocation.lat,
@@ -456,13 +520,22 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
       first_day_recommended_count: firstDay?.recommended_slots.length ?? 0,
       first_day_other_count: firstDay?.other_slots.length ?? 0,
     });
-  }, [bookingUnitsPayload, coverage, estimatedDurationMinutes, logistic.data, resolvedLocation, vehicleCount]);
+  }, [
+    bookingUnitsPayload,
+    coverage,
+    estimatedDurationMinutes,
+    logistic.data,
+    resolvedLocation,
+    vehicleCount,
+  ]);
 
   const daySummaries = useMemo(
     () =>
       days.map((day) => {
         const totalSlots = day.recommended_slots.length + day.other_slots.length;
-        const hasRecommended = day.recommended_slots.some((slot) => slot.score >= RECOMMENDED_SCORE_MIN);
+        const hasRecommended = day.recommended_slots.some(
+          (slot) => slot.score >= RECOMMENDED_SCORE_MIN,
+        );
         return {
           date: day.date,
           totalSlots,
@@ -669,7 +742,9 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
       payload.address_type = "street";
     }
 
-    const { data, error } = await supabase.functions.invoke("create-website-booking", { body: payload });
+    const { data, error } = await supabase.functions.invoke("create-website-booking", {
+      body: payload,
+    });
     const res = parseCreateWebsiteBookingResponse(data);
     const bookingId = getCreateWebsiteBookingId(res);
 
@@ -681,20 +756,20 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
           ? "Esa dirección está fuera de nuestra cobertura actual."
           : status === "slot_too_soon"
             ? "Ese horario ya no está disponible. Elegí un horario más adelante."
-          : status === "missing_duration" || status === "duration_config_error"
-            ? "No pudimos calcular la duración del servicio. Probá nuevamente."
-          : status === "slot_full" ||
-              status === "slot_not_found" ||
-              status === "service_does_not_fit_slot"
-            ? "Ese horario ya no está disponible. Elegí otro."
-            : status === "invalid_extra"
-              ? "Hay un extra inválido. Actualizá la página."
-            : status === "invalid_private_neighborhood"
-              ? "El barrio cerrado seleccionado no está disponible."
-            : status === "too_many_units"
-              ? "Solo podés reservar hasta 2 vehículos por turno."
-              : (res?.customer_message ??
-                "No pudimos crear la reserva. Probá nuevamente o escribinos por WhatsApp.");
+            : status === "missing_duration" || status === "duration_config_error"
+              ? "No pudimos calcular la duración del servicio. Probá nuevamente."
+              : status === "slot_full" ||
+                  status === "slot_not_found" ||
+                  status === "service_does_not_fit_slot"
+                ? "Ese horario ya no está disponible. Elegí otro."
+                : status === "invalid_extra"
+                  ? "Hay un extra inválido. Actualizá la página."
+                  : status === "invalid_private_neighborhood"
+                    ? "El barrio cerrado seleccionado no está disponible."
+                    : status === "too_many_units"
+                      ? "Solo podés reservar hasta 2 vehículos por turno."
+                      : (res?.customer_message ??
+                        "No pudimos crear la reserva. Probá nuevamente o escribinos por WhatsApp.");
       console.error("[Reservar][create-website-booking]", {
         error: error ? { message: error.message, name: error.name } : null,
         status,
@@ -732,10 +807,7 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
           {STEPS.map((label, i) => (
             <div
               key={label}
-              className={cn(
-                "h-1 flex-1 rounded-full",
-                i <= step ? "bg-primary" : "bg-muted",
-              )}
+              className={cn("h-1 flex-1 rounded-full", i <= step ? "bg-primary" : "bg-muted")}
               title={label}
             />
           ))}
@@ -760,7 +832,9 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
               onClick={() => switchAddressMode("street")}
               className={cn(
                 "rounded-xl border p-3 text-left text-sm",
-                form.address_mode === "street" ? "border-primary border-2 bg-primary/5" : "border-border",
+                form.address_mode === "street"
+                  ? "border-primary border-2 bg-primary/5"
+                  : "border-border",
               )}
             >
               <div className="font-medium">Dirección a la calle</div>
@@ -836,7 +910,9 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
                     >
                       <div className="font-medium">{row.name}</div>
                       {row.coverage_zone_name && (
-                        <div className="text-xs text-muted-foreground">Zona {row.coverage_zone_name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          Zona {row.coverage_zone_name}
+                        </div>
                       )}
                     </button>
                   ))}
@@ -861,8 +937,8 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
               </div>
               {selectedPrivateNeighborhood && form.private_lot.trim() && (
                 <p className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
-                  Usamos la entrada del barrio para ordenar la ruta. El operador verá tu lote/casa en el
-                  detalle de la reserva.
+                  Usamos la entrada del barrio para ordenar la ruta. El operador verá tu lote/casa
+                  en el detalle de la reserva.
                 </p>
               )}
             </div>
@@ -885,7 +961,11 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
                 <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive space-y-2">
                   <div className="flex items-start gap-2">
                     <ShieldAlert className="h-4 w-4 mt-0.5 shrink-0" />
-                    <span>{COVERAGE_COPY}</span>
+                    <span>
+                      {coverageZones.isLoading
+                        ? "Estamos cargando las zonas de cobertura…"
+                        : coverageCopy}
+                    </span>
                   </div>
                   <a
                     href={WHATSAPP_URL}
@@ -898,8 +978,16 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
                 </div>
               )}
               {coverage.kind === "error" && (
-                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
-                  {coverage.message}
+                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive space-y-2">
+                  <div>{coverage.message}</div>
+                  <a
+                    href={WHATSAPP_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 underline"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" /> Consultanos por WhatsApp
+                  </a>
                 </div>
               )}
             </div>
@@ -907,7 +995,12 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
           <Button
             className="w-full"
             size="lg"
-            disabled={coverage.kind !== "ok" || !addressReady}
+            disabled={
+              coverage.kind !== "ok" ||
+              !addressReady ||
+              coverageZones.isLoading ||
+              coverageZones.isError
+            }
             onClick={goToServiceStep}
           >
             Elegir servicio <ArrowRight className="ml-2 h-4 w-4" />
@@ -940,7 +1033,9 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
                     onClick={() => update("service_id", s.id)}
                     className={cn(
                       "w-full rounded-xl border p-3 text-left",
-                      form.service_id === s.id ? "border-primary border-2 bg-primary/5" : "border-border",
+                      form.service_id === s.id
+                        ? "border-primary border-2 bg-primary/5"
+                        : "border-border",
                     )}
                   >
                     <div className="flex justify-between gap-2">
@@ -969,12 +1064,15 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
                 >
                   <div className="font-medium">{v.name}</div>
                   <div className="text-xs text-muted-foreground">
-                    {v.amount > 0 ? `+ ${formatARS(v.amount)}` : "Sin cargo"} · +{v.duration_minutes} min
+                    {v.amount > 0 ? `+ ${formatARS(v.amount)}` : "Sin cargo"} · +
+                    {v.duration_minutes} min
                   </div>
                 </button>
               ))}
             </div>
-            {errors.vehicle_code && <p className="text-xs text-destructive">{errors.vehicle_code}</p>}
+            {errors.vehicle_code && (
+              <p className="text-xs text-destructive">{errors.vehicle_code}</p>
+            )}
           </FormSection>
 
           <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
@@ -1002,12 +1100,15 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
                       onClick={() => update("second_vehicle_code", v.code)}
                       className={cn(
                         "rounded-xl border p-3 text-left text-sm",
-                        form.second_vehicle_code === v.code ? "border-primary border-2 bg-primary/5" : "",
+                        form.second_vehicle_code === v.code
+                          ? "border-primary border-2 bg-primary/5"
+                          : "",
                       )}
                     >
                       <div className="font-medium">{v.name}</div>
                       <div className="text-xs text-muted-foreground">
-                        {v.amount > 0 ? `+ ${formatARS(v.amount)}` : "Sin cargo"} · +{v.duration_minutes} min
+                        {v.amount > 0 ? `+ ${formatARS(v.amount)}` : "Sin cargo"} · +
+                        {v.duration_minutes} min
                       </div>
                     </button>
                   ))}
@@ -1075,7 +1176,9 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
               </>
             )}
             <div className="flex justify-between font-semibold">
-              <span>Total estimado ({vehicleCount} {vehicleCount === 1 ? "vehículo" : "vehículos"})</span>
+              <span>
+                Total estimado ({vehicleCount} {vehicleCount === 1 ? "vehículo" : "vehículos"})
+              </span>
               <span>{formatARS(total)}</span>
             </div>
             {selectedService && (
@@ -1108,8 +1211,9 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
               {resolvedLocation.displayAddress}
             </p>
             <p className="text-xs text-muted-foreground">
-              {selectedService?.name} · {vehicleCount} {vehicleCount === 1 ? "vehículo" : "vehículos"} ·{" "}
-              {estimatedDurationMinutes} min · Zona {coverage.zone_name}
+              {selectedService?.name} · {vehicleCount}{" "}
+              {vehicleCount === 1 ? "vehículo" : "vehículos"} · {estimatedDurationMinutes} min ·
+              Zona {coverage.zone_name}
             </p>
             <button
               type="button"
@@ -1206,7 +1310,9 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
                         </div>
                       ) : otherForFocus.length > 0 ? (
                         <div className="space-y-2">
-                          <h3 className="text-sm font-semibold">Horarios disponibles para tu zona</h3>
+                          <h3 className="text-sm font-semibold">
+                            Horarios disponibles para tu zona
+                          </h3>
                           <p className="text-xs text-muted-foreground">
                             Estos son los horarios disponibles para la dirección seleccionada.
                           </p>
@@ -1272,12 +1378,12 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
 
           <div className="sticky bottom-0 z-10 -mx-4 border-t bg-background/95 px-4 py-3 backdrop-blur">
             <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setStep(1)}>
-              <ArrowLeft className="mr-1 h-4 w-4" /> Servicio
-            </Button>
-            <Button className="flex-1" disabled={!pick} onClick={goToPaymentStep}>
-              Continuar <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
+              <Button variant="outline" onClick={() => setStep(1)}>
+                <ArrowLeft className="mr-1 h-4 w-4" /> Servicio
+              </Button>
+              <Button className="flex-1" disabled={!pick} onClick={goToPaymentStep}>
+                Continuar <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
             </div>
           </div>
         </section>
@@ -1286,7 +1392,9 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
       {step === 3 && pick && (
         <section className="space-y-5">
           <div className="rounded-xl border bg-muted/30 p-3 text-sm space-y-1">
-            <p className="font-medium capitalize">{formatDayLong(pick.date)} · {pick.time} hs</p>
+            <p className="font-medium capitalize">
+              {formatDayLong(pick.date)} · {pick.time} hs
+            </p>
             {resolvedLocation && (
               <p className="text-muted-foreground">{resolvedLocation.displayAddress}</p>
             )}
@@ -1302,8 +1410,8 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
               </p>
             )}
             <p className="text-muted-foreground">
-              {selectedService?.name} · {vehicleCount} {vehicleCount === 1 ? "vehículo" : "vehículos"} ·{" "}
-              {formatARS(total)}
+              {selectedService?.name} · {vehicleCount}{" "}
+              {vehicleCount === 1 ? "vehículo" : "vehículos"} · {formatARS(total)}
             </p>
             {form.second_vehicle_enabled && discountTotal > 0 && (
               <>
@@ -1315,7 +1423,9 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
                 </p>
               </>
             )}
-            <p className="text-muted-foreground">Duración estimada: {estimatedDurationMinutes} min</p>
+            <p className="text-muted-foreground">
+              Duración estimada: {estimatedDurationMinutes} min
+            </p>
           </div>
 
           <FormSection title="Datos de contacto">
@@ -1423,7 +1533,12 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
       )}
 
       <p className="mt-8 text-center text-xs text-muted-foreground">
-        <a href={WHATSAPP_URL} target="_blank" rel="noreferrer" className="underline inline-flex gap-1">
+        <a
+          href={WHATSAPP_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="underline inline-flex gap-1"
+        >
           <MessageCircle className="h-3 w-3" /> Ayuda por WhatsApp
         </a>
       </p>
