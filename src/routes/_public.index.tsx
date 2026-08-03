@@ -24,11 +24,6 @@ import {
 } from "@/components/ui/accordion";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
-import {
-  WasheroAssistantHero,
-  WasheroAssistantMobile,
-  WasheroAssistantProvider,
-} from "@/components/brand/WasheroAssistant";
 import { formatPrice } from "@/lib/booking-badges";
 
 const WA_URL = "https://wa.me/5491176247835";
@@ -86,7 +81,7 @@ export const Route = createFileRoute("/_public/")({
 
 function LandingPage() {
   return (
-    <WasheroAssistantProvider>
+    <>
       <Hero />
       <HowItWorks />
       <Services />
@@ -96,7 +91,7 @@ function LandingPage() {
       <Faq />
       <FinalCta />
       <StickyMobileCta />
-    </WasheroAssistantProvider>
+    </>
   );
 }
 
@@ -106,11 +101,7 @@ function LandingPage() {
 
 function Hero() {
   return (
-    <section
-      id="inicio"
-      data-mascot-section="hero"
-      className="relative overflow-hidden bg-neutral-950 text-white"
-    >
+    <section id="inicio" className="relative overflow-hidden bg-neutral-950 text-white">
       {/* Decorative glow */}
       <div
         aria-hidden
@@ -129,55 +120,47 @@ function Hero() {
         }}
       />
       <div className="relative mx-auto max-w-6xl px-4 py-20 md:py-32">
-        <div className="grid items-center gap-10 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] md:gap-8 lg:gap-12">
-          <div className="max-w-3xl">
-            <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">
-              <span className="mr-2 h-1.5 w-1.5 rounded-full bg-primary" />
-              Zona Norte · Buenos Aires
-            </Badge>
-            <h1 className="mt-6 text-4xl font-bold leading-tight tracking-tight md:text-6xl">
-              Lavado de autos a <span className="text-primary">domicilio</span> en Zona Norte
-            </h1>
-            <p className="mt-5 max-w-2xl text-lg text-neutral-300 md:text-xl">
-              Reservá tu lavado online en menos de 1 minuto. Nosotros vamos a tu casa, barrio o
-              empresa.
-            </p>
+        <div className="max-w-3xl">
+          <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">
+            <span className="mr-2 h-1.5 w-1.5 rounded-full bg-primary" />
+            Zona Norte · Buenos Aires
+          </Badge>
+          <h1 className="mt-6 text-4xl font-bold leading-tight tracking-tight md:text-6xl">
+            Lavado de autos a <span className="text-primary">domicilio</span> en Zona Norte
+          </h1>
+          <p className="mt-5 max-w-2xl text-lg text-neutral-300 md:text-xl">
+            Reservá tu lavado online en menos de 1 minuto. Nosotros vamos a tu casa, barrio o
+            empresa.
+          </p>
 
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Button size="lg" asChild className="text-base">
-                <Link to="/reservar" data-mascot-trigger="reservar">
-                  Reservar lavado <ArrowRight className="ml-1 h-4 w-4" />
-                </Link>
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                asChild
-                className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
-              >
-                <a href={WA_URL} target="_blank" rel="noopener" data-mascot-trigger="whatsapp">
-                  <MessageCircle className="mr-1 h-4 w-4" />
-                  Consultar por WhatsApp
-                </a>
-              </Button>
-            </div>
-
-            <WasheroAssistantMobile />
-
-            <div className="mt-8 flex flex-wrap gap-2">
-              {["A domicilio", "Reserva online", "Zona Norte", "Servicio premium"].map((t) => (
-                <span
-                  key={t}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs text-neutral-200"
-                >
-                  <CheckCircle2 className="h-3 w-3 text-primary" /> {t}
-                </span>
-              ))}
-            </div>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Button size="lg" asChild className="text-base">
+              <Link to="/reservar">
+                Reservar lavado <ArrowRight className="ml-1 h-4 w-4" />
+              </Link>
+            </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              asChild
+              className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+            >
+              <a href={WA_URL} target="_blank" rel="noopener">
+                <MessageCircle className="mr-1 h-4 w-4" />
+                Consultar por WhatsApp
+              </a>
+            </Button>
           </div>
 
-          <div className="mt-2 w-full md:mt-0 md:justify-self-end md:max-w-[min(100%,22rem)] lg:max-w-[min(100%,26rem)]">
-            <WasheroAssistantHero />
+          <div className="mt-8 flex flex-wrap gap-2">
+            {["A domicilio", "Reserva online", "Zona Norte", "Servicio premium"].map((t) => (
+              <span
+                key={t}
+                className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs text-neutral-200"
+              >
+                <CheckCircle2 className="h-3 w-3 text-primary" /> {t}
+              </span>
+            ))}
           </div>
         </div>
       </div>
@@ -208,11 +191,7 @@ function HowItWorks() {
     },
   ];
   return (
-    <section
-      id="como-funciona"
-      data-mascot-section="como-funciona"
-      className="border-t border-border/60 bg-background"
-    >
+    <section id="como-funciona" className="border-t border-border/60 bg-background">
       <div className="mx-auto max-w-6xl px-4 py-16 md:py-20">
         <SectionTitle eyebrow="Simple" title="¿Cómo funciona?" />
         <div className="mt-10 grid gap-4 md:grid-cols-3">
@@ -255,11 +234,7 @@ function Services() {
   });
 
   return (
-    <section
-      id="servicios"
-      data-mascot-section="servicios"
-      className="border-t border-border/60 bg-muted/30"
-    >
+    <section id="servicios" className="border-t border-border/60 bg-muted/30">
       <div className="mx-auto max-w-6xl px-4 py-16 md:py-20">
         <SectionTitle eyebrow="Servicios" title="Elegí tu lavado" />
         <div className="mt-10 grid gap-4 md:grid-cols-2">
@@ -337,11 +312,7 @@ function Coverage() {
   });
 
   return (
-    <section
-      id="zonas"
-      data-mascot-section="zonas"
-      className="border-t border-border/60 bg-background"
-    >
+    <section id="zonas" className="border-t border-border/60 bg-background">
       <div className="mx-auto max-w-6xl px-4 py-16 md:py-20">
         <SectionTitle eyebrow="Cobertura" title="Zonas de cobertura" />
         <p className="mx-auto mt-4 max-w-2xl text-center text-sm text-muted-foreground">
@@ -374,9 +345,7 @@ function Coverage() {
 
         <div className="mt-10 text-center">
           <Button size="lg" asChild>
-            <Link to="/reservar" data-mascot-trigger="reservar">
-              Reservar lavado
-            </Link>
+            <Link to="/reservar">Reservar lavado</Link>
           </Button>
         </div>
       </div>
@@ -435,11 +404,7 @@ function Benefits() {
 
 function Launch() {
   return (
-    <section
-      id="reservar"
-      data-mascot-section="reservar"
-      className="border-t border-border/60 bg-background"
-    >
+    <section id="reservar" className="border-t border-border/60 bg-background">
       <div className="mx-auto max-w-4xl px-4 py-16 md:py-20">
         <Card className="border-primary/30 bg-gradient-to-br from-primary/10 via-card to-card">
           <CardContent className="space-y-4 p-8 text-center">
@@ -513,7 +478,7 @@ function Faq() {
 
 function FinalCta() {
   return (
-    <section data-mascot-footer className="border-t border-border/60 bg-neutral-950 text-white">
+    <section className="border-t border-border/60 bg-neutral-950 text-white">
       <div className="mx-auto max-w-4xl px-4 py-16 text-center md:py-24">
         <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
           ¿Listo para tener tu auto impecable sin moverte?
@@ -523,9 +488,7 @@ function FinalCta() {
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           <Button size="lg" asChild>
-            <Link to="/reservar" data-mascot-trigger="reservar">
-              Reservar lavado
-            </Link>
+            <Link to="/reservar">Reservar lavado</Link>
           </Button>
           <Button
             size="lg"
@@ -533,7 +496,7 @@ function FinalCta() {
             asChild
             className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
           >
-            <a href={WA_URL} target="_blank" rel="noopener" data-mascot-trigger="whatsapp">
+            <a href={WA_URL} target="_blank" rel="noopener">
               <MessageCircle className="mr-1 h-4 w-4" /> Consultar por WhatsApp
             </a>
           </Button>
