@@ -700,7 +700,7 @@ async function createMercadoPagoCheckout(booking: {
 }, serviceName: string) {
   const MP_TOKEN = Deno.env.get("MERCADOPAGO_ACCESS_TOKEN");
   const PROJECT_REF = "domslcbxgqbylmciqrxt";
-  const SITE_ORIGIN = Deno.env.get("PUBLIC_SITE_URL") ?? "https://washero-premium-clean.lovable.app";
+  const SITE_ORIGIN = Deno.env.get("PUBLIC_SITE_URL") ?? "https://washero.ar";
   const WEBHOOK_URL = `https://${PROJECT_REF}.supabase.co/functions/v1/mercadopago-webhook`;
   if (!MP_TOKEN) return { checkout_url: null as string | null, preference: null };
 

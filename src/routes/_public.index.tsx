@@ -27,7 +27,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { formatPrice } from "@/lib/booking-badges";
 
 const WA_URL = "https://wa.me/5491176247835";
-const SITE = "https://washero-premium-clean.lovable.app";
+const SITE = "https://washero.ar";
 
 export const Route = createFileRoute("/_public/")({
   head: () => ({

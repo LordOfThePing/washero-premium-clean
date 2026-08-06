@@ -21,9 +21,8 @@ dist-ssr
 .env.*
 !.env.example
 
-# Wrangler / Cloudflare
-.wrangler/
-.dev.vars
+# Vercel
+.vercel
 
 # Editor directories and files
 .cursor/
@@ -41,3 +40,6 @@ supabase/.temp/
 
 # Large source 3D assets (optimized copies live in public/models/)
 assets/source/
+.env*
+
+.wrangler/

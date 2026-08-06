@@ -15,7 +15,7 @@ const corsHeaders = {
 };
 
 const PROJECT_REF = "domslcbxgqbylmciqrxt";
-const SITE_ORIGIN = Deno.env.get("PUBLIC_SITE_URL") ?? "https://washero-premium-clean.lovable.app";
+const SITE_ORIGIN = Deno.env.get("PUBLIC_SITE_URL") ?? "https://washero.ar";
 const WEBHOOK_URL = `https://${PROJECT_REF}.supabase.co/functions/v1/mercadopago-webhook`;
 const PUSH_INTERNAL_SECRET = Deno.env.get("PUSH_INTERNAL_SECRET") ?? "";
 const SUPABASE_URL_ROOT = Deno.env.get("SUPABASE_URL")!;

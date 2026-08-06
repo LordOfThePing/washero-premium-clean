@@ -9,48 +9,47 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as OperatorRouteImport } from './routes/operator'
-import { Route as AdminRouteImport } from './routes/admin'
 import { Route as PublicRouteImport } from './routes/_public'
-import { Route as OperatorIndexRouteImport } from './routes/operator.index'
-import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as AdminRouteImport } from './routes/admin'
+import { Route as OperatorRouteImport } from './routes/operator'
 import { Route as PublicIndexRouteImport } from './routes/_public.index'
-import { Route as OperatorSemanaRouteImport } from './routes/operator.semana'
-import { Route as OperatorPerfilRouteImport } from './routes/operator.perfil'
-import { Route as OperatorPendientesRouteImport } from './routes/operator.pendientes'
-import { Route as OperatorMensajesRouteImport } from './routes/operator.mensajes'
-import { Route as OperatorLoginRouteImport } from './routes/operator.login'
-import { Route as OperatorHoyRouteImport } from './routes/operator.hoy'
-import { Route as AdminWhatsappConfigRouteImport } from './routes/admin.whatsapp-config'
-import { Route as AdminSuscripcionesRouteImport } from './routes/admin.suscripciones'
-import { Route as AdminReservasRouteImport } from './routes/admin.reservas'
-import { Route as AdminPreciosRouteImport } from './routes/admin.precios'
-import { Route as AdminNotificacionesRouteImport } from './routes/admin.notificaciones'
-import { Route as AdminMensajesRouteImport } from './routes/admin.mensajes'
-import { Route as AdminMapaDemandaRouteImport } from './routes/admin.mapa-demanda'
-import { Route as AdminLoginRouteImport } from './routes/admin.login'
-import { Route as AdminLeadsKipperRouteImport } from './routes/admin.leads-kipper'
-import { Route as AdminFinanzasRouteImport } from './routes/admin.finanzas'
-import { Route as AdminFacturasRouteImport } from './routes/admin.facturas'
-import { Route as AdminEarlyAccessRouteImport } from './routes/admin.early-access'
-import { Route as AdminDisponibilidadRouteImport } from './routes/admin.disponibilidad'
-import { Route as AdminConfiguracionRouteImport } from './routes/admin.configuracion'
-import { Route as AdminComprobantesRouteImport } from './routes/admin.comprobantes'
-import { Route as AdminClientesRouteImport } from './routes/admin.clientes'
-import { Route as AdminCalendarioRouteImport } from './routes/admin.calendario'
-import { Route as AdminBotmakerRouteImport } from './routes/admin.botmaker'
-import { Route as AdminAppConfigRouteImport } from './routes/admin.app-config'
-import { Route as AdminAgenteWhatsappRouteImport } from './routes/admin.agente-whatsapp'
-import { Route as PublicReservarRouteImport } from './routes/_public.reservar'
 import { Route as PublicGraciasRouteImport } from './routes/_public.gracias'
-import { Route as OperatorReservaBookingIdRouteImport } from './routes/operator.reserva.$bookingId'
-import { Route as AdminFacturasInvoiceIdRouteImport } from './routes/admin.facturas_.$invoiceId'
-import { Route as PublicQSlugRouteImport } from './routes/_public.q.$slug'
+import { Route as PublicReservarRouteImport } from './routes/_public.reservar'
+import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as AdminAgenteWhatsappRouteImport } from './routes/admin.agente-whatsapp'
+import { Route as AdminAppConfigRouteImport } from './routes/admin.app-config'
+import { Route as AdminBotmakerRouteImport } from './routes/admin.botmaker'
+import { Route as AdminCalendarioRouteImport } from './routes/admin.calendario'
+import { Route as AdminClientesRouteImport } from './routes/admin.clientes'
+import { Route as AdminComprobantesRouteImport } from './routes/admin.comprobantes'
+import { Route as AdminConfiguracionRouteImport } from './routes/admin.configuracion'
+import { Route as AdminDisponibilidadRouteImport } from './routes/admin.disponibilidad'
+import { Route as AdminEarlyAccessRouteImport } from './routes/admin.early-access'
+import { Route as AdminFacturasRouteImport } from './routes/admin.facturas'
+import { Route as AdminFinanzasRouteImport } from './routes/admin.finanzas'
+import { Route as AdminLeadsKipperRouteImport } from './routes/admin.leads-kipper'
+import { Route as AdminLoginRouteImport } from './routes/admin.login'
+import { Route as AdminMapaDemandaRouteImport } from './routes/admin.mapa-demanda'
+import { Route as AdminMensajesRouteImport } from './routes/admin.mensajes'
+import { Route as AdminNotificacionesRouteImport } from './routes/admin.notificaciones'
+import { Route as AdminPreciosRouteImport } from './routes/admin.precios'
+import { Route as AdminReservasRouteImport } from './routes/admin.reservas'
+import { Route as AdminSuscripcionesRouteImport } from './routes/admin.suscripciones'
+import { Route as AdminWhatsappConfigRouteImport } from './routes/admin.whatsapp-config'
+import { Route as OperatorIndexRouteImport } from './routes/operator.index'
+import { Route as OperatorHoyRouteImport } from './routes/operator.hoy'
+import { Route as OperatorLoginRouteImport } from './routes/operator.login'
+import { Route as OperatorMensajesRouteImport } from './routes/operator.mensajes'
+import { Route as OperatorPendientesRouteImport } from './routes/operator.pendientes'
+import { Route as OperatorPerfilRouteImport } from './routes/operator.perfil'
+import { Route as OperatorSemanaRouteImport } from './routes/operator.semana'
 import { Route as PublicComprobantePublicTokenRouteImport } from './routes/_public.comprobante.$publicToken'
+import { Route as PublicQSlugRouteImport } from './routes/_public.q.$slug'
+import { Route as AdminFacturasInvoiceIdRouteImport } from './routes/admin.facturas_.$invoiceId'
+import { Route as OperatorReservaBookingIdRouteImport } from './routes/operator.reserva.$bookingId'
 
-const OperatorRoute = OperatorRouteImport.update({
-  id: '/operator',
-  path: '/operator',
+const PublicRoute = PublicRouteImport.update({
+  id: '/_public',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -58,158 +57,14 @@ const AdminRoute = AdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PublicRoute = PublicRouteImport.update({
-  id: '/_public',
+const OperatorRoute = OperatorRouteImport.update({
+  id: '/operator',
+  path: '/operator',
   getParentRoute: () => rootRouteImport,
-} as any)
-const OperatorIndexRoute = OperatorIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => OperatorRoute,
-} as any)
-const AdminIndexRoute = AdminIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => AdminRoute,
 } as any)
 const PublicIndexRoute = PublicIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => PublicRoute,
-} as any)
-const OperatorSemanaRoute = OperatorSemanaRouteImport.update({
-  id: '/semana',
-  path: '/semana',
-  getParentRoute: () => OperatorRoute,
-} as any)
-const OperatorPerfilRoute = OperatorPerfilRouteImport.update({
-  id: '/perfil',
-  path: '/perfil',
-  getParentRoute: () => OperatorRoute,
-} as any)
-const OperatorPendientesRoute = OperatorPendientesRouteImport.update({
-  id: '/pendientes',
-  path: '/pendientes',
-  getParentRoute: () => OperatorRoute,
-} as any)
-const OperatorMensajesRoute = OperatorMensajesRouteImport.update({
-  id: '/mensajes',
-  path: '/mensajes',
-  getParentRoute: () => OperatorRoute,
-} as any)
-const OperatorLoginRoute = OperatorLoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => OperatorRoute,
-} as any)
-const OperatorHoyRoute = OperatorHoyRouteImport.update({
-  id: '/hoy',
-  path: '/hoy',
-  getParentRoute: () => OperatorRoute,
-} as any)
-const AdminWhatsappConfigRoute = AdminWhatsappConfigRouteImport.update({
-  id: '/whatsapp-config',
-  path: '/whatsapp-config',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminSuscripcionesRoute = AdminSuscripcionesRouteImport.update({
-  id: '/suscripciones',
-  path: '/suscripciones',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminReservasRoute = AdminReservasRouteImport.update({
-  id: '/reservas',
-  path: '/reservas',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminPreciosRoute = AdminPreciosRouteImport.update({
-  id: '/precios',
-  path: '/precios',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminNotificacionesRoute = AdminNotificacionesRouteImport.update({
-  id: '/notificaciones',
-  path: '/notificaciones',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminMensajesRoute = AdminMensajesRouteImport.update({
-  id: '/mensajes',
-  path: '/mensajes',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminMapaDemandaRoute = AdminMapaDemandaRouteImport.update({
-  id: '/mapa-demanda',
-  path: '/mapa-demanda',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminLoginRoute = AdminLoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminLeadsKipperRoute = AdminLeadsKipperRouteImport.update({
-  id: '/leads-kipper',
-  path: '/leads-kipper',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminFinanzasRoute = AdminFinanzasRouteImport.update({
-  id: '/finanzas',
-  path: '/finanzas',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminFacturasRoute = AdminFacturasRouteImport.update({
-  id: '/facturas',
-  path: '/facturas',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminEarlyAccessRoute = AdminEarlyAccessRouteImport.update({
-  id: '/early-access',
-  path: '/early-access',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminDisponibilidadRoute = AdminDisponibilidadRouteImport.update({
-  id: '/disponibilidad',
-  path: '/disponibilidad',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminConfiguracionRoute = AdminConfiguracionRouteImport.update({
-  id: '/configuracion',
-  path: '/configuracion',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminComprobantesRoute = AdminComprobantesRouteImport.update({
-  id: '/comprobantes',
-  path: '/comprobantes',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminClientesRoute = AdminClientesRouteImport.update({
-  id: '/clientes',
-  path: '/clientes',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminCalendarioRoute = AdminCalendarioRouteImport.update({
-  id: '/calendario',
-  path: '/calendario',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminBotmakerRoute = AdminBotmakerRouteImport.update({
-  id: '/botmaker',
-  path: '/botmaker',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminAppConfigRoute = AdminAppConfigRouteImport.update({
-  id: '/app-config',
-  path: '/app-config',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminAgenteWhatsappRoute = AdminAgenteWhatsappRouteImport.update({
-  id: '/agente-whatsapp',
-  path: '/agente-whatsapp',
-  getParentRoute: () => AdminRoute,
-} as any)
-const PublicReservarRoute = PublicReservarRouteImport.update({
-  id: '/reservar',
-  path: '/reservar',
   getParentRoute: () => PublicRoute,
 } as any)
 const PublicGraciasRoute = PublicGraciasRouteImport.update({
@@ -217,27 +72,172 @@ const PublicGraciasRoute = PublicGraciasRouteImport.update({
   path: '/gracias',
   getParentRoute: () => PublicRoute,
 } as any)
-const OperatorReservaBookingIdRoute =
-  OperatorReservaBookingIdRouteImport.update({
-    id: '/reserva/$bookingId',
-    path: '/reserva/$bookingId',
-    getParentRoute: () => OperatorRoute,
-  } as any)
-const AdminFacturasInvoiceIdRoute = AdminFacturasInvoiceIdRouteImport.update({
-  id: '/facturas_/$invoiceId',
-  path: '/facturas/$invoiceId',
+const PublicReservarRoute = PublicReservarRouteImport.update({
+  id: '/reservar',
+  path: '/reservar',
+  getParentRoute: () => PublicRoute,
+} as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => AdminRoute,
 } as any)
-const PublicQSlugRoute = PublicQSlugRouteImport.update({
-  id: '/q/$slug',
-  path: '/q/$slug',
-  getParentRoute: () => PublicRoute,
+const AdminAgenteWhatsappRoute = AdminAgenteWhatsappRouteImport.update({
+  id: '/agente-whatsapp',
+  path: '/agente-whatsapp',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminAppConfigRoute = AdminAppConfigRouteImport.update({
+  id: '/app-config',
+  path: '/app-config',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminBotmakerRoute = AdminBotmakerRouteImport.update({
+  id: '/botmaker',
+  path: '/botmaker',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminCalendarioRoute = AdminCalendarioRouteImport.update({
+  id: '/calendario',
+  path: '/calendario',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminClientesRoute = AdminClientesRouteImport.update({
+  id: '/clientes',
+  path: '/clientes',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminComprobantesRoute = AdminComprobantesRouteImport.update({
+  id: '/comprobantes',
+  path: '/comprobantes',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminConfiguracionRoute = AdminConfiguracionRouteImport.update({
+  id: '/configuracion',
+  path: '/configuracion',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminDisponibilidadRoute = AdminDisponibilidadRouteImport.update({
+  id: '/disponibilidad',
+  path: '/disponibilidad',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminEarlyAccessRoute = AdminEarlyAccessRouteImport.update({
+  id: '/early-access',
+  path: '/early-access',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminFacturasRoute = AdminFacturasRouteImport.update({
+  id: '/facturas',
+  path: '/facturas',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminFinanzasRoute = AdminFinanzasRouteImport.update({
+  id: '/finanzas',
+  path: '/finanzas',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminLeadsKipperRoute = AdminLeadsKipperRouteImport.update({
+  id: '/leads-kipper',
+  path: '/leads-kipper',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminLoginRoute = AdminLoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminMapaDemandaRoute = AdminMapaDemandaRouteImport.update({
+  id: '/mapa-demanda',
+  path: '/mapa-demanda',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminMensajesRoute = AdminMensajesRouteImport.update({
+  id: '/mensajes',
+  path: '/mensajes',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminNotificacionesRoute = AdminNotificacionesRouteImport.update({
+  id: '/notificaciones',
+  path: '/notificaciones',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminPreciosRoute = AdminPreciosRouteImport.update({
+  id: '/precios',
+  path: '/precios',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminReservasRoute = AdminReservasRouteImport.update({
+  id: '/reservas',
+  path: '/reservas',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminSuscripcionesRoute = AdminSuscripcionesRouteImport.update({
+  id: '/suscripciones',
+  path: '/suscripciones',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminWhatsappConfigRoute = AdminWhatsappConfigRouteImport.update({
+  id: '/whatsapp-config',
+  path: '/whatsapp-config',
+  getParentRoute: () => AdminRoute,
+} as any)
+const OperatorIndexRoute = OperatorIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => OperatorRoute,
+} as any)
+const OperatorHoyRoute = OperatorHoyRouteImport.update({
+  id: '/hoy',
+  path: '/hoy',
+  getParentRoute: () => OperatorRoute,
+} as any)
+const OperatorLoginRoute = OperatorLoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => OperatorRoute,
+} as any)
+const OperatorMensajesRoute = OperatorMensajesRouteImport.update({
+  id: '/mensajes',
+  path: '/mensajes',
+  getParentRoute: () => OperatorRoute,
+} as any)
+const OperatorPendientesRoute = OperatorPendientesRouteImport.update({
+  id: '/pendientes',
+  path: '/pendientes',
+  getParentRoute: () => OperatorRoute,
+} as any)
+const OperatorPerfilRoute = OperatorPerfilRouteImport.update({
+  id: '/perfil',
+  path: '/perfil',
+  getParentRoute: () => OperatorRoute,
+} as any)
+const OperatorSemanaRoute = OperatorSemanaRouteImport.update({
+  id: '/semana',
+  path: '/semana',
+  getParentRoute: () => OperatorRoute,
 } as any)
 const PublicComprobantePublicTokenRoute =
   PublicComprobantePublicTokenRouteImport.update({
     id: '/comprobante/$publicToken',
     path: '/comprobante/$publicToken',
     getParentRoute: () => PublicRoute,
+  } as any)
+const PublicQSlugRoute = PublicQSlugRouteImport.update({
+  id: '/q/$slug',
+  path: '/q/$slug',
+  getParentRoute: () => PublicRoute,
+} as any)
+const AdminFacturasInvoiceIdRoute = AdminFacturasInvoiceIdRouteImport.update({
+  id: '/facturas_/$invoiceId',
+  path: '/facturas/$invoiceId',
+  getParentRoute: () => AdminRoute,
+} as any)
+const OperatorReservaBookingIdRoute =
+  OperatorReservaBookingIdRouteImport.update({
+    id: '/reserva/$bookingId',
+    path: '/reserva/$bookingId',
+    getParentRoute: () => OperatorRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -484,11 +484,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/operator': {
-      id: '/operator'
-      path: '/operator'
-      fullPath: '/operator'
-      preLoaderRoute: typeof OperatorRouteImport
+    '/_public': {
+      id: '/_public'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof PublicRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -498,221 +498,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_public': {
-      id: '/_public'
-      path: ''
-      fullPath: '/'
-      preLoaderRoute: typeof PublicRouteImport
+    '/operator': {
+      id: '/operator'
+      path: '/operator'
+      fullPath: '/operator'
+      preLoaderRoute: typeof OperatorRouteImport
       parentRoute: typeof rootRouteImport
-    }
-    '/operator/': {
-      id: '/operator/'
-      path: '/'
-      fullPath: '/operator/'
-      preLoaderRoute: typeof OperatorIndexRouteImport
-      parentRoute: typeof OperatorRoute
-    }
-    '/admin/': {
-      id: '/admin/'
-      path: '/'
-      fullPath: '/admin/'
-      preLoaderRoute: typeof AdminIndexRouteImport
-      parentRoute: typeof AdminRoute
     }
     '/_public/': {
       id: '/_public/'
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof PublicIndexRouteImport
-      parentRoute: typeof PublicRoute
-    }
-    '/operator/semana': {
-      id: '/operator/semana'
-      path: '/semana'
-      fullPath: '/operator/semana'
-      preLoaderRoute: typeof OperatorSemanaRouteImport
-      parentRoute: typeof OperatorRoute
-    }
-    '/operator/perfil': {
-      id: '/operator/perfil'
-      path: '/perfil'
-      fullPath: '/operator/perfil'
-      preLoaderRoute: typeof OperatorPerfilRouteImport
-      parentRoute: typeof OperatorRoute
-    }
-    '/operator/pendientes': {
-      id: '/operator/pendientes'
-      path: '/pendientes'
-      fullPath: '/operator/pendientes'
-      preLoaderRoute: typeof OperatorPendientesRouteImport
-      parentRoute: typeof OperatorRoute
-    }
-    '/operator/mensajes': {
-      id: '/operator/mensajes'
-      path: '/mensajes'
-      fullPath: '/operator/mensajes'
-      preLoaderRoute: typeof OperatorMensajesRouteImport
-      parentRoute: typeof OperatorRoute
-    }
-    '/operator/login': {
-      id: '/operator/login'
-      path: '/login'
-      fullPath: '/operator/login'
-      preLoaderRoute: typeof OperatorLoginRouteImport
-      parentRoute: typeof OperatorRoute
-    }
-    '/operator/hoy': {
-      id: '/operator/hoy'
-      path: '/hoy'
-      fullPath: '/operator/hoy'
-      preLoaderRoute: typeof OperatorHoyRouteImport
-      parentRoute: typeof OperatorRoute
-    }
-    '/admin/whatsapp-config': {
-      id: '/admin/whatsapp-config'
-      path: '/whatsapp-config'
-      fullPath: '/admin/whatsapp-config'
-      preLoaderRoute: typeof AdminWhatsappConfigRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/suscripciones': {
-      id: '/admin/suscripciones'
-      path: '/suscripciones'
-      fullPath: '/admin/suscripciones'
-      preLoaderRoute: typeof AdminSuscripcionesRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/reservas': {
-      id: '/admin/reservas'
-      path: '/reservas'
-      fullPath: '/admin/reservas'
-      preLoaderRoute: typeof AdminReservasRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/precios': {
-      id: '/admin/precios'
-      path: '/precios'
-      fullPath: '/admin/precios'
-      preLoaderRoute: typeof AdminPreciosRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/notificaciones': {
-      id: '/admin/notificaciones'
-      path: '/notificaciones'
-      fullPath: '/admin/notificaciones'
-      preLoaderRoute: typeof AdminNotificacionesRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/mensajes': {
-      id: '/admin/mensajes'
-      path: '/mensajes'
-      fullPath: '/admin/mensajes'
-      preLoaderRoute: typeof AdminMensajesRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/mapa-demanda': {
-      id: '/admin/mapa-demanda'
-      path: '/mapa-demanda'
-      fullPath: '/admin/mapa-demanda'
-      preLoaderRoute: typeof AdminMapaDemandaRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/login': {
-      id: '/admin/login'
-      path: '/login'
-      fullPath: '/admin/login'
-      preLoaderRoute: typeof AdminLoginRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/leads-kipper': {
-      id: '/admin/leads-kipper'
-      path: '/leads-kipper'
-      fullPath: '/admin/leads-kipper'
-      preLoaderRoute: typeof AdminLeadsKipperRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/finanzas': {
-      id: '/admin/finanzas'
-      path: '/finanzas'
-      fullPath: '/admin/finanzas'
-      preLoaderRoute: typeof AdminFinanzasRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/facturas': {
-      id: '/admin/facturas'
-      path: '/facturas'
-      fullPath: '/admin/facturas'
-      preLoaderRoute: typeof AdminFacturasRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/early-access': {
-      id: '/admin/early-access'
-      path: '/early-access'
-      fullPath: '/admin/early-access'
-      preLoaderRoute: typeof AdminEarlyAccessRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/disponibilidad': {
-      id: '/admin/disponibilidad'
-      path: '/disponibilidad'
-      fullPath: '/admin/disponibilidad'
-      preLoaderRoute: typeof AdminDisponibilidadRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/configuracion': {
-      id: '/admin/configuracion'
-      path: '/configuracion'
-      fullPath: '/admin/configuracion'
-      preLoaderRoute: typeof AdminConfiguracionRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/comprobantes': {
-      id: '/admin/comprobantes'
-      path: '/comprobantes'
-      fullPath: '/admin/comprobantes'
-      preLoaderRoute: typeof AdminComprobantesRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/clientes': {
-      id: '/admin/clientes'
-      path: '/clientes'
-      fullPath: '/admin/clientes'
-      preLoaderRoute: typeof AdminClientesRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/calendario': {
-      id: '/admin/calendario'
-      path: '/calendario'
-      fullPath: '/admin/calendario'
-      preLoaderRoute: typeof AdminCalendarioRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/botmaker': {
-      id: '/admin/botmaker'
-      path: '/botmaker'
-      fullPath: '/admin/botmaker'
-      preLoaderRoute: typeof AdminBotmakerRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/app-config': {
-      id: '/admin/app-config'
-      path: '/app-config'
-      fullPath: '/admin/app-config'
-      preLoaderRoute: typeof AdminAppConfigRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/agente-whatsapp': {
-      id: '/admin/agente-whatsapp'
-      path: '/agente-whatsapp'
-      fullPath: '/admin/agente-whatsapp'
-      preLoaderRoute: typeof AdminAgenteWhatsappRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/_public/reservar': {
-      id: '/_public/reservar'
-      path: '/reservar'
-      fullPath: '/reservar'
-      preLoaderRoute: typeof PublicReservarRouteImport
       parentRoute: typeof PublicRoute
     }
     '/_public/gracias': {
@@ -722,19 +519,215 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PublicGraciasRouteImport
       parentRoute: typeof PublicRoute
     }
-    '/operator/reserva/$bookingId': {
-      id: '/operator/reserva/$bookingId'
-      path: '/reserva/$bookingId'
-      fullPath: '/operator/reserva/$bookingId'
-      preLoaderRoute: typeof OperatorReservaBookingIdRouteImport
+    '/_public/reservar': {
+      id: '/_public/reservar'
+      path: '/reservar'
+      fullPath: '/reservar'
+      preLoaderRoute: typeof PublicReservarRouteImport
+      parentRoute: typeof PublicRoute
+    }
+    '/admin/': {
+      id: '/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/agente-whatsapp': {
+      id: '/admin/agente-whatsapp'
+      path: '/agente-whatsapp'
+      fullPath: '/admin/agente-whatsapp'
+      preLoaderRoute: typeof AdminAgenteWhatsappRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/app-config': {
+      id: '/admin/app-config'
+      path: '/app-config'
+      fullPath: '/admin/app-config'
+      preLoaderRoute: typeof AdminAppConfigRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/botmaker': {
+      id: '/admin/botmaker'
+      path: '/botmaker'
+      fullPath: '/admin/botmaker'
+      preLoaderRoute: typeof AdminBotmakerRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/calendario': {
+      id: '/admin/calendario'
+      path: '/calendario'
+      fullPath: '/admin/calendario'
+      preLoaderRoute: typeof AdminCalendarioRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/clientes': {
+      id: '/admin/clientes'
+      path: '/clientes'
+      fullPath: '/admin/clientes'
+      preLoaderRoute: typeof AdminClientesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/comprobantes': {
+      id: '/admin/comprobantes'
+      path: '/comprobantes'
+      fullPath: '/admin/comprobantes'
+      preLoaderRoute: typeof AdminComprobantesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/configuracion': {
+      id: '/admin/configuracion'
+      path: '/configuracion'
+      fullPath: '/admin/configuracion'
+      preLoaderRoute: typeof AdminConfiguracionRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/disponibilidad': {
+      id: '/admin/disponibilidad'
+      path: '/disponibilidad'
+      fullPath: '/admin/disponibilidad'
+      preLoaderRoute: typeof AdminDisponibilidadRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/early-access': {
+      id: '/admin/early-access'
+      path: '/early-access'
+      fullPath: '/admin/early-access'
+      preLoaderRoute: typeof AdminEarlyAccessRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/facturas': {
+      id: '/admin/facturas'
+      path: '/facturas'
+      fullPath: '/admin/facturas'
+      preLoaderRoute: typeof AdminFacturasRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/finanzas': {
+      id: '/admin/finanzas'
+      path: '/finanzas'
+      fullPath: '/admin/finanzas'
+      preLoaderRoute: typeof AdminFinanzasRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/leads-kipper': {
+      id: '/admin/leads-kipper'
+      path: '/leads-kipper'
+      fullPath: '/admin/leads-kipper'
+      preLoaderRoute: typeof AdminLeadsKipperRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/login': {
+      id: '/admin/login'
+      path: '/login'
+      fullPath: '/admin/login'
+      preLoaderRoute: typeof AdminLoginRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/mapa-demanda': {
+      id: '/admin/mapa-demanda'
+      path: '/mapa-demanda'
+      fullPath: '/admin/mapa-demanda'
+      preLoaderRoute: typeof AdminMapaDemandaRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/mensajes': {
+      id: '/admin/mensajes'
+      path: '/mensajes'
+      fullPath: '/admin/mensajes'
+      preLoaderRoute: typeof AdminMensajesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/notificaciones': {
+      id: '/admin/notificaciones'
+      path: '/notificaciones'
+      fullPath: '/admin/notificaciones'
+      preLoaderRoute: typeof AdminNotificacionesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/precios': {
+      id: '/admin/precios'
+      path: '/precios'
+      fullPath: '/admin/precios'
+      preLoaderRoute: typeof AdminPreciosRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/reservas': {
+      id: '/admin/reservas'
+      path: '/reservas'
+      fullPath: '/admin/reservas'
+      preLoaderRoute: typeof AdminReservasRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/suscripciones': {
+      id: '/admin/suscripciones'
+      path: '/suscripciones'
+      fullPath: '/admin/suscripciones'
+      preLoaderRoute: typeof AdminSuscripcionesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/whatsapp-config': {
+      id: '/admin/whatsapp-config'
+      path: '/whatsapp-config'
+      fullPath: '/admin/whatsapp-config'
+      preLoaderRoute: typeof AdminWhatsappConfigRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/operator/': {
+      id: '/operator/'
+      path: '/'
+      fullPath: '/operator/'
+      preLoaderRoute: typeof OperatorIndexRouteImport
       parentRoute: typeof OperatorRoute
     }
-    '/admin/facturas_/$invoiceId': {
-      id: '/admin/facturas_/$invoiceId'
-      path: '/facturas/$invoiceId'
-      fullPath: '/admin/facturas/$invoiceId'
-      preLoaderRoute: typeof AdminFacturasInvoiceIdRouteImport
-      parentRoute: typeof AdminRoute
+    '/operator/hoy': {
+      id: '/operator/hoy'
+      path: '/hoy'
+      fullPath: '/operator/hoy'
+      preLoaderRoute: typeof OperatorHoyRouteImport
+      parentRoute: typeof OperatorRoute
+    }
+    '/operator/login': {
+      id: '/operator/login'
+      path: '/login'
+      fullPath: '/operator/login'
+      preLoaderRoute: typeof OperatorLoginRouteImport
+      parentRoute: typeof OperatorRoute
+    }
+    '/operator/mensajes': {
+      id: '/operator/mensajes'
+      path: '/mensajes'
+      fullPath: '/operator/mensajes'
+      preLoaderRoute: typeof OperatorMensajesRouteImport
+      parentRoute: typeof OperatorRoute
+    }
+    '/operator/pendientes': {
+      id: '/operator/pendientes'
+      path: '/pendientes'
+      fullPath: '/operator/pendientes'
+      preLoaderRoute: typeof OperatorPendientesRouteImport
+      parentRoute: typeof OperatorRoute
+    }
+    '/operator/perfil': {
+      id: '/operator/perfil'
+      path: '/perfil'
+      fullPath: '/operator/perfil'
+      preLoaderRoute: typeof OperatorPerfilRouteImport
+      parentRoute: typeof OperatorRoute
+    }
+    '/operator/semana': {
+      id: '/operator/semana'
+      path: '/semana'
+      fullPath: '/operator/semana'
+      preLoaderRoute: typeof OperatorSemanaRouteImport
+      parentRoute: typeof OperatorRoute
+    }
+    '/_public/comprobante/$publicToken': {
+      id: '/_public/comprobante/$publicToken'
+      path: '/comprobante/$publicToken'
+      fullPath: '/comprobante/$publicToken'
+      preLoaderRoute: typeof PublicComprobantePublicTokenRouteImport
+      parentRoute: typeof PublicRoute
     }
     '/_public/q/$slug': {
       id: '/_public/q/$slug'
@@ -743,12 +736,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PublicQSlugRouteImport
       parentRoute: typeof PublicRoute
     }
-    '/_public/comprobante/$publicToken': {
-      id: '/_public/comprobante/$publicToken'
-      path: '/comprobante/$publicToken'
-      fullPath: '/comprobante/$publicToken'
-      preLoaderRoute: typeof PublicComprobantePublicTokenRouteImport
-      parentRoute: typeof PublicRoute
+    '/admin/facturas_/$invoiceId': {
+      id: '/admin/facturas_/$invoiceId'
+      path: '/facturas/$invoiceId'
+      fullPath: '/admin/facturas/$invoiceId'
+      preLoaderRoute: typeof AdminFacturasInvoiceIdRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/operator/reserva/$bookingId': {
+      id: '/operator/reserva/$bookingId'
+      path: '/reserva/$bookingId'
+      fullPath: '/operator/reserva/$bookingId'
+      preLoaderRoute: typeof OperatorReservaBookingIdRouteImport
+      parentRoute: typeof OperatorRoute
     }
   }
 }
