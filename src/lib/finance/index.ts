@@ -3,3 +3,4 @@ export * from "./utils";
 export * from "./calculations";
 export * from "./exports";
 export * from "./planilla-storage";
+export * from "./expenses";

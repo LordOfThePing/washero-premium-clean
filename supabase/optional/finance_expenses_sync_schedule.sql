@@ -1,0 +1,19 @@
+-- Optional: schedule periodic sync of Google Form expenses into finance_expenses.
+-- Requires FINANCE_SYNC_SECRET set as an Edge Function secret AND stored in Vault / cron headers.
+--
+-- Example (adapt project ref + secret):
+--
+-- select cron.schedule(
+--   'sync-finance-expenses-hourly',
+--   '0 * * * *',
+--   $$
+--   select net.http_post(
+--     url := 'https://<PROJECT_REF>.supabase.co/functions/v1/sync-finance-expenses',
+--     headers := jsonb_build_object(
+--       'Content-Type', 'application/json',
+--       'x-internal-secret', '<FINANCE_SYNC_SECRET>'
+--     ),
+--     body := '{}'::jsonb
+--   );
+--   $$
+-- );

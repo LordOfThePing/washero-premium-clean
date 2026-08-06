@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarOff, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,9 @@ import { FinanceBreakdown } from "@/components/admin/finance/FinanceBreakdown";
 import { PlanillaOperativa } from "@/components/admin/finance/PlanillaOperativa";
 import { BookingsDetailTable } from "@/components/admin/finance/BookingsDetailTable";
 import { FinanceSection } from "@/components/admin/finance/FinanceSection";
+import { PartnerInvestments } from "@/components/admin/finance/PartnerInvestments";
+import { BusinessExpenses } from "@/components/admin/finance/BusinessExpenses";
+import { NetSplitResultCard } from "@/components/admin/finance/NetSplitResult";
 import {
   computeFinanceData,
   receiptStatusByBooking,
@@ -26,9 +30,17 @@ import {
   resetPlanillaAssumptions,
   todayIso,
   FINANCE_QUERY_LIMIT,
+  DEFAULT_FINANCE_SETTINGS,
+  partnerInvestments,
+  businessExpenses,
+  summarizePartnerInvestments,
+  summarizeBusinessExpenses,
+  computeNetSplit,
   type FinanceBooking,
   type FinancePayment,
   type FinanceReceipt,
+  type FinanceExpense,
+  type FinanceSettings,
   type PeriodPreset,
   type PlanillaAssumptions,
 } from "@/lib/finance";
@@ -42,6 +54,8 @@ const BOOKING_SELECT =
 
 const PAYMENT_SELECT = "id, amount, booking_id, provider, status, created_at";
 const RECEIPT_SELECT = "id, booking_id, status, created_at";
+const EXPENSE_SELECT =
+  "id, expense_date, payer, concept, category, amount, payment_method, notes, sheet_row_key, synced_at, created_at";
 const ID_CHUNK = 200;
 
 async function fetchInChunks<T>(
@@ -94,6 +108,27 @@ async function fetchReceiptsForBookings(bookingIds: string[]): Promise<FinanceRe
   });
 }
 
+async function fetchExpenses(): Promise<FinanceExpense[]> {
+  const { data, error } = await supabase
+    .from("finance_expenses")
+    .select(EXPENSE_SELECT)
+    .order("expense_date", { ascending: false })
+    .limit(FINANCE_QUERY_LIMIT);
+  if (error) throw error;
+  return (data ?? []) as FinanceExpense[];
+}
+
+async function fetchFinanceSettings(): Promise<FinanceSettings> {
+  const { data, error } = await supabase
+    .from("finance_settings")
+    .select("id, truck_owner_pct, washero_pct, updated_at")
+    .eq("id", 1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return DEFAULT_FINANCE_SETTINGS;
+  return data as FinanceSettings;
+}
+
 async function fetchFinanceData(from: string, to: string) {
   const today = todayIso();
 
@@ -112,7 +147,7 @@ async function fetchFinanceData(from: string, to: string) {
   const bookingsTruncated = bookings.length >= FINANCE_QUERY_LIMIT;
   const bookingIds = bookings.map((b) => b.id);
 
-  const [payments, receipts, alertBookingsRes] = await Promise.all([
+  const [payments, receipts, alertBookingsRes, expenses, settings] = await Promise.all([
     fetchPaymentsForBookings(bookingIds),
     fetchReceiptsForBookings(bookingIds),
     supabase
@@ -122,6 +157,8 @@ async function fetchFinanceData(from: string, to: string) {
       .eq("payment_status", "pending")
       .neq("booking_status", "cancelled")
       .limit(500),
+    fetchExpenses(),
+    fetchFinanceSettings(),
   ]);
 
   if (alertBookingsRes.error) throw alertBookingsRes.error;
@@ -132,6 +169,8 @@ async function fetchFinanceData(from: string, to: string) {
     receipts,
     alertBookings: (alertBookingsRes.data ?? []) as FinanceBooking[],
     bookingsTruncated,
+    expenses,
+    settings,
   };
 }
 
@@ -156,6 +195,34 @@ function FinanzasPage() {
     queryFn: () => fetchFinanceData(range.from, range.to),
   });
 
+  const periodPartnerRows = useMemo(() => {
+    if (!query.data) return [];
+    return partnerInvestments(query.data.expenses).filter(
+      (e) => e.expense_date >= range.from && e.expense_date <= range.to,
+    );
+  }, [query.data, range.from, range.to]);
+
+  const periodBusinessRows = useMemo(() => {
+    if (!query.data) return [];
+    return businessExpenses(query.data.expenses).filter(
+      (e) => e.expense_date >= range.from && e.expense_date <= range.to,
+    );
+  }, [query.data, range.from, range.to]);
+
+  const periodPartnerSummary = useMemo(
+    () => summarizePartnerInvestments(periodPartnerRows),
+    [periodPartnerRows],
+  );
+  const historicalPartnerSummary = useMemo(
+    () =>
+      summarizePartnerInvestments(query.data ? partnerInvestments(query.data.expenses) : []),
+    [query.data],
+  );
+  const businessSummary = useMemo(
+    () => summarizeBusinessExpenses(periodBusinessRows),
+    [periodBusinessRows],
+  );
+
   const computed = useMemo(() => {
     if (!query.data) return null;
     return computeFinanceData(
@@ -164,14 +231,68 @@ function FinanzasPage() {
       query.data.receipts,
       query.data.alertBookings,
       assumptions,
-      { bookingsTruncated: query.data.bookingsTruncated },
+      {
+        bookingsTruncated: query.data.bookingsTruncated,
+        washeroExpensesTotal: businessSummary.total,
+      },
     );
-  }, [query.data, assumptions]);
+  }, [query.data, assumptions, businessSummary.total]);
+
+  const netSplit = useMemo(() => {
+    if (!computed || !query.data) return null;
+    return computeNetSplit(
+      computed.kpis.collected,
+      businessSummary.total,
+      query.data.settings,
+    );
+  }, [computed, businessSummary.total, query.data]);
 
   const receiptsMap = useMemo(
     () => (query.data ? receiptStatusByBooking(query.data.receipts) : new Map()),
     [query.data],
   );
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("sync-finance-expenses", {
+        body: {},
+      });
+      if (error) throw error;
+      if (data && typeof data === "object" && "ok" in data && data.ok === false) {
+        throw new Error(
+          typeof (data as { detail?: string }).detail === "string"
+            ? (data as { detail: string }).detail
+            : (data as { error?: string }).error ?? "sync_failed",
+        );
+      }
+      return data as { upserted?: number; skipped?: number };
+    },
+    onSuccess: (data) => {
+      toast.success(
+        `Gastos sincronizados${data?.upserted != null ? `: ${data.upserted} filas` : ""}`,
+      );
+      qc.invalidateQueries({ queryKey: ["admin", "finanzas"] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "No se pudo sincronizar gastos");
+    },
+  });
+
+  const saveSettingsMutation = useMutation({
+    mutationFn: async (next: Pick<FinanceSettings, "truck_owner_pct" | "washero_pct">) => {
+      const { error } = await supabase
+        .from("finance_settings")
+        .upsert({ id: 1, ...next }, { onConflict: "id" });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Porcentajes guardados");
+      qc.invalidateQueries({ queryKey: ["admin", "finanzas"] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "No se pudieron guardar los porcentajes");
+    },
+  });
 
   const handleAssumptionsChange = (next: PlanillaAssumptions) => {
     setAssumptions(next);
@@ -234,6 +355,8 @@ function FinanzasPage() {
         onCustomToChange={setCustomTo}
         onRefresh={handleRetry}
         isRefreshing={query.isFetching}
+        onSyncExpenses={() => syncMutation.mutate()}
+        isSyncingExpenses={syncMutation.isPending}
         exportDisabled={!computed}
         onExportDailyCash={() => exportDailyCashCsv(fin.dailyCash, periodLabel)}
         onExportBookings={() => exportBookingsCsv(data.bookings, periodLabel)}
@@ -263,6 +386,30 @@ function FinanzasPage() {
       </FinanceSection>
 
       <FinanceAlerts alerts={fin.alerts} />
+
+      <FinanceSection
+        title="Gastos e inversiones"
+        description="Desde el Google Form: socios = inversión aparte; Washero = gasto operativo."
+      >
+        <div className="space-y-6">
+          <PartnerInvestments
+            periodSummary={periodPartnerSummary}
+            historicalSummary={historicalPartnerSummary}
+            rows={periodPartnerRows}
+          />
+          <BusinessExpenses summary={businessSummary} rows={periodBusinessRows} />
+          {netSplit && (
+            <NetSplitResultCard
+              result={netSplit}
+              settings={data.settings}
+              onSaveSettings={async (next) => {
+                await saveSettingsMutation.mutateAsync(next);
+              }}
+              isSaving={saveSettingsMutation.isPending}
+            />
+          )}
+        </div>
+      </FinanceSection>
 
       <DailyCashTable rows={fin.dailyCash} />
 

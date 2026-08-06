@@ -72,8 +72,8 @@ export function PlanillaOperativa({ assumptions, result, onChange, onReset }: Pr
         <div className="space-y-1">
           <CardTitle className="text-base">Estimación operativa</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Simulador interno para repartir costos y caja. No reemplaza contabilidad legal ni
-            facturación.
+            Simulador interno con costos estimados. El bloque “Resultado neto” usa gastos Washero
+            reales del Google Form. Esto no reemplaza contabilidad legal ni facturación.
           </p>
           <p className="text-xs text-muted-foreground">
             Los supuestos se guardan solo en este navegador.
@@ -152,7 +152,7 @@ export function PlanillaOperativa({ assumptions, result, onChange, onReset }: Pr
             step="0.1"
           />
           <NumInput
-            label="Gastos fijos del período"
+            label="Gastos fijos del período (si no hay gastos Washero sync)"
             value={assumptions.fixedCostsPeriod}
             onChange={(v) => set({ fixedCostsPeriod: v })}
           />

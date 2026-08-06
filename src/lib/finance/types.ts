@@ -114,3 +114,8 @@ export type FinanceComputed = {
   topDays: BreakdownItem[];
   planilla: PlanillaResult;
 };
+
+/** Real OpEx from Washero-paid sheet rows for the selected period. */
+export type RealOpexInput = {
+  washeroExpensesTotal: number;
+};

@@ -1,4 +1,4 @@
-import { RefreshCw, Download, FileSpreadsheet, TrendingUp } from "lucide-react";
+import { RefreshCw, Download, FileSpreadsheet, TrendingUp, CloudDownload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +23,8 @@ type Props = {
   onCustomToChange: (v: string) => void;
   onRefresh: () => void;
   isRefreshing: boolean;
+  onSyncExpenses?: () => void;
+  isSyncingExpenses?: boolean;
   onExportDailyCash: () => void;
   onExportBookings: () => void;
   onExportPlanilla: () => void;
@@ -40,6 +42,8 @@ export function FinanceHeader({
   onCustomToChange,
   onRefresh,
   isRefreshing,
+  onSyncExpenses,
+  isSyncingExpenses,
   onExportDailyCash,
   onExportBookings,
   onExportPlanilla,
@@ -56,7 +60,7 @@ export function FinanceHeader({
             <TrendingUp className="h-5 w-5 shrink-0" /> Finanzas
           </h1>
           <p className="text-sm text-muted-foreground">
-            Caja diaria, cobros y estimación operativa del negocio.
+            Caja diaria, cobros, gastos e inversiones del negocio.
           </p>
           <p className="mt-1 text-xs font-medium text-muted-foreground">
             Período: {periodLabel}
@@ -74,6 +78,21 @@ export function FinanceHeader({
             <RefreshCw className={`mr-1.5 h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
             Actualizar
           </Button>
+          {onSyncExpenses && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full sm:w-auto"
+              onClick={onSyncExpenses}
+              disabled={isSyncingExpenses}
+              title="Traer gastos nuevos desde el Google Form / Sheet"
+            >
+              <CloudDownload
+                className={`mr-1.5 h-4 w-4 ${isSyncingExpenses ? "animate-pulse" : ""}`}
+              />
+              {isSyncingExpenses ? "Sincronizando…" : "Sincronizar gastos"}
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"

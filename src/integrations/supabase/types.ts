@@ -1225,6 +1225,69 @@ export type Database = {
         };
         Relationships: [];
       };
+      finance_expenses: {
+        Row: {
+          id: string;
+          expense_date: string;
+          payer: string;
+          concept: string;
+          category: string;
+          amount: number;
+          payment_method: string | null;
+          notes: string | null;
+          sheet_row_key: string;
+          synced_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          expense_date: string;
+          payer: string;
+          concept?: string;
+          category?: string;
+          amount: number;
+          payment_method?: string | null;
+          notes?: string | null;
+          sheet_row_key: string;
+          synced_at?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          expense_date?: string;
+          payer?: string;
+          concept?: string;
+          category?: string;
+          amount?: number;
+          payment_method?: string | null;
+          notes?: string | null;
+          sheet_row_key?: string;
+          synced_at?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      finance_settings: {
+        Row: {
+          id: number;
+          truck_owner_pct: number;
+          washero_pct: number;
+          updated_at: string;
+        };
+        Insert: {
+          id?: number;
+          truck_owner_pct?: number;
+          washero_pct?: number;
+          updated_at?: string;
+        };
+        Update: {
+          id?: number;
+          truck_owner_pct?: number;
+          washero_pct?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       invoices: {
         Row: {
           booking_id: string | null;

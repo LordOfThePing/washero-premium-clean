@@ -409,6 +409,7 @@ export function computePlanilla(
   kpis: FinanceKPIs,
   dailyCash: DailyCashRow[],
   assumptions: PlanillaAssumptions,
+  realOpex?: { washeroExpensesTotal: number },
 ): PlanillaResult {
   const activeDays = dailyCash.filter((d) => d.bookings > 0).length;
   const mpRevenue = kpis.byPaymentMethod.mercadoPago;
@@ -421,13 +422,19 @@ export function computePlanilla(
       : kpis.vehicles * assumptions.operatorCostPerVehicle;
   const logisticsCosts = activeDays * assumptions.logisticsCostPerDay;
 
+  // Prefer real Washero OpEx from the sheet when present; otherwise keep fixedCostsPeriod guess.
+  const fixedOrReal =
+    realOpex && realOpex.washeroExpensesTotal > 0
+      ? realOpex.washeroExpensesTotal
+      : assumptions.fixedCostsPeriod;
+
   const grossMargin =
     kpis.revenue -
     mpCommissions -
     variableCosts -
     operatorCosts -
     logisticsCosts -
-    assumptions.fixedCostsPeriod;
+    fixedOrReal;
 
   const truckOwnerPayment = grossMargin * (assumptions.truckOwnerPct / 100);
   const netCash = grossMargin - truckOwnerPayment + assumptions.manualAdjustment;
@@ -454,12 +461,14 @@ export function computeFinanceData(
   receipts: FinanceReceipt[],
   alertBookings: FinanceBooking[],
   assumptions: PlanillaAssumptions,
-  options?: { bookingsTruncated?: boolean },
+  options?: { bookingsTruncated?: boolean; washeroExpensesTotal?: number },
 ): FinanceComputed {
   const kpis = computeKPIs(bookings, payments, options);
   const dailyCash = computeDailyCash(bookings, payments);
   const alerts = computeAlerts(bookings, alertBookings, payments, receipts);
-  const planilla = computePlanilla(kpis, dailyCash, assumptions);
+  const planilla = computePlanilla(kpis, dailyCash, assumptions, {
+    washeroExpensesTotal: options?.washeroExpensesTotal ?? 0,
+  });
 
   const operational = bookings.filter((b) => isActiveBooking(b.booking_status));
 

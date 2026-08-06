@@ -80,3 +80,6 @@ verify_jwt = true
 
 [functions.botmaker-tools]
 verify_jwt = false
+
+[functions.sync-finance-expenses]
+verify_jwt = false
