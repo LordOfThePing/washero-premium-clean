@@ -6,6 +6,102 @@ import {
   sendBotmakerWhatsApp,
   type SendBotmakerMessageResult,
 } from "./botmaker-outbound.ts";
+import {
+  hasOutboundTemplateLogChannelOnly,
+  sendCloudTemplateMessage,
+  sendCloudWhatsApp,
+  type SendCloudMessageResult,
+} from "./cloud-api-outbound.ts";
+
+/**
+ * Transport toggle for the Botmaker → WhatsApp Cloud API cutover.
+ *   WASHERO_TRANSPORT = cloud_api (default after cutover) | botmaker (rollback).
+ * Both transports write the same `communication_logs`, so dedupe is safe across a flip.
+ */
+type WasheroTransport = "botmaker" | "cloud_api";
+function resolveTransport(): WasheroTransport {
+  const t = (Deno.env.get("WASHERO_TRANSPORT") ?? "cloud_api").trim().toLowerCase();
+  return t === "botmaker" ? "botmaker" : "cloud_api";
+}
+
+/** Provider-agnostic dedupe so a confirmation never fires twice across a transport flip. */
+export async function hasOutboundTemplateLogAny(
+  admin: SupabaseClient,
+  bookingId: string,
+  templateKey: string,
+  sinceIso?: string,
+): Promise<boolean> {
+  if (resolveTransport() === "cloud_api") {
+    return hasOutboundTemplateLogChannelOnly(admin, bookingId, templateKey, sinceIso);
+  }
+  return hasOutboundTemplateLog(admin, bookingId, templateKey, sinceIso);
+}
+
+/** Send an approved WhatsApp template through the selected transport. */
+export async function sendTemplateViaTransport(
+  admin: SupabaseClient,
+  opts: {
+    customerPhone: string;
+    customerName: string | null;
+    bookingId: string;
+    templateKey: string;
+    botmakerVariables: Record<string, unknown>;
+    messagePreview: string;
+    /** Cloud API order-sensitive parameters (template body components). */
+    cloudParameters: string[];
+  },
+): Promise<SendBotmakerMessageResult | SendCloudMessageResult> {
+  if (resolveTransport() === "cloud_api") {
+    return sendCloudTemplateMessage(admin, {
+      customerPhone: opts.customerPhone,
+      customerName: opts.customerName,
+      bookingId: opts.bookingId,
+      templateKey: opts.templateKey,
+      parameters: opts.cloudParameters,
+      messagePreview: opts.messagePreview,
+    });
+  }
+  return sendBotmakerTemplateMessage(admin, {
+    customerPhone: opts.customerPhone,
+    customerName: opts.customerName,
+    bookingId: opts.bookingId,
+    templateKey: opts.templateKey,
+    variables: opts.botmakerVariables,
+    messagePreview: opts.messagePreview,
+  });
+}
+
+/** Send a free-form/session WhatsApp text through the selected transport. */
+export async function sendTextViaTransport(
+  admin: SupabaseClient,
+  opts: {
+    phone: string;
+    message: string;
+    bookingId: string;
+    templateKey: string | null;
+    customerName: string | null;
+  },
+): Promise<SendBotmakerMessageResult | SendCloudMessageResult> {
+  if (resolveTransport() === "cloud_api") {
+    return sendCloudWhatsApp(admin, {
+      phone: opts.phone,
+      message: opts.message,
+      booking_id: opts.bookingId,
+      template_key: opts.templateKey,
+      customer_name: opts.customerName,
+    });
+  }
+  return sendBotmakerWhatsApp(admin, {
+    phone: opts.phone,
+    message: opts.message,
+    booking_id: opts.bookingId,
+    template_key: opts.templateKey,
+    customer_name: opts.customerName,
+  });
+}
+
+/** Result of any transport-backed WhatsApp send in this module. */
+export type WasheroSendResult = SendBotmakerMessageResult | SendCloudMessageResult;
 
 export type BookingNotifyRow = {
   id: string;
@@ -215,7 +311,7 @@ export async function notifyBookingCreated(
   admin: SupabaseClient,
   bookingId: string,
   opts?: { skipSources?: string[]; allowBotmakerSource?: boolean },
-): Promise<SendBotmakerMessageResult | null> {
+): Promise<WasheroSendResult | null> {
   const booking = await fetchBookingForNotify(admin, bookingId);
   if (!booking?.customer_phone?.trim()) return null;
 
@@ -227,22 +323,29 @@ export async function notifyBookingCreated(
     return null;
   }
 
-  if (await hasOutboundTemplateLog(admin, bookingId, "booking_confirmed_v2")) {
+  if (await hasOutboundTemplateLogAny(admin, bookingId, "booking_confirmed_v2")) {
     return { ok: false, status: "skipped", error: "duplicate_template" };
   }
 
-  return sendBotmakerTemplateMessage(admin, {
+  return sendTemplateViaTransport(admin, {
     customerPhone: booking.customer_phone,
     customerName: booking.customer_name,
     bookingId,
     templateKey: "booking_confirmed_v2",
-    variables: {
+    botmakerVariables: {
       firstName: firstName(booking.customer_name),
       service: booking.service_name,
       date: fmtDate(booking.scheduled_date),
       time: fmtTime(booking.scheduled_time),
       address: addressLine(booking),
     },
+    cloudParameters: [
+      firstName(booking.customer_name),
+      booking.service_name,
+      fmtDate(booking.scheduled_date),
+      fmtTime(booking.scheduled_time),
+      addressLine(booking),
+    ],
     messagePreview: buildBookingConfirmedPreview(booking),
   });
 }
@@ -252,7 +355,7 @@ export async function notifyBookingConfirmed(
   admin: SupabaseClient,
   bookingId: string,
   opts?: { skipSources?: string[]; allowBotmakerSource?: boolean },
-): Promise<SendBotmakerMessageResult | null> {
+): Promise<WasheroSendResult | null> {
   return notifyBookingCreated(admin, bookingId, opts);
 }
 
@@ -269,7 +372,7 @@ export function scheduleTransferInstructionsWhatsApp(
 export async function notifyTransferInstructions(
   admin: SupabaseClient,
   bookingId: string,
-): Promise<SendBotmakerMessageResult | null> {
+): Promise<WasheroSendResult | null> {
   const booking = await fetchBookingForNotify(admin, bookingId);
   if (!booking?.customer_phone?.trim()) return null;
   if (booking.payment_method !== "Transferencia") {
@@ -279,7 +382,7 @@ export async function notifyTransferInstructions(
     return { ok: false, status: "skipped", error: "already_paid" };
   }
 
-  if (await hasOutboundTemplateLog(admin, bookingId, BANK_TRANSFER_INFO_TEMPLATE_KEY)) {
+  if (await hasOutboundTemplateLogAny(admin, bookingId, BANK_TRANSFER_INFO_TEMPLATE_KEY)) {
     return { ok: false, status: "skipped", error: "duplicate_template" };
   }
 
@@ -292,12 +395,12 @@ export async function notifyTransferInstructions(
     return { ok: false, status: "skipped", error: "missing_transfer_bank_config" };
   }
 
-  return sendBotmakerTemplateMessage(admin, {
+  return sendTemplateViaTransport(admin, {
     customerPhone: booking.customer_phone,
     customerName: booking.customer_name,
     bookingId,
     templateKey: BANK_TRANSFER_INFO_TEMPLATE_KEY,
-    variables: {
+    botmakerVariables: {
       customerName: booking.customer_name,
       amount: formatTransferAmount(booking.price),
       alias: bank.alias,
@@ -307,6 +410,16 @@ export async function notifyTransferInstructions(
       date: fmtDate(booking.scheduled_date),
       time: fmtTime(booking.scheduled_time),
     },
+    cloudParameters: [
+      booking.customer_name,
+      formatTransferAmount(booking.price),
+      bank.alias,
+      bank.cbu,
+      bank.holder,
+      bank.bank,
+      fmtDate(booking.scheduled_date),
+      fmtTime(booking.scheduled_time),
+    ],
     messagePreview: buildTransferInstructionsPreview(booking, bank),
   });
 }
@@ -323,12 +436,12 @@ export function schedulePaymentConfirmedWhatsApp(
 export async function notifyPaymentConfirmed(
   admin: SupabaseClient,
   bookingId: string,
-): Promise<SendBotmakerMessageResult | null> {
+): Promise<WasheroSendResult | null> {
   const booking = await fetchBookingForNotify(admin, bookingId);
   if (!booking?.customer_phone?.trim()) return null;
   if (booking.payment_status !== "paid") return null;
 
-  if (await hasOutboundTemplateLog(admin, bookingId, "payment_confirmed")) {
+  if (await hasOutboundTemplateLogAny(admin, bookingId, "payment_confirmed")) {
     return { ok: false, status: "skipped", error: "duplicate_template" };
   }
 
@@ -355,17 +468,16 @@ export async function notifyPaymentConfirmed(
 
   const customerInvoiceUrl = getCustomerInvoiceUrl({ public_token: invoice?.public_token ?? null });
 
-  return sendBotmakerWhatsApp(admin, {
+  return sendTextViaTransport(admin, {
     phone: booking.customer_phone,
-    customer_name: booking.customer_name,
-    booking_id: bookingId,
-    invoice_id: invoice?.id ?? null,
-    template_key: "payment_confirmed",
     message: buildPaymentConfirmedMessage(
       booking,
       invoice?.invoice_number ?? null,
       total,
       customerInvoiceUrl,
     ),
+    bookingId,
+    templateKey: "payment_confirmed",
+    customerName: booking.customer_name,
   });
 }

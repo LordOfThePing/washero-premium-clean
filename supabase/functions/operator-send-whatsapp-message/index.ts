@@ -6,7 +6,7 @@ import {
   isOperatorTemplateConfigured,
   parseOperatorWhatsappAction,
 } from "../_shared/botmaker-operator-templates.ts";
-import { sendBotmakerTemplateMessage } from "../_shared/botmaker-outbound.ts";
+import { sendTemplateViaTransport } from "../_shared/whatsapp-automation.ts";
 import { getOperatorGate, isStrictOperatorRole } from "../_shared/operator-auth.ts";
 
 const corsHeaders = {
@@ -130,14 +130,26 @@ Deno.serve(async (req) => {
     String(booking.customer_name ?? ""),
   );
 
-  const result = await sendBotmakerTemplateMessage(admin, {
+  // Cloud API templates use ORDER-SENSITIVE body parameters ({{1}}, {{2}}, ...). The order below
+  // must match the approved Meta template for each key — confirm against
+  // docs/n8n-whatsapp-meta-templates.md before switching WASHERO_TRANSPORT=cloud_api.
+  const cloudParameters: Record<string, string[]> = {
+    operator_on_the_way: [variables.firstName, variables.time, variables.etaMinutes ?? ""],
+    operator_arrived_v2: [variables.firstName, variables.address],
+    operator_delayed_v2: [variables.firstName],
+    operator_access_needed: [variables.firstName],
+    operator_wash_completed: [variables.firstName, variables.date, variables.time],
+    operator_payment_reminder: [variables.firstName, variables.totalAmount ?? ""],
+  }[actionKey];
+
+  const result = await sendTemplateViaTransport(admin, {
     customerPhone: String(booking.customer_phone ?? ""),
     customerName: String(booking.customer_name ?? ""),
     bookingId: booking.id,
     templateKey: templateDef.templateKey,
-    variables,
+    botmakerVariables: variables,
+    cloudParameters: cloudParameters ?? [variables.firstName],
     messagePreview,
-    operatorAction: actionKey,
   });
 
   return json(

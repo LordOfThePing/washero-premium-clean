@@ -1,8 +1,9 @@
 // Admin-triggered WhatsApp reminders for tomorrow's bookings.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
-import { hasOutboundTemplateLog, sendBotmakerWhatsApp } from "../_shared/botmaker-outbound.ts";
 import {
   buildBookingReminderMessage,
+  hasOutboundTemplateLogAny,
+  sendTextViaTransport,
   type BookingNotifyRow,
 } from "../_shared/whatsapp-automation.ts";
 
@@ -90,17 +91,17 @@ Deno.serve(async (req) => {
       skipped++;
       continue;
     }
-    if (await hasOutboundTemplateLog(admin, b.id, "booking_reminder_tomorrow", sinceIso)) {
+    if (await hasOutboundTemplateLogAny(admin, b.id, "booking_reminder_tomorrow", sinceIso)) {
       skipped++;
       continue;
     }
 
-    const result = await sendBotmakerWhatsApp(admin, {
+    const result = await sendTextViaTransport(admin, {
       phone: b.customer_phone,
-      customer_name: b.customer_name,
-      booking_id: b.id,
-      template_key: "booking_reminder_tomorrow",
       message: buildBookingReminderMessage(b),
+      bookingId: b.id,
+      templateKey: "booking_reminder_tomorrow",
+      customerName: b.customer_name,
     });
 
     if (result.ok) sent++;

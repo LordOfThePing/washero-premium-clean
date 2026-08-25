@@ -1,6 +1,6 @@
-// Admin/manual outbound WhatsApp via Botmaker.
+// Admin/manual outbound WhatsApp — sends through the selected transport (Botmaker or Cloud API).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
-import { sendBotmakerWhatsApp } from "../_shared/botmaker-outbound.ts";
+import { sendTextViaTransport } from "../_shared/whatsapp-automation.ts";
 import {
   buildBookingCreatedMessage,
   buildBookingReminderMessage,
@@ -72,7 +72,6 @@ Deno.serve(async (req) => {
   let phone = (body.phone ?? "").trim();
   let customerName = body.customer_name ?? null;
   let message = (body.message ?? "").trim();
-  let invoiceId = (body.invoice_id ?? "").trim() || null;
 
   if (bookingId && templateKey) {
     const booking = await fetchBookingForNotify(admin, bookingId);
@@ -88,7 +87,6 @@ Deno.serve(async (req) => {
         .select("id, invoice_number, total")
         .eq("booking_id", bookingId)
         .maybeSingle();
-      if (invoice?.id) invoiceId = invoice.id;
       message = buildPaymentConfirmedMessage(
         booking,
         invoice?.invoice_number ?? null,
@@ -103,13 +101,12 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "missing_phone_or_message" }, 400);
   }
 
-  const result = await sendBotmakerWhatsApp(admin, {
+  const result = await sendTextViaTransport(admin, {
     phone,
-    customer_name: customerName,
     message,
-    booking_id: bookingId,
-    invoice_id: invoiceId,
-    template_key: templateKey ?? "manual",
+    bookingId,
+    templateKey: templateKey ?? "manual",
+    customerName,
   });
 
   return json({
@@ -118,7 +115,7 @@ Deno.serve(async (req) => {
     provider_message_id: result.provider_message_id ?? null,
     error: result.error ?? null,
     log_id: result.log_id ?? null,
-    request: result.request ?? null,
-    response: result.response ?? null,
+    // NOTE: request/response diagnostics are transport-specific and intentionally omitted for
+    // parity across transports; they remain visible in communication_logs.raw_payload.
   });
 });

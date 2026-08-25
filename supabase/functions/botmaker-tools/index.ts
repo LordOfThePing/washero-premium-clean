@@ -44,6 +44,9 @@ type Payload = {
   conversation_id?: string;
   customer_name?: string;
   is_test?: boolean;
+  /** Transport source: "botmaker" (default/legacy) | "cloud_api" (n8n). Recorded on the
+   * conversation row so /admin/mensajes can distinguish channels during the cutover. */
+  transport?: string;
   args?: Record<string, unknown>;
 };
 
@@ -55,6 +58,7 @@ async function resolveConversationRow(input: {
   botmakerConversationId: string;
   phone: string;
   name: string | null;
+  transport: string;
 }): Promise<{ id: string }> {
   const { data: existing } = await admin
     .from("botmaker_conversations")
@@ -68,19 +72,37 @@ async function resolveConversationRow(input: {
       .eq("id", existing.id);
     return { id: existing.id as string };
   }
-  const { data: created, error } = await admin
+  const insertRow: Record<string, unknown> = {
+    botmaker_conversation_id: input.botmakerConversationId,
+    customer_phone: input.phone,
+    customer_name: input.name,
+    channel: "whatsapp",
+  };
+  // Optional transport tag — requires the migration that adds botmaker_conversations.transport.
+  // If it isn't applied yet, fall back to inserting without it so the endpoint keeps working
+  // during rollout instead of failing every call.
+  if (input.transport) insertRow.transport = input.transport;
+
+  let res = await admin
     .from("botmaker_conversations")
-    .insert({
-      botmaker_conversation_id: input.botmakerConversationId,
-      customer_phone: input.phone,
-      customer_name: input.name,
-      channel: "whatsapp",
-    })
+    .insert(insertRow)
     .select("id")
-    .single();
-  if (error || !created)
-    throw new Error(`failed to resolve botmaker_conversations row: ${error?.message}`);
-  return { id: created.id as string };
+    .maybeSingle();
+  if (res.error && input.transport) {
+    const msg = (res.error.message ?? "").toLowerCase();
+    if (msg.includes("transport") || msg.includes("does not exist") || msg.includes("column")) {
+      const fallbackRow: Record<string, unknown> = { ...insertRow };
+      delete fallbackRow.transport;
+      res = await admin
+        .from("botmaker_conversations")
+        .insert(fallbackRow)
+        .select("id")
+        .maybeSingle();
+    }
+  }
+  if (res.error || !res.data)
+    throw new Error(`failed to resolve botmaker_conversations row: ${res.error?.message}`);
+  return { id: res.data.id as string };
 }
 
 /** Deterministic-flow equivalent of handoff.ts's requestHumanHandoff, minus the
@@ -143,6 +165,7 @@ Deno.serve(async (req) => {
       botmakerConversationId,
       phone,
       name: body.customer_name?.trim() || null,
+      transport: String(body.transport ?? "botmaker").trim() || "botmaker",
     });
 
     if (toolName === "request_human_handoff") {
