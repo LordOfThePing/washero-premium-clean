@@ -1,43 +1,54 @@
 # Washhero — Application Deployment Runbook
 
-> Everything needed to deploy the **Washero** app to production: frontend (Vercel Nitro/TanStack
-> Start), backend (external Supabase project `domslcbxgqbylmciqrxt`), and third-party services.
+> Everything needed to deploy the **Washero** app to production: frontend (Cloudflare Workers /
+> TanStack Start), backend (Supabase), and third-party services.
 > Companion deployment notes for the WhatsApp cutover: `docs/n8n-whatsapp-cloudapi-cutover.md`.
+> Companion ownership-migration runbook (own accounts, from scratch): `docs/OWNERSHIP-MIGRATION.md`.
 
 ## Stack
 
-- **Frontend:** TanStack Start (React 19) + Nitro SSR, Vite, Tailwind 4 → **Vercel** (`vercel.json`
-  `framework: tanstack-start`).
-- **Backend:** **Supabase** (external project, ref `domslcbxgqbylmciqrxt`) — Postgres + RLS + auth +
-  ~27 Edge Functions, storage, pg_cron.
-- **Payments:** MercadoPago.
+- **Frontend:** TanStack Start (React 19) + Nitro SSR, Vite, Tailwind 4 → **Cloudflare Workers**
+  (`vite.config.ts`'s `nitro({ preset: "cloudflare_module" })`; static assets served via the
+  Workers Assets binding).
+- **Backend:** **Supabase** — Postgres + RLS + auth + ~27 Edge Functions, storage, pg_cron.
+- **Payments:** MercadoPago (optional — see `WASHERO_SKIP_PAYMENT` below for a payment-free test mode).
 - **Integrations:** Google Maps, Google Sheets/Forms (finance sync), Web Push, WhatsApp (Botmaker →
   Cloud API cutover in progress).
 
-## 1. Frontend deploy (Vercel)
-
-Project scope used by the `deploy` script: `salveishonn1`. Repo: `Salveishonn/washero-premium-clean`.
+## 1. Frontend deploy (Cloudflare Workers)
 
 ```bash
 bun install          # or npm install (lockfiles for both present)
-npm run build        # Vite build (bundle + Nitro SSR output to .nitro + .output)
-npm run deploy       # Vite build && vercel deploy --prebuilt --prod --scope salveishonn1
+npm run build        # Vite build; Nitro emits the Worker + static assets to .output/
+npm run deploy       # Vite build && wrangler deploy --config .output/server/wrangler.json
+npm run start        # Local Workers-runtime preview via `wrangler dev` (after a build)
 ```
 
-### Build-time env vars (Vercel → Project Settings → Environment Variables)
+First-time setup: `npx wrangler login` to authenticate the CLI with your Cloudflare account. The
+worker name is pinned to `washero` in `vite.config.ts` (`cloudflare.wrangler.name`) — without it
+Nitro auto-derives a name from the git remote, which would carry over the previous owner's name.
+
+Cloudflare **secrets** (`WHATSAPP_CLOUD_API_TOKEN`-style values the *frontend* needs at runtime, if
+any — most secrets in this app belong to Supabase Edge Functions, not the frontend) are set with
+`npx wrangler secret put <NAME>`, not via `.env` — `.env`/`VITE_*` vars are build-time only and end
+up in the public JS bundle.
+
+### Build-time env vars (`.env` locally; Cloudflare Pages/Workers dashboard → Settings →
+Environment Variables in production, or bake them into the CI build step)
 
 All `VITE_*` are public and bundled into client JS — only put safe-to-expose values here.
 
 | Var | Required? | Purpose |
 |---|---|---|
 | `VITE_SUPABASE_URL` / `VITE_SUPABASE_PROJECT_ID` / `VITE_SUPABASE_ANON_KEY` (+ `VITE_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`) | Yes | Supabase client wiring |
-| `VITE_GOOGLE_MAPS_PUBLIC_KEY` | **Yes** | Places autocomplete + admin demand map; restrict by referrer to `https://washero.ar/*` (an older `.env` was removed from git, so this key MUST be re-supplied in Vercel — without it booking shows "Falta configurar Google Maps.") |
+| `VITE_GOOGLE_MAPS_PUBLIC_KEY` | **Yes** | Places autocomplete + admin demand map; restrict by referrer to your production domain(s) — without it booking shows "Falta configurar Google Maps." |
 | `VITE_ADDRESS_FIRST_BOOKING` | Yes (prod default `true`) | Address-first booking flow |
 | `VITE_WEB_PUSH_PUBLIC_KEY` | Yes | Operator PWA push |
 | `VITE_GOOGLE_ADS_ID`, `VITE_GOOGLE_ADS_BOOKING_CONVERSION_LABEL`, `VITE_GOOGLE_ADS_PAYMENT_CONVERSION_LABEL` | No | Google Ads conversion tracking |
 
-> `src/integrations/supabase/client.ts` is auto-generated and pins a **hardcoded** Supabase URL +
-> anon key. Confirm it matches the target project before a production deploy.
+> `src/integrations/supabase/client.ts` reads `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY`
+> (or `VITE_SUPABASE_ANON_KEY`) from the build env — confirm they point at the target project before
+> a production deploy.
 
 ## 2. Supabase
 

@@ -15,6 +15,16 @@ export default defineConfig({
       srcDirectory: "src",
     }),
     viteReact(),
-    nitro(),
+    nitro({
+      preset: "cloudflare_module",
+      compatibilityDate: "2024-09-19",
+      cloudflare: {
+        deployConfig: true,
+        nodeCompat: true,
+        wrangler: {
+          name: "washero",
+        },
+      },
+    }),
   ],
 });

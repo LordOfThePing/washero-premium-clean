@@ -89,6 +89,7 @@ export type CoreResult =
       booking: {
         id: string;
         booking_status: string;
+        payment_status: string;
         price: number;
         service_id: string;
         service_name: string;
@@ -1354,6 +1355,10 @@ export async function tryCreateBooking(
     booking: {
       id: created.id,
       booking_status: created.booking_status,
+      // create_booking_atomic's jsonb result doesn't echo payment_status back — but it inserted
+      // exactly this locally-resolved value (see `payment_status` above), so no extra round-trip
+      // is needed to report it accurately.
+      payment_status,
       price: created.price,
       service_id: primary.service.id,
       service_name: primary.service.name,

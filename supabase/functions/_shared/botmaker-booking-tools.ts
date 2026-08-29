@@ -28,6 +28,11 @@ import {
   scheduleTransferInstructionsWhatsApp,
 } from "./whatsapp-automation.ts";
 
+// Test/dev-only escape hatch for environments without a MercadoPago account. Never set true in
+// production — every booking is marked paid without any payment ever being collected. Shared with
+// create-website-booking/index.ts's identical flag.
+const SKIP_PAYMENT = (Deno.env.get("WASHERO_SKIP_PAYMENT") ?? "").toLowerCase() === "true";
+
 export const COVERAGE_COPY =
   "Por ahora Washero trabaja en Maschwitz, Escobar, Benavídez, Garín, Dique Luján, Tigre y Nordelta.";
 
@@ -832,6 +837,7 @@ export async function actionCreateBooking(
       channel: "whatsapp",
       vehicle_code: str(args.vehicle_code) || undefined,
     },
+    requested_payment_status: SKIP_PAYMENT ? "paid" : undefined,
   });
 
   if (!result.ok) {
@@ -845,7 +851,8 @@ export async function actionCreateBooking(
 
   const { booking, service } = result;
   const deferConfirmation =
-    booking.payment_method === "MercadoPago" || booking.payment_method === "Transferencia";
+    !SKIP_PAYMENT &&
+    (booking.payment_method === "MercadoPago" || booking.payment_method === "Transferencia");
 
   if (!deferConfirmation) {
     scheduleBookingCreatedWhatsApp(admin, booking.id);
@@ -855,7 +862,9 @@ export async function actionCreateBooking(
   let status = "booking_created";
   let customer_message = "Reserva recibida 🚗✨ Te confirmamos los detalles por WhatsApp.";
 
-  if (booking.payment_method === "MercadoPago") {
+  if (SKIP_PAYMENT) {
+    // Skip both the MercadoPago and Transferencia branches entirely — nothing to collect.
+  } else if (booking.payment_method === "MercadoPago") {
     const mp = await createMercadoPagoCheckout(booking, service.name);
     await admin.from("payments").insert({
       booking_id: booking.id,

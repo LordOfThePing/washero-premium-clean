@@ -18,6 +18,10 @@ const SITE_ORIGIN = Deno.env.get("PUBLIC_SITE_URL") ?? "https://washero.ar";
 const PUSH_INTERNAL_SECRET = Deno.env.get("PUSH_INTERNAL_SECRET") ?? "";
 const SUPABASE_URL_ROOT = Deno.env.get("SUPABASE_URL")!;
 const WEBHOOK_URL = `${SUPABASE_URL_ROOT}/functions/v1/mercadopago-webhook`;
+// Test/dev-only escape hatch for environments without a MercadoPago account (e.g. a fresh
+// ownership migration before a real merchant account exists). Never set true in production —
+// every booking is marked paid without any payment ever being collected.
+const SKIP_PAYMENT = (Deno.env.get("WASHERO_SKIP_PAYMENT") ?? "").toLowerCase() === "true";
 
 type BookingUnitPayload = {
   vehicle_type?: string;
@@ -184,6 +188,7 @@ Deno.serve(async (req) => {
       private_extra_details: body.private_extra_details ?? null,
       enforce_coverage: true, // strict coverage on website
       source: "website",
+      requested_payment_status: SKIP_PAYMENT ? "paid" : undefined,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e ?? "unknown_error");
@@ -231,8 +236,10 @@ Deno.serve(async (req) => {
 
   const { booking, service } = result;
   // MercadoPago + Transferencia: confirmation WhatsApp waits for payment/admin validation.
+  // Skipped entirely when SKIP_PAYMENT is on — there's no payment to wait for.
   const deferBookingConfirmationWhatsApp =
-    booking.payment_method === "MercadoPago" || booking.payment_method === "Transferencia";
+    !SKIP_PAYMENT &&
+    (booking.payment_method === "MercadoPago" || booking.payment_method === "Transferencia");
   if (!deferBookingConfirmationWhatsApp) {
     scheduleBookingCreatedWhatsApp(admin, booking.id);
     await notifyOperatorPush(booking.id, "booking_assigned_today");
@@ -253,9 +260,18 @@ Deno.serve(async (req) => {
     ok: true,
     booking_id: booking.id,
     booking_status: booking.booking_status,
-    payment_status: "pending",
+    payment_status: booking.payment_status,
     summary: baseSummary,
   };
+
+  if (SKIP_PAYMENT) {
+    return json({
+      ...baseResponse,
+      status: "booking_created",
+      customer_message: "Reserva recibida 🚗✨ Te vamos a confirmar los detalles por WhatsApp.",
+      dev_note: "WASHERO_SKIP_PAYMENT is on — payment was skipped, not collected.",
+    });
+  }
 
   // Mercado Pago path
   if (booking.payment_method === "MercadoPago") {
