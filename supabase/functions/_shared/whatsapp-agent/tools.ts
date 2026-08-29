@@ -26,6 +26,10 @@ import {
   requestedIntervalFitsOperatingEnd,
 } from "../slot-capacity.ts";
 import { addDaysIso, isSlotTooSoonForPublic } from "../logistic-availability.ts";
+import {
+  capturePaymentReceiptFromCloudApi,
+  type InboundReceiptMedia,
+} from "../payment-receipts.ts";
 
 export type AgentToolContext = {
   conversationId: string;
@@ -781,6 +785,209 @@ const rescheduleBooking: ToolDefinition = {
 };
 
 // ---------------------------------------------------------------------------
+// ingest_message / ingest_receipt
+// ---------------------------------------------------------------------------
+// n8n-side replacement for what botmaker-webhook/index.ts used to do on every inbound (and
+// outbound) event when Botmaker itself owned transport: persist the message, keep the
+// botmaker_conversations preview fields current, and tell the caller whether a human has taken
+// this conversation over. Called once per inbound message and once per outbound reply from the
+// n8n WhatsApp Cloud API workflow (see docs/n8n-whatsapp-cloudapi-cutover.md).
+
+/** Meta retries webhook deliveries; both tools dedupe on (namespaced-provider, external message
+ * id) via the same idempotency table the in-house agent pipeline uses (see
+ * whatsapp_agent_processed_events' own migration comment: botmaker_messages/payment_receipts
+ * were never given a unique constraint on their message-id columns, so this table is the
+ * intentional dedupe point instead of retrofitting one on live tables). The provider string is
+ * namespaced per action (":message" vs ":receipt") because both tools may be called for the same
+ * WhatsApp message id — a receipt-bearing image is ingested as a message AND as a receipt, and
+ * each must claim its own key rather than colliding on the other's. */
+async function claimOnce(
+  admin: SupabaseClient,
+  action: "message" | "receipt",
+  externalMessageId: string,
+  customerPhone: string,
+): Promise<boolean> {
+  if (!externalMessageId) return true; // nothing to dedupe against — let it through
+  const { data, error } = await admin
+    .from("whatsapp_agent_processed_events")
+    .insert({
+      provider: `whatsapp_cloud_api:${action}`,
+      external_message_id: externalMessageId,
+      customer_phone: customerPhone,
+    })
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    // Unique violation = already claimed by a prior delivery of the same webhook.
+    if ((error as { code?: string }).code === "23505") return false;
+    console.error(`[whatsapp-agent tools] claimOnce(${action}) failed`, error);
+    return true; // fail open — don't let a transient DB error silently drop a message
+  }
+  return !!data;
+}
+
+/** A human operator has an open/in-progress handoff ticket on this conversation (set by
+ * request_human_handoff / botmaker-tools' requestHumanHandoffDeterministic, cleared by an admin
+ * marking it resolved in /admin/mensajes) → the bot must stay silent until it's resolved. */
+async function shouldBotReply(admin: SupabaseClient, conversationRowId: string): Promise<boolean> {
+  const { data } = await admin
+    .from("conversation_assignments")
+    .select("status")
+    .eq("botmaker_conversation_id", conversationRowId)
+    .maybeSingle();
+  return data?.status !== "open" && data?.status !== "in_progress";
+}
+
+function inboundPreviewLabel(messageText: string, messageType: string): string {
+  if (messageText.trim()) return messageText.trim();
+  const labels: Record<string, string> = {
+    image: "[Imagen]",
+    document: "[Documento]",
+    audio: "[Audio]",
+    video: "[Video]",
+  };
+  return labels[messageType] ?? `[${messageType || "mensaje"}]`;
+}
+
+const ingestMessage: ToolDefinition = {
+  name: "ingest_message",
+  kind: "mutation",
+  description:
+    "USO INTERNO DEL WORKFLOW DE N8N, no lo llames como parte de la conversación con el cliente. Persiste un mensaje (entrante o saliente) de esta conversación y devuelve si el bot debe seguir respondiendo.",
+  input_schema: {
+    type: "object",
+    properties: {
+      direction: { type: "string", enum: ["inbound", "outbound"] },
+      sender_type: { type: "string", enum: ["user", "bot", "operator"] },
+      message_type: { type: "string" },
+      message_text: { type: "string" },
+      external_message_id: { type: "string" },
+    },
+    required: ["direction", "sender_type"],
+  },
+  execute: async (admin, args, ctx) => {
+    const direction = str(args.direction) === "outbound" ? "outbound" : "inbound";
+    const senderType = str(args.sender_type) || (direction === "outbound" ? "bot" : "user");
+    const messageType = str(args.message_type) || "text";
+    const messageText = str(args.message_text);
+    const externalMessageId = str(args.external_message_id) || null;
+
+    const claimed = externalMessageId
+      ? await claimOnce(admin, "message", externalMessageId, ctx.customerPhone)
+      : true;
+
+    const replyAllowed = await shouldBotReply(admin, ctx.conversationId);
+
+    if (!claimed) {
+      return { ok: true, duplicate: true, should_bot_reply: replyAllowed };
+    }
+
+    const { data: convo } = await admin
+      .from("botmaker_conversations")
+      .select("customer_name,channel")
+      .eq("id", ctx.conversationId)
+      .maybeSingle();
+
+    const { data: inserted, error } = await admin
+      .from("botmaker_messages")
+      .insert({
+        conversation_id: ctx.conversationId,
+        botmaker_message_id: externalMessageId,
+        direction,
+        sender_type: senderType,
+        message_type: messageType,
+        message_text: messageText || null,
+        customer_phone: ctx.customerPhone,
+        customer_name: convo?.customer_name ?? null,
+        channel: convo?.channel ?? "whatsapp",
+        raw_payload: args,
+      })
+      .select("id")
+      .maybeSingle();
+    if (error) {
+      console.error("[ingest_message] insert failed", error);
+      return { ok: false, error: "server_error" };
+    }
+
+    const preview = inboundPreviewLabel(messageText, messageType);
+    await admin
+      .from("botmaker_conversations")
+      .update({
+        last_message: preview,
+        last_message_at: new Date().toISOString(),
+        last_sender_type: senderType,
+      })
+      .eq("id", ctx.conversationId);
+
+    return { ok: true, message_id: inserted?.id ?? null, duplicate: false, should_bot_reply: replyAllowed };
+  },
+};
+
+const ingestReceipt: ToolDefinition = {
+  name: "ingest_receipt",
+  kind: "mutation",
+  description:
+    "USO INTERNO DEL WORKFLOW DE N8N, no lo llames como parte de la conversación con el cliente. Descarga y guarda un comprobante de pago (imagen/documento) recibido por WhatsApp, e intenta vincularlo a una reserva.",
+  input_schema: {
+    type: "object",
+    properties: {
+      media_url: { type: "string" },
+      mime_type: { type: "string" },
+      file_name: { type: "string" },
+      message_type: { type: "string", enum: ["image", "document", "audio", "video"] },
+      message_id: { type: "string" },
+      caption: { type: "string" },
+    },
+    required: ["media_url"],
+  },
+  execute: async (admin, args, ctx) => {
+    const mediaUrl = str(args.media_url);
+    if (!mediaUrl) return badArgs("Falta media_url.");
+    const messageId = str(args.message_id) || null;
+    const messageType = str(args.message_type) || "document";
+
+    const claimed = messageId
+      ? await claimOnce(admin, "receipt", messageId, ctx.customerPhone)
+      : true;
+    if (!claimed) return { ok: true, duplicate: true };
+
+    // Link to the botmaker_messages row ingest_message already wrote for this same WhatsApp
+    // message id, if any — payment_receipts.botmaker_message_id is a uuid column (it predates
+    // this transport and was sized for Botmaker's own ids), so the raw external wamid can't go
+    // in there directly.
+    let linkedMessageRowId: string | null = null;
+    if (messageId) {
+      const { data: linkedRow } = await admin
+        .from("botmaker_messages")
+        .select("id")
+        .eq("conversation_id", ctx.conversationId)
+        .eq("botmaker_message_id", messageId)
+        .maybeSingle();
+      linkedMessageRowId = (linkedRow?.id as string) ?? null;
+    }
+
+    const media: InboundReceiptMedia = {
+      messageType,
+      mediaUrl,
+      mimeType: str(args.mime_type) || null,
+      fileName: str(args.file_name) || null,
+      caption: str(args.caption) || null,
+    };
+
+    const result = await capturePaymentReceiptFromCloudApi(admin, {
+      phone: ctx.customerPhone,
+      customerPhoneNormalized: ctx.customerPhone,
+      botmakerMessageId: linkedMessageRowId,
+      media,
+      rawPayload: args,
+    });
+
+    if (!result.ok) return { ok: false, error: result.error ?? "server_error" };
+    return { ok: true, receipt_id: result.receiptId, duplicate: result.error === "duplicate_message" };
+  },
+};
+
+// ---------------------------------------------------------------------------
 // request_human_handoff
 // ---------------------------------------------------------------------------
 const requestHumanHandoff: ToolDefinition = {
@@ -813,6 +1020,8 @@ export const AGENT_TOOLS: ToolDefinition[] = [
   listCustomerBookings,
   cancelBooking,
   rescheduleBooking,
+  ingestMessage,
+  ingestReceipt,
   requestHumanHandoff,
 ];
 

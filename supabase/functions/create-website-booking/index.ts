@@ -14,11 +14,10 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const PROJECT_REF = "domslcbxgqbylmciqrxt";
 const SITE_ORIGIN = Deno.env.get("PUBLIC_SITE_URL") ?? "https://washero.ar";
-const WEBHOOK_URL = `https://${PROJECT_REF}.supabase.co/functions/v1/mercadopago-webhook`;
 const PUSH_INTERNAL_SECRET = Deno.env.get("PUSH_INTERNAL_SECRET") ?? "";
 const SUPABASE_URL_ROOT = Deno.env.get("SUPABASE_URL")!;
+const WEBHOOK_URL = `${SUPABASE_URL_ROOT}/functions/v1/mercadopago-webhook`;
 
 type BookingUnitPayload = {
   vehicle_type?: string;

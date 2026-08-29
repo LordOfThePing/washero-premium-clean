@@ -52,7 +52,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { formatPrice } from "@/lib/booking-badges";
 
-const PROJECT_REF = "domslcbxgqbylmciqrxt";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const PROJECT_REF = SUPABASE_URL.replace(/^https?:\/\//, "").split(".")[0];
 
 export const Route = createFileRoute("/admin/configuracion")({
   component: ConfigPage,
@@ -1573,7 +1574,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 // MERCADO PAGO HEALTH
 // ===========================================================================
 
-const MP_WEBHOOK_URL = `https://${PROJECT_REF}.supabase.co/functions/v1/mercadopago-webhook`;
+const MP_WEBHOOK_URL = `${SUPABASE_URL}/functions/v1/mercadopago-webhook`;
 
 function MercadoPagoHealthCard() {
   const diagnostics = useQuery({
@@ -1808,7 +1809,7 @@ function StatusBadge({ status }: { status: ItemStatus }) {
 // BOTMAKER HEALTH
 // ===========================================================================
 
-const BOTMAKER_WEBHOOK_URL = `https://${PROJECT_REF}.supabase.co/functions/v1/botmaker-webhook`;
+const BOTMAKER_WEBHOOK_URL = `${SUPABASE_URL}/functions/v1/botmaker-webhook`;
 
 function BotmakerHealthCard() {
   const [running, setRunning] = useState<string | null>(null);

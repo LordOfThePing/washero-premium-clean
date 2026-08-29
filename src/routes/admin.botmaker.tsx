@@ -6,8 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Bot, Loader2 } from "lucide-react";
 
-const PROJECT_REF = "domslcbxgqbylmciqrxt";
-const WEBHOOK_URL = `https://${PROJECT_REF}.supabase.co/functions/v1/botmaker-webhook`;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const WEBHOOK_URL = `${SUPABASE_URL}/functions/v1/botmaker-webhook`;
 
 export const Route = createFileRoute("/admin/botmaker")({
   component: BotmakerPage,

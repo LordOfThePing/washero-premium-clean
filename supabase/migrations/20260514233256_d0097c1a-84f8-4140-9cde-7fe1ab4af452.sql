@@ -1,5 +1,11 @@
+-- Migration-replay compatibility fix: this file is a byte-for-byte duplicate of the immediately
+-- preceding migration (20260514233255_.sql), which already created these tables/indexes/policies/
+-- trigger. On the database this originally ran against, that drift meant every statement here was
+-- a no-op against already-existing objects; replayed from scratch it errors instead. Made
+-- idempotent with the same IF NOT EXISTS / DROP+CREATE guards used throughout this migration
+-- history — no behavior change anywhere this file previously succeeded.
 
-CREATE TABLE public.botmaker_events (
+CREATE TABLE IF NOT EXISTS public.botmaker_events (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   event_type text,
   channel text,
@@ -12,11 +18,11 @@ CREATE TABLE public.botmaker_events (
   raw_payload jsonb,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX botmaker_events_conversation_id_idx ON public.botmaker_events(conversation_id);
-CREATE INDEX botmaker_events_customer_phone_idx ON public.botmaker_events(customer_phone);
-CREATE INDEX botmaker_events_created_at_idx ON public.botmaker_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS botmaker_events_conversation_id_idx ON public.botmaker_events(conversation_id);
+CREATE INDEX IF NOT EXISTS botmaker_events_customer_phone_idx ON public.botmaker_events(customer_phone);
+CREATE INDEX IF NOT EXISTS botmaker_events_created_at_idx ON public.botmaker_events(created_at DESC);
 
-CREATE TABLE public.botmaker_conversations (
+CREATE TABLE IF NOT EXISTS public.botmaker_conversations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   botmaker_conversation_id text UNIQUE,
   customer_phone text,
@@ -32,10 +38,10 @@ CREATE TABLE public.botmaker_conversations (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX botmaker_conversations_phone_idx ON public.botmaker_conversations(customer_phone);
-CREATE INDEX botmaker_conversations_last_idx ON public.botmaker_conversations(last_message_at DESC);
+CREATE INDEX IF NOT EXISTS botmaker_conversations_phone_idx ON public.botmaker_conversations(customer_phone);
+CREATE INDEX IF NOT EXISTS botmaker_conversations_last_idx ON public.botmaker_conversations(last_message_at DESC);
 
-CREATE TABLE public.botmaker_messages (
+CREATE TABLE IF NOT EXISTS public.botmaker_messages (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   conversation_id uuid REFERENCES public.botmaker_conversations(id) ON DELETE CASCADE,
   botmaker_message_id text,
@@ -49,21 +55,25 @@ CREATE TABLE public.botmaker_messages (
   raw_payload jsonb,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX botmaker_messages_conversation_idx ON public.botmaker_messages(conversation_id);
-CREATE INDEX botmaker_messages_phone_idx ON public.botmaker_messages(customer_phone);
-CREATE INDEX botmaker_messages_created_at_idx ON public.botmaker_messages(created_at DESC);
+CREATE INDEX IF NOT EXISTS botmaker_messages_conversation_idx ON public.botmaker_messages(conversation_id);
+CREATE INDEX IF NOT EXISTS botmaker_messages_phone_idx ON public.botmaker_messages(customer_phone);
+CREATE INDEX IF NOT EXISTS botmaker_messages_created_at_idx ON public.botmaker_messages(created_at DESC);
 
 ALTER TABLE public.botmaker_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.botmaker_conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.botmaker_messages ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "botmaker_events admin all" ON public.botmaker_events;
 CREATE POLICY "botmaker_events admin all" ON public.botmaker_events
   FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+DROP POLICY IF EXISTS "botmaker_conversations admin all" ON public.botmaker_conversations;
 CREATE POLICY "botmaker_conversations admin all" ON public.botmaker_conversations
   FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+DROP POLICY IF EXISTS "botmaker_messages admin all" ON public.botmaker_messages;
 CREATE POLICY "botmaker_messages admin all" ON public.botmaker_messages
   FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
 
+DROP TRIGGER IF EXISTS botmaker_conversations_updated ON public.botmaker_conversations;
 CREATE TRIGGER botmaker_conversations_updated
   BEFORE UPDATE ON public.botmaker_conversations
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();

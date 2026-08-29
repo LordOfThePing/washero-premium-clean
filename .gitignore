@@ -37,6 +37,7 @@ dist-ssr
 *.sw?
 
 supabase/.temp/
+supabase/.branches/
 
 # Large source 3D assets (optimized copies live in public/models/)
 assets/source/

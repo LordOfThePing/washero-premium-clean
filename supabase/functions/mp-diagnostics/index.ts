@@ -11,6 +11,7 @@ Deno.serve((req) => {
 
   const mpToken = Deno.env.get("MERCADOPAGO_ACCESS_TOKEN") ?? "";
   const siteUrl = Deno.env.get("PUBLIC_SITE_URL") ?? "";
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 
   const body = {
     ok: true,
@@ -24,8 +25,7 @@ Deno.serve((req) => {
       : null,
     public_site_url_configured: siteUrl.length > 0,
     public_site_url: siteUrl || null,
-    webhook_url:
-      "https://domslcbxgqbylmciqrxt.supabase.co/functions/v1/mercadopago-webhook",
+    webhook_url: supabaseUrl ? `${supabaseUrl}/functions/v1/mercadopago-webhook` : null,
   };
 
   return new Response(JSON.stringify(body), {

@@ -236,13 +236,10 @@ export async function ensurePaymentReceiptsBucket(admin: SupabaseClient): Promis
   }
 }
 
-async function downloadReceiptMedia(mediaUrl: string): Promise<
-  { bytes: Uint8Array; contentType: string } | null
-> {
-  const token = Deno.env.get("BOTMAKER_API_TOKEN") ?? "";
-  const headers: Record<string, string> = {};
-  if (token) headers["access-token"] = token;
-
+async function downloadReceiptMedia(
+  mediaUrl: string,
+  headers: Record<string, string>,
+): Promise<{ bytes: Uint8Array; contentType: string } | null> {
   try {
     const res = await fetch(mediaUrl, { headers, redirect: "follow" });
     if (!res.ok) {
@@ -267,9 +264,13 @@ export type CapturePaymentReceiptInput = {
   rawPayload: Record<string, unknown>;
 };
 
-export async function capturePaymentReceiptFromBotmaker(
+/** Shared core: storage upload + booking-match + payment_receipts insert. Download auth differs
+ * per transport (Botmaker vs Cloud API), so callers pass already-resolved fetch headers. */
+async function captureReceiptCore(
   admin: SupabaseClient,
   input: CapturePaymentReceiptInput,
+  downloadHeaders: Record<string, string>,
+  rawPayloadKey: "botmaker" | "cloud_api",
 ): Promise<{ ok: boolean; receiptId?: string; error?: string }> {
   if (input.botmakerMessageId) {
     const { data: dup } = await admin
@@ -296,7 +297,7 @@ export async function capturePaymentReceiptFromBotmaker(
   let fileSize: number | null = null;
   let uploadOk = false;
 
-  const downloaded = await downloadReceiptMedia(input.media.mediaUrl);
+  const downloaded = await downloadReceiptMedia(input.media.mediaUrl, downloadHeaders);
   if (downloaded) {
     mimeType = mimeType || downloaded.contentType;
     fileSize = downloaded.bytes.byteLength;
@@ -333,7 +334,7 @@ export async function capturePaymentReceiptFromBotmaker(
           upload_ok: uploadOk,
           booking_match: bookingId ? "single" : receiptStatus,
         },
-        botmaker: input.rawPayload,
+        [rawPayloadKey]: input.rawPayload,
       },
     })
     .select("id")
@@ -345,4 +346,26 @@ export async function capturePaymentReceiptFromBotmaker(
   }
 
   return { ok: true, receiptId: inserted.id };
+}
+
+export async function capturePaymentReceiptFromBotmaker(
+  admin: SupabaseClient,
+  input: CapturePaymentReceiptInput,
+): Promise<{ ok: boolean; receiptId?: string; error?: string }> {
+  const token = Deno.env.get("BOTMAKER_API_TOKEN") ?? "";
+  const headers: Record<string, string> = {};
+  if (token) headers["access-token"] = token;
+  return captureReceiptCore(admin, input, headers, "botmaker");
+}
+
+/** Cloud API media URLs (from Meta's Graph API) are not public — they require the same WhatsApp
+ * Cloud API bearer token used to send messages, unlike Botmaker's access-token header. */
+export async function capturePaymentReceiptFromCloudApi(
+  admin: SupabaseClient,
+  input: CapturePaymentReceiptInput,
+): Promise<{ ok: boolean; receiptId?: string; error?: string }> {
+  const token = Deno.env.get("WHATSAPP_CLOUD_API_TOKEN") ?? "";
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return captureReceiptCore(admin, input, headers, "cloud_api");
 }
