@@ -4,37 +4,43 @@
 > These are the **Washero-side reproduction/change notes** for the transport-only swap, plus the
 > exact files touched on branch `feat/n8n-whatsapp-cloudapi-cutover`.
 
-## 1. New file: `supabase/functions/_shared/cloud-api-outbound.ts`
+## 1. `supabase/functions/_shared/cloud-api-outbound.ts` — SUPERSEDED for outbound (kept methods)
 
-A WhatsApp Cloud API outbound module mirroring `botmaker-outbound.ts`:
+`sendCloudWhatsApp()` / `sendCloudTemplateMessage()` (direct `graph.facebook.com` POSTs using
+`WHATSAPP_CLOUD_API_TOKEN`) were **removed** — outbound now routes through the n8n gateway webhook
+(see §2). What remains in this module are the shared helpers `whatsapp-automation.ts` still imports:
 
-- `sendCloudWhatsApp(admin, { phone, message, booking_id, template_key, ... })` — free-form/session
-  text via `POST https://graph.facebook.com/{version}/{PHONE_NUMBER_ID}/messages`, type `text`.
-- `sendCloudTemplateMessage(admin, { customerPhone, templateKey, parameters[], ... })` — approved
-  template via the same endpoint, `type: template` with ordered `body` parameters.
 - `hasOutboundTemplateLogChannelOnly(...)` — **provider-agnostic** template dedupe (channel-only) so
   a confirmation doesn't double-fire across a transport flip.
-- `sanitizeForLog(...)` token redaction; `communication_logs.provider = "whatsapp_cloud_api"`.
+- `OutboundLogStatus`, `SendCloudMessageResult` — shared result/status types.
+- `sanitizeForLog(...)` — secret-key redaction for `communication_logs.raw_payload`.
 
-Secrets (Supabase Edge secrets): `WHATSAPP_CLOUD_API_TOKEN`, `WHATSAPP_CLOUD_PHONE_NUMBER_ID`,
-optional `WHATSAPP_CLOUD_API_VERSION`, `WHATSAPP_CLOUD_GRAPH_BASE`,
-`CLOUD_TEMPLATE_NAME_<KEY>`, `CLOUD_TEMPLATE_LANGUAGE`.
+Secrets: `WHATSAPP_CLOUD_API_TOKEN` / `WHATSAPP_CLOUD_PHONE_NUMBER_ID` are **DEPRECATED / DO NOT SET**.
 
-## 2. `supabase/functions/_shared/whatsapp-automation.ts`
+## 1b. n8n gateway transport (new)
 
-Added a **transport toggle** so existing lifecycle callers keep their signatures:
+`_shared/whatsapp-automation.ts` now ships its own `sendViaN8nGateway(...)` which POSTs to the
+`N8N_WHATSAPP_WEBHOOK_URL` (the "WhatsApp Outbound Gateway", `xLrRt4VrVGgFYwko`) with header
+`N8N_WHATSAPP_WEBHOOK_HEADER` = `N8N_WHATSAPP_WEBHOOK_SECRET` (default header `x-washero-outbound-secret`).
+It mirrors the old module's `communication_logs` writes (`provider = "whatsapp_n8n_gateway"`),
+`sanitizeForLog`-style redaction, never-throws + logs convention, and a 10s timeout.
 
-- `resolveTransport()` reads `WASHERO_TRANSPORT` env: `cloud_api` (default) | `botmaker` (rollback).
-- `sendTemplateViaTransport(...)` / `sendTextViaTransport(...)` route to the Cloud API or Botmaker
-  depending on the toggle.
-- `hasOutboundTemplateLogAny(...)` dedupes channel-only under `cloud_api`, and stays Botmaker-only
-  under rollback.
-- `notifyBookingCreated`, `notifyTransferInstructions`, `notifyPaymentConfirmed` now send through
-  the transport adapter. Return types changed to a `WasheroSendResult` union
-  (`SendBotmakerMessageResult | SendCloudMessageResult`).
+## 2. `supabase/functions/_shared/whatsapp-automation.ts` — n8n gateway transport
 
-Cloud API templates use **order-sensitive** parameters; the ordered arrays in this file must be
-kept in sync with the approved Meta template bodies (see the templates doc).
+Kept a `resolveTransport()` toggle (`WASHERO_TRANSPORT`): `cloud_api` (**default**) | `botmaker` (rollback).
+Under `cloud_api`, both sends now go through the n8n "WhatsApp Outbound Gateway" webhook:
+
+- `sendTemplateViaTransport(...)` → POST `kind:"template"` with `template_key`, `template_name` and
+  `variables` = the named per-template vars (matched to the gateway's sendTemplate branches).
+- `sendTextViaTransport(...)` → POST `kind:"text"` with the free-form `text` (used for manual sends,
+  `payment_confirmed`/`booking_reminder_tomorrow` free-text resends, operator session text).
+- `hasOutboundTemplateLogAny(...)` dedupes channel-only under `cloud_api` (unchanged).
+- `notifyBookingCreated`, `notifyTransferInstructions`, `notifyPaymentConfirmed` signatures are
+  unchanged; their sends route via the adapter. Return type stays a `WasheroSendResult` union.
+
+Gateway secrets: `N8N_WHATSAPP_WEBHOOK_URL`, `N8N_WHATSAPP_WEBHOOK_SECRET`,
+`N8N_WHATSAPP_WEBHOOK_HEADER`. Order-sensitive `cloudParameters` arrays are still passed by callers but
+are **no longer used** by the gateway transport — n8n reads named `variables` instead.
 
 ## 3. `supabase/functions/send-booking-reminders/index.ts`
 

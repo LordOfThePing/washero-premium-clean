@@ -57,23 +57,30 @@ etc. Outbound map:
 | `sendBotmakerWhatsApp(phone, message, ...)` | `POST /<PHONE_NUMBER_ID>/messages` `{ messaging_product:"whatsapp", to, type:"text", text:{body} }` |
 | `sendBotmakerTemplateMessage(..., templateKey, variables, ...)` | `POST /<PHONE_NUMBER_ID>/messages` `{ type:"template", template:{ name, language:{code:"es_AR"}, components:[{type:"body", parameters:[...]}] } }` |
 
-## Two delivery paths (recommended split)
+## Delivery paths (DECIDED: centralized n8n gateway)
 
-1. **Lifecycle + operator messages** → dedicated `send-whatsapp-cloud` Edge Function (see
-   `n8n-whatsapp-cloudapi-cutover.md` §5.2), using the Cloud API token directly. Keeps reminders,
-   confirmations, receipts robust and n8n-independent. Preserves `communication_logs` + dedupe.
+1. **Lifecycle + operator + payment messages** → Supabase Edge Functions (`_shared/whatsapp-automation.ts`)
+   POST to the **n8n "WhatsApp Outbound Gateway"** webhook, which sends via n8n's own `WhatsApp account`
+   credential. Meta credentials live **only** in n8n. (See `n8n-whatsapp-cloudapi-cutover.md` §5.2.)
 2. **Interactive replies from the booking agent** → n8n's own **WhatsApp send / sendTemplate** nodes.
+
+Template delivery for `payment_confirmed`/`booking_reminder_tomorrow` is a **pending n8n-UI step**: add the two
+`Route Template` switch branches + sendTemplate nodes (`Send Template Payment Confirmed`, `Send Template
+Reminder`) in the n8n canvas (the automation API cannot re-index a switch fan-out). Variable order above.
 
 ## Env / credential requirements
 
-| Secret | Where | Purpose |
+| Secret / credential | Where | Purpose |
 |---|---|---|
-| Cloud API **access token** (`WHATSAPP_CLOUD_API_TOKEN`) | Supabase Edge secrets | `send-whatsapp-cloud` outbound |
-| **Phone Number ID** (`WHATSAPP_CLOUD_PHONE_NUMBER_ID`) | Supabase Edge secrets | Messages endpoint path |
+| `N8N_WHATSAPP_WEBHOOK_URL` | Supabase Edge secrets | the gateway webhook's production URL |
+| `N8N_WHATSAPP_WEBHOOK_SECRET` | Supabase Edge secrets | matches the dedicated gateway webhook-auth credential |
+| `N8N_WHATSAPP_WEBHOOK_HEADER` (default `x-washero-outbound-secret`) | Supabase Edge secrets | header name the gateway checks |
+| `Washero Outbound Webhook Auth` (`httpHeaderAuth`) | n8n credential | gateway webhook incoming auth (dedicated — NOT botmaker-tools') |
 | n8n `whatsAppTriggerApi` | n8n credential | Inbound webhook |
-| n8n `whatsAppApi` | n8n credential | n8n outbound send |
-| n8n `httpHeaderAuth` (carries `x-botmaker-tools-secret`) | n8n credential | `botmaker-tools` calls |
-| `BOTMAKER_TOOLS_SECRET` | Supabase Edge secrets | `botmaker-tools` auth (keep for both paths) |
+| n8n `whatsAppApi` | n8n credential | n8n outbound send (gateway + agent) |
+| n8n `httpHeaderAuth` (carries `x-botmaker-tools-secret`) | n8n credential | `botmaker-tools` calls (inbound tool auth only) |
+| `BOTMAKER_TOOLS_SECRET` | Supabase Edge secrets | `botmaker-tools` auth |
+| `WHATSAPP_CLOUD_API_TOKEN` / `WHATSAPP_CLOUD_PHONE_NUMBER_ID` | **DEPRECATED — do NOT set** | old direct-to-Meta path, removed |
 
 ## Meta asset IDs to collect before build
 

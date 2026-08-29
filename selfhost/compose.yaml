@@ -1,0 +1,239 @@
+# ============================================================================
+# Washero — self-hosted Supabase platform stack (Docker Compose)
+# ============================================================================
+# Runs on a Linux VPS behind a Cloudflare Tunnel (cloudflared). This stack
+# replaces the hosted Supabase project: Postgres DB + GoTrue auth + PostgREST
+# API + Storage + Edge Functions + Studio. The Cloudflare Worker frontend keeps
+# pointing at these URLs.
+#
+#  - Copy .env.example -> .env and fill in real values BEFORE starting.
+#  - make selfhost-up      (docker compose -f selfhost/compose.yaml up -d)
+#  - make selfhost-migrate (apply supabase/migrations/* + optional schedules)
+#  - For tunnels: selfhost/cloudflared/ (see README.selfhost.md)
+#
+# Reference: https://supabase.com/docs/guides/self-hosting/docker
+# ============================================================================
+
+name: washero-selfhost
+
+services:
+  db:
+    image: supabase/postgres:15.8.1.047
+    container_name: washero-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_HOST: ${POSTGRES_HOST:-db}
+    volumes:
+      - ./volumes/db/data:${DB_VOLUME_MOUNT:-/var/lib/postgresql/data}
+      - ./volumes/db/realtime:/realtime
+      - ./volumes/db/pooler:/pooler
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # API gateway — routes /rest, /auth, /storage, /functions, /realtime.
+  # The Cloudflare Tunnel exposes this on the *api* subdomain.
+  kong:
+    image: kong:2.8.1
+    container_name: washero-kong
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /home/kong/kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl
+      KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
+      KONG_NGINX_PROXY_PROXY_BUFFERS: "64 160k"
+    volumes:
+      - ./kong/kong.yml:/home/kong/kong.yml:ro
+    ports:
+      - "127.0.0.1:${KONG_HTTP_PORT:-8000}:8000/tcp"
+      - "127.0.0.1:${KONG_HTTPS_PORT:-8443}:8443/tcp"
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  auth:
+    image: supabase/gotrue:latest
+    container_name: washero-auth
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD:-postgres}@db:5432/postgres
+      GOTRUE_SITE_URL: ${SITE_URL}
+      GOTRUE_URI_ALLOW_LIST: ${ADDITIONAL_REDIRECT_URLS}
+      GOTRUE_DISABLE_SIGNUP: "false"
+      GOTRUE_ENABLE_CAPTCHA: "false"
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_SECRET: "${JWT_SECRET:?set JWT_SECRET in selfhost/.env}"
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL:-no-reply@washero.ar}
+      GOTRUE_SMTP_HOST: ${SMTP_HOST:-}
+      GOTRUE_SMTP_PORT: ${SMTP_PORT:-587}
+      GOTRUE_SMTP_USER: ${SMTP_USER:-}
+      GOTRUE_SMTP_PASS: ${SMTP_PASS:-}
+      GOTRUE_SMTP_SENDER_NAME: ${SMTP_SENDER_NAME:-Washero}
+      GOTRUE_LOG_LEVEL: warn
+    ports:
+      - "127.0.0.1:${AUTH_PORT:-9999}:9999/tcp"
+
+  rest:
+    image: postgrest/postgrest:v12.2.3
+    container_name: washero-rest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD:-postgres}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public,storage
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: "${JWT_SECRET:?set JWT_SECRET in selfhost/.env}"
+      PGRST_DB_EXTRA_SEARCH_PATH: public,storage
+      PGRST_OPENAPI_SERVER_PROXY_URI: http://127.0.0.1:${KONG_HTTP_PORT:-8000}
+    ports:
+      - "127.0.0.1:${REST_PORT:-3001}:3000/tcp"
+
+  realtime:
+    image: supabase/realtime:v2.34.5
+    container_name: washero-realtime
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 4000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: supabase_realtime_admin
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DB_NAME: postgres
+      DB_AFTER_CONNECT_QUERY: "SET search_path TO _realtime"
+      DB_ENC_KEY: supabaserealtime
+      API_JWT_SECRET: "${JWT_SECRET:?set JWT_SECRET in selfhost/.env}"
+      SECRET_KEY_BASE: "${REALTIME_SECRET:?set REALTIME_SECRET in selfhost/.env}"
+      LOG_LEVEL: warn
+    ports:
+      - "127.0.0.1:${REALTIME_PORT:-4000}:4000/tcp"
+
+  storage:
+    image: supabase/storage-api:v1.19.2
+    container_name: washero-storage
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ANON_KEY: "${ANON_KEY:?set ANON_KEY in selfhost/.env}"
+      SERVICE_KEY: "${SERVICE_ROLE_KEY:?set SERVICE_ROLE_KEY in selfhost/.env}"
+      POSTGREST_URL: http://rest:3000
+      PGRST_JWT_SECRET: "${JWT_SECRET}"
+      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD:-postgres}@db:5432/postgres
+      FILE_SIZE_LIMIT: 52428800
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      TENANT_ID: stub
+      REGION: stub
+      GLOBAL_S3_BUCKET: stub
+      LOG_LEVEL: warn
+      ENABLE_IMAGE_TRANSFORMATION: "true"
+      IMGPROXY_URL: http://imgproxy:5001
+    volumes:
+      - ./volumes/storage:/var/lib/storage
+    ports:
+      - "127.0.0.1:${STORAGE_PORT:-5000}:5000/tcp"
+
+  imgproxy:
+    image: darthsim/imgproxy:v3.8.0
+    container_name: washero-imgproxy
+    restart: unless-stopped
+    environment:
+      IMGPROXY_BIND: ":5001"
+      IMGPROXY_USE_S3: "false"
+      IMGPROXY_ENABLE_WEBP_DETECTION: "true"
+    ports:
+      - "127.0.0.1:${IMGPROXY_PORT:-5001}:5001/tcp"
+
+  meta:
+    image: supabase/postgres-meta:v0.84.2
+    container_name: washero-meta
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PG_META_PORT: 8080
+      PG_META_DB_HOST: db
+      PG_META_DB_PORT: 5432
+      PG_META_DB_USER: supabase_admin
+      PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "127.0.0.1:${META_PORT:-8080}:8080/tcp"
+
+  edge-runtime:
+    image: supabase/edge-runtime:v1.71.18
+    container_name: washero-edge-runtime
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      JWT_SECRET: "${JWT_SECRET}"
+      SUPABASE_URL: http://kong:8000
+      SUPABASE_ANON_KEY: "${ANON_KEY}"
+      SUPABASE_SERVICE_ROLE_KEY: "${SERVICE_ROLE_KEY}"
+      EDGE_RUNTIME_LOG_LEVEL: warn
+      EDGE_RUNTIME_ENTRYPOINT: /home/deno/main
+    env_file:
+      - path: ./edge-runtime/.env.functions
+        required: false
+    volumes:
+      - ./edge-runtime/main:/home/deno/main:ro
+      - ./volumes/functions/logs:/home/deno/logs
+    ports:
+      - "127.0.0.1:${EDGE_RUNTIME_PORT:-8081}:8081/tcp"
+
+  studio:
+    image: supabase/studio:20250827-ca58a4e
+    container_name: washero-studio
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      STUDIO_PG_META_URL: http://meta:8080
+      SUPABASE_URL: http://kong:8000
+      SUPABASE_PUBLIC_URL: ${SUPABASE_PUBLIC_URL:-http://localhost}
+      SUPABASE_ANON_KEY: "${ANON_KEY}"
+      SUPABASE_SERVICE_KEY: "${SERVICE_ROLE_KEY}"
+      AUTH_JWT_SECRET: "${JWT_SECRET}"
+      LOGFLARE_API_KEY: ${LOGFLARE_API_KEY:-}
+      LOGFLARE_SINGLE_TENANT: "false"
+      NEXT_PUBLIC_ENABLE_LOGS: "true"
+      AUTH_ORIGIN: ${AUTH_ORIGIN:-http://localhost:3000}
+    ports:
+      - "127.0.0.1:${STUDIO_PORT:-3000}:3000/tcp"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000 >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10

@@ -142,23 +142,26 @@ transport, e.g. `channel: "whatsapp"` + a new optional `transport: "cloud_api" |
 (or reuse `channel` as `"cloud_api_whatsapp"`). Minimal and additive. This lets `/admin/mensajes`
 keep working while making it easy to see which transport a row came from during parallel run.
 
-### 5.2 Outbound via Cloud API
-Introduce a small **adapter** so existing callers (`notifyBookingCreated`, `notifyTransferInstructions`,
-`notifyPaymentConfirmed`, `send-booking-reminders`, `operator-send-whatsapp-message`,
-`send-botmaker-message`) keep their signatures but send through the Cloud API instead of Botmaker.
+### 5.2 Outbound — centralized n8n gateway (DECIDED: option B)
+Existing callers (`notifyBookingCreated`, `notifyTransferInstructions`, `notifyPaymentConfirmed`,
+`send-booking-reminders`, `operator-send-whatsapp-message`, `send-botmaker-message`) keep their
+signatures but send **through the n8n "WhatsApp Outbound Gateway" webhook** (`xLrRt4VrVGgFYwko`).
 
-The two viable mechanisms:
-- **(A) In Washero:** a new Edge Function that POSTs the message to the WhatsApp **Graph API**
-  messages endpoint using the Cloud API access token. The channel-identity column becomes
-  `provider: "whatsapp_cloud_api"` in `communication_logs`.
-- **(B) Through n8n:** keep Washero calling **Botmaker-shaped** but route the send out via n8n's
-  WhatsApp node. More moving parts; prefer (A) for outbound and let n8n only own inbound + the
-  conversational agent.
+Mechanism (**B**, locked): `_shared/whatsapp-automation.ts`'s `sendTemplateViaTransport` /
+`sendTextViaTransport` POST to the gateway webhook (headerAuth-protected, dedicated credential). n8n
+sends via its own `WhatsApp account` credential. Supabase holds **no** Meta access token.
 
-> **Recommendation: (A)** — a dedicated `send-whatsapp-cloud` Edge Function using a Cloud API token,
-> mirroring `botmaker-outbound.ts`'s `communication_logs` + `hasOutboundTemplateLog` dedupe. This
-> removes the n8n dependency from lifecycle messages (confirmations, reminders, receipts) and keeps
-> them robust even if the n8n agent is briefly down.
+- **(A, Rejected)** direct-from-Supabase Graph API (option A) is retired: it required
+  `WHATSAPP_CLOUD_API_TOKEN` in Supabase. Those variables are now deprecated/unused; the direct
+  senders were removed from `_shared/cloud-api-outbound.ts` (dedupe/types/redaction helpers remain).
+- **Credentials:** `N8N_WHATSAPP_WEBHOOK_URL` (the gateway's production URL),
+  `N8N_WHATSAPP_WEBHOOK_SECRET` (matches the dedicated `Washero Outbound Webhook Auth` n8n
+  httpHeaderAuth credential), `N8N_WHATSAPP_WEBHOOK_HEADER` (default `x-washero-outbound-secret`).
+- **Reasons:** centralize ALL Meta/WhatsApp credentials in n8n; rotating one n8n credential never
+  leaks into Supabase or breaks the other direction.
+- **Accepted trade-off:** lifecycle/operator sends now depend on n8n uptime. The Supabase→webhook
+  call is failure-handled (never throws past the caller; logged and returned as ok:false), mirroring
+  the old Graph-API failure convention.
 
 ### 5.3 Template dedupe preserved
 `hasOutboundTemplateLog()` currently filters `channel == "whatsapp"` and `provider == "botmaker"`.

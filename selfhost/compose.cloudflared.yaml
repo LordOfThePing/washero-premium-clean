@@ -1,0 +1,34 @@
+# Optional cloudflared sidecar - run the Cloudflare Tunnel as part of the stack.
+#
+# PRIMARY: token mode (recommended). Create the tunnel in the Zero Trust dashboard
+#   (Networks -> Tunnels -> Create a tunnel -> Cloudflared -> Docker), copy the token
+#   into selfhost/cloudflared/.env as TUNNEL_TOKEN, then define public hostname
+#   routes in the dashboard:
+#     api.washero.ar    -> http://kong:8000
+#     studio.washero.ar -> http://studio:3000
+#   No local credentials file or config.yml needed in this mode.
+#
+# ALTERNATIVE: config-file mode. Set TUNNEL_CRED_FILE=tunnel.json in cloudflared/.env,
+#   copy config.yml.example -> cloudflared/config.yml, put the <id>.json from
+#   'cloudflared tunnel create washero' in cloudflared/ as tunnel.json, and override
+#   the command to:  ["tunnel", "run"]  (routes then come from config.yml).
+#
+# Launch the stack WITH the tunnel:
+#   docker compose -f selfhost/compose.yaml -f selfhost/compose.cloudflared.yaml up -d
+
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: washero-cloudflared
+    restart: unless-stopped
+    env_file:
+      - path: ./cloudflared/.env
+        required: true
+    command:
+      - tunnel
+      - run
+      - --token
+      - "${TUNNEL_TOKEN}"
+    network_mode: "service:kong"
+    depends_on:
+      - kong

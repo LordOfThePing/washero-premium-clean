@@ -8,10 +8,10 @@ import {
 } from "./botmaker-outbound.ts";
 import {
   hasOutboundTemplateLogChannelOnly,
-  sendCloudTemplateMessage,
-  sendCloudWhatsApp,
+  type OutboundLogStatus,
   type SendCloudMessageResult,
 } from "./cloud-api-outbound.ts";
+import { normalizeArgentinaWhatsAppPhone } from "./botmaker-outbound.ts";
 
 /**
  * Transport toggle for the Botmaker → WhatsApp Cloud API cutover.
@@ -22,6 +22,245 @@ type WasheroTransport = "botmaker" | "cloud_api";
 function resolveTransport(): WasheroTransport {
   const t = (Deno.env.get("WASHERO_TRANSPORT") ?? "cloud_api").trim().toLowerCase();
   return t === "botmaker" ? "botmaker" : "cloud_api";
+}
+
+// ---------------------------------------------------------------------------
+// n8n "WhatsApp Outbound Gateway" transport.
+// All outbound Meta/WhatsApp credentials live ONLY in n8n (n8n's own WhatsApp
+// account credential). Supabase never holds a Meta access token.
+// The gateway is a headerAuth-protected webhook that sends text/template
+// messages via n8n's native WhatsApp nodes.
+// ---------------------------------------------------------------------------
+
+const N8N_GATEWAY_URL = (Deno.env.get("N8N_WHATSAPP_WEBHOOK_URL") ?? "").trim();
+const N8N_GATEWAY_TIMEOUT_MS = 10_000;
+
+const N8N_SENSITIVE_KEY = /^(access[-_]?token|authorization|api[-_]?key|x-api-key|token|secret|password|bearer)$/i;
+
+/** Redact secrets from anything written to communication_logs.raw_payload. */
+function n8nSanitizeForLog(value: unknown, depth = 0): unknown {
+  if (depth > 10) return "[truncated]";
+  const secrets = [
+    Deno.env.get("N8N_WHATSAPP_WEBHOOK_SECRET") ?? "",
+    Deno.env.get("WHATSAPP_CLOUD_API_TOKEN") ?? "",
+  ].filter(Boolean);
+  if (value === null || value === undefined) return value;
+  if (typeof value === "string") {
+    for (const s of secrets) value = (value as string).split(s).join("[REDACTED]");
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (Array.isArray(value)) return value.map((v) => n8nSanitizeForLog(v, depth + 1));
+  if (typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (N8N_SENSITIVE_KEY.test(k)) out[k] = "[REDACTED]";
+      else out[k] = n8nSanitizeForLog(v, depth + 1);
+    }
+    return out;
+  }
+  return String(value);
+}
+
+/**
+ * Header the gateway webhook checks. Defaults to x-washero-outbound-secret,
+ * which must match the dedicated "Washero Outbound Webhook Auth" n8n credential
+ * (NOT botmaker-tools' shared secret). Override via N8N_WHATSAPP_WEBHOOK_HEADER.
+ */
+function n8nGatewayAuthHeader(): { name: string; value: string } | null {
+  const name = (Deno.env.get("N8N_WHATSAPP_WEBHOOK_HEADER") ?? "x-washero-outbound-secret").trim();
+  const value = (Deno.env.get("N8N_WHATSAPP_WEBHOOK_SECRET") ?? "").trim();
+  if (!value) return null;
+  return { name, value };
+}
+
+async function insertCommunicationLog(
+  admin: SupabaseClient,
+  row: {
+    status: OutboundLogStatus;
+    payload: Record<string, unknown>;
+    input: { phone: string; message?: string; booking_id?: string | null; customer_name?: string | null };
+    template_key?: string | null;
+    provider_message_id?: string | null;
+    error?: string | null;
+  },
+): Promise<string | null> {
+  const { data, error } = await admin.from("communication_logs").insert({
+    channel: "whatsapp",
+    provider: "whatsapp_n8n_gateway",
+    direction: "outbound",
+    booking_id: row.input.booking_id ?? null,
+    message_text: row.input.message ?? "",
+    raw_payload: n8nSanitizeForLog({
+      status: row.status,
+      template_key: row.template_key ?? null,
+      customer_phone: row.input.phone,
+      customer_name: row.input.customer_name ?? null,
+      provider_message_id: row.provider_message_id ?? null,
+      error: row.error ?? null,
+      ...row.payload,
+    }),
+  }).select("id").maybeSingle();
+  if (error) {
+    console.warn("[whatsapp-automation] communication_logs insert failed", error);
+    return null;
+  }
+  return data?.id ?? null;
+}
+
+/**
+ * POST one outbound message to the n8n gateway webhook. Never throws past the
+ * caller: every failure (non-2xx, ok:false, timeout, network error) is logged,
+ * written to communication_logs, and returned as an ok:false result so the
+ * booking flow never crashes over a notification failure.
+ */
+async function sendViaN8nGateway(
+  admin: SupabaseClient,
+  opts: {
+    phone: string;
+    kind: "text" | "template";
+    text?: string;
+    templateKey?: string;
+    templateName?: string;
+    variables?: Record<string, unknown>;
+    conversationId?: string;
+    customerName?: string | null;
+    bookingId?: string;
+    templateKeyLabel?: string | null;
+  },
+): Promise<SendCloudMessageResult> {
+  const phone = normalizeArgentinaWhatsAppPhone(opts.phone);
+  const body: Record<string, unknown> = {
+    kind: opts.kind,
+    phone: phone ?? opts.phone,
+    customer_name: opts.customerName ?? null,
+  };
+  if (opts.kind === "text") {
+    body.text = (opts.text ?? "").trim();
+  } else {
+    body.template_key = opts.templateKey;
+    body.template_name = opts.templateName || opts.templateKey;
+    body.variables = opts.variables ?? {};
+  }
+  body.conversation_id = opts.conversationId || opts.phone;
+
+  const baseLog = {
+    phone: phone ?? opts.phone,
+    message: opts.kind === "text" ? (opts.text ?? "").trim() : "",
+    booking_id: opts.bookingId ?? null,
+    customer_name: opts.customerName ?? undefined,
+  };
+  const tplLabel = opts.templateKeyLabel ?? opts.templateKey ?? null;
+
+  if (!phone) {
+    return { ok: false, status: "skipped", error: "invalid_phone" };
+  }
+  const auth = n8nGatewayAuthHeader();
+  if (!N8N_GATEWAY_URL || !auth) {
+    return {
+      ok: false,
+      status: "failed",
+      error: "missing_n8n_gateway_config",
+      log_id: await insertCommunicationLog(admin, {
+        status: "failed",
+        input: baseLog,
+        template_key: tplLabel,
+        error: "missing_n8n_gateway_config",
+        payload: { kind: opts.kind },
+      }),
+    };
+  }
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), N8N_GATEWAY_TIMEOUT_MS);
+    let res: Response;
+    try {
+      res = await fetch(N8N_GATEWAY_URL, {
+        method: "POST",
+        headers: Object.assign({ "Content-Type": "application/json" }, { [auth.name]: auth.value }),
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+
+    const textBody = await res.text();
+    let parsed: unknown = null;
+    try {
+      parsed = JSON.parse(textBody);
+    } catch {
+      /* non-JSON */
+    }
+    const parsedObj = (parsed ?? {}) as Record<string, unknown>;
+
+    if (!res.ok) {
+      const err = "n8n_gateway_http_" + res.status + "_" + textBody.slice(0, 300);
+      console.error("[whatsapp-automation] n8n gateway send failed", res.status, textBody.slice(0, 2000));
+      return {
+        ok: false,
+        status: "failed",
+        error: err,
+        log_id: await insertCommunicationLog(admin, {
+          status: "failed",
+          input: baseLog,
+          template_key: tplLabel,
+          error: err,
+          payload: { kind: opts.kind, http_status: res.status },
+        }),
+      };
+    }
+
+    if (parsedObj?.ok !== true) {
+      const err = "n8n_gateway_ok_false_" + String(parsedObj?.error ?? "unknown");
+      console.error("[whatsapp-automation] n8n gateway returned ok:false", textBody.slice(0, 2000));
+      return {
+        ok: false,
+        status: "failed",
+        error: err,
+        log_id: await insertCommunicationLog(admin, {
+          status: "failed",
+          input: baseLog,
+          template_key: tplLabel,
+          error: err,
+          payload: { kind: opts.kind },
+        }),
+      };
+    }
+
+    const provider_message_id =
+      typeof parsedObj?.provider_message_id === "string" && parsedObj.provider_message_id
+        ? parsedObj.provider_message_id
+        : null;
+    return {
+      ok: true,
+      status: "sent",
+      provider_message_id,
+      log_id: await insertCommunicationLog(admin, {
+        status: "sent",
+        input: baseLog,
+        template_key: tplLabel,
+        provider_message_id,
+        payload: { kind: opts.kind },
+      }),
+    };
+  } catch (e) {
+    const err = String((e as Error)?.message ?? e);
+    console.error("[whatsapp-automation] n8n gateway exception", err);
+    return {
+      ok: false,
+      status: "failed",
+      error: err,
+      log_id: await insertCommunicationLog(admin, {
+        status: "failed",
+        input: baseLog,
+        template_key: tplLabel,
+        error: err,
+        payload: { kind: opts.kind },
+      }),
+    };
+  }
 }
 
 /** Provider-agnostic dedupe so a confirmation never fires twice across a transport flip. */
@@ -52,13 +291,20 @@ export async function sendTemplateViaTransport(
   },
 ): Promise<SendBotmakerMessageResult | SendCloudMessageResult> {
   if (resolveTransport() === "cloud_api") {
-    return sendCloudTemplateMessage(admin, {
-      customerPhone: opts.customerPhone,
+    // Route through the n8n "WhatsApp Outbound Gateway". The gateway's per-template
+    // branches read NAMED variables (e.g. firstName/service/date/time/address),
+    // which match opts.botmakerVariables key-for-key. opts.cloudParameters is the
+    // legacy positional Cloud API array and is intentionally NOT sent to n8n.
+    return sendViaN8nGateway(admin, {
+      phone: opts.customerPhone,
+      kind: "template",
+      templateKey: opts.templateKey,
+      templateName: opts.templateKey,
+      variables: opts.botmakerVariables,
       customerName: opts.customerName,
       bookingId: opts.bookingId,
-      templateKey: opts.templateKey,
-      parameters: opts.cloudParameters,
-      messagePreview: opts.messagePreview,
+      // bookingFlow sends a preview for the log; n8n needs the real variables only.
+      templateKeyLabel: opts.templateKey,
     });
   }
   return sendBotmakerTemplateMessage(admin, {
@@ -83,12 +329,16 @@ export async function sendTextViaTransport(
   },
 ): Promise<SendBotmakerMessageResult | SendCloudMessageResult> {
   if (resolveTransport() === "cloud_api") {
-    return sendCloudWhatsApp(admin, {
+    // Free-form/session text through the n8n gateway. A template_key (e.g. manual
+    // resends of payment_confirmed / booking_reminder_tomorrow) is preserved for
+    // communication_logs labelling but the message is sent as kind:"text".
+    return sendViaN8nGateway(admin, {
       phone: opts.phone,
-      message: opts.message,
-      booking_id: opts.bookingId,
-      template_key: opts.templateKey,
-      customer_name: opts.customerName,
+      kind: "text",
+      text: opts.message,
+      customerName: opts.customerName,
+      bookingId: opts.bookingId,
+      templateKeyLabel: opts.templateKey,
     });
   }
   return sendBotmakerWhatsApp(admin, {

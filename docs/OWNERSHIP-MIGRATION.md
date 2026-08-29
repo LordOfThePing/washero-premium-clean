@@ -224,8 +224,10 @@ All generated fresh — nothing carries over from the old project.
 | `GOOGLE_MAPS_SERVER_KEY` | **Our** GCP project | Server-side geocoding / address validation |
 | `WEB_PUSH_VAPID_PUBLIC_KEY` / `_PRIVATE_KEY` / `_SUBJECT` | `npx web-push generate-vapid-keys` | New keypair; old operator subscriptions are dead regardless |
 | `BOTMAKER_TOOLS_SECRET` | `openssl rand -hex 32` | **Despite the name, this is the n8n ↔ Supabase auth.** Goes in the n8n `Header Auth account` credential as header `x-botmaker-tools-secret` |
-| `WHATSAPP_CLOUD_API_TOKEN` | Meta system user | Phase 5 |
-| `WHATSAPP_CLOUD_PHONE_NUMBER_ID` | Meta | Phase 5 |
+| `N8N_WHATSAPP_WEBHOOK_URL` | n8n (gateway production URL) | outbound gateway webhook endpoint (Phase 5) |
+| `N8N_WHATSAPP_WEBHOOK_SECRET` | `openssl rand -hex 32` | matches the dedicated `Washero Outbound Webhook Auth` n8n credential |
+| `N8N_WHATSAPP_WEBHOOK_HEADER` | `x-washero-outbound-secret` | header name the gateway checks |
+| ~`WHATSAPP_CLOUD_API_TOKEN`~ / `WHATSAPP_CLOUD_PHONE_NUMBER_ID` | **Do NOT set** | Meta creds live in n8n only (outbound); see inbound-receipt caveat |
 | `WASHERO_TRANSPORT` | `cloud_api` | Permanent — no Botmaker fallback exists |
 | `PUBLIC_SITE_URL` | New domain | Used in WhatsApp links and booking confirmations |
 | `PUSH_INTERNAL_SECRET` | `openssl rand -hex 32` | Internal call auth for `send-operator-push` |
@@ -347,7 +349,10 @@ When ready for real payments, this section still applies:
       `Whatsapp Cloud Booking Agent` workflow hardcodes `1327924187062435` in its `Send Reply` node —
       **verify this is the number we mean** before trusting it.
 - [ ] System user with `whatsapp_business_messaging` + `whatsapp_business_management` → long-lived
-      access token → `WHATSAPP_CLOUD_API_TOKEN`.
+      access token. This token lives **only in n8n's `WhatsApp account` credential** (and `whatsAppTriggerApi`
+      for inbound) — it is **NOT** stored as a Supabase secret (`WHATSAPP_CLOUD_API_TOKEN` is deprecated).
+      *Inbound receipt media download (`capturePaymentReceiptFromCloudApi`) currently reads that var for
+      Bearer auth — resolve in Phase 7 (route via n8n or a narrowly-scoped inbound token).*
 - [ ] Point the Meta app's webhook at the Washero workflow's `whatsAppTrigger` callback URL.
       n8n verifies automatically on activation; the "verify token" is the node's generated id, not an
       arbitrary value.
@@ -394,12 +399,25 @@ It was built against the old project and **will not run as-is**:
       Washero product docs or detach the tool. An empty vector store will make the agent answer
       product questions from nothing.
 
-### 5.4 Outbound split
+### 5.4 Outbound split — centralized n8n gateway (decision locked)
 
-- **Lifecycle + operator messages** → Supabase Edge Functions via `_shared/cloud-api-outbound.ts`,
-  using `WHATSAPP_CLOUD_API_TOKEN` directly. Keeps confirmations, reminders, and receipts working
-  even if n8n is down.
-- **Interactive agent replies** → n8n's `Send Reply` node.
+> **Decision:** ALL outbound WhatsApp goes through the n8n **"WhatsApp Outbound Gateway"**
+> webhook (`xLrRt4VrVGgFYwko`). Meta/WhatsApp credentials live **only** in n8n; Supabase never
+> holds a Meta access token. This supersedes the earlier option-A (direct-from-Supabase via
+> `_shared/cloud-api-outbound.ts`) design.
+
+- **Lifecycle + operator + payment-reminder messages** → Supabase Edge Functions (`_shared/whatsapp-automation.ts`
+  `sendTemplateViaTransport`/`sendTextViaTransport`) POST to the gateway webhook; n8n sends via its own
+  `WhatsApp account` credential. Secrets: `N8N_WHATSAPP_WEBHOOK_URL`, `N8N_WHATSAPP_WEBHOOK_SECRET`,
+  `N8N_WHATSAPP_WEBHOOK_HEADER` (default `x-washero-outbound-secret`).
+- **Interactive agent replies** → n8n `Send Reply` node (in-workflow WhatsApp node — no webhook hop).
+- `_shared/cloud-api-outbound.ts` keeps only shared dedupe/types/redaction helpers; the direct Graph senders
+  were deleted. `WHATSAPP_CLOUD_API_TOKEN` / `WHATSAPP_CLOUD_PHONE_NUMBER_ID` are deprecated — do NOT set them.
+
+**Accepted trade-off:** booking confirmations, reminders, and operator messages now depend on n8n's
+uptime (previously they did not). This was explicitly accepted to centralize Meta credentials. The
+Supabase→webhook HTTP call is failure-handled (logged + returned as ok:false, never crashing the
+booking flow), mirroring the old Graph-API failure path.
 
 ---
 

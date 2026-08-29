@@ -1,0 +1,37 @@
+{
+  "name": "washero-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal Supabase-compatible backend shim for Washero: auth + PostgREST-style REST + RPC + storage + re-homed edge functions. Replaces the full self-hosted Supabase stack.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc --noEmit",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "migrate": "tsx src/migrate.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.1",
+    "@fastify/multipart": "^9.0.1",
+    "@supabase/supabase-js": "^2.45.4",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.7",
+    "fastify": "^5.2.1",
+    "jose": "^5.9.6",
+    "nanoid": "^5.0.9",
+    "pg": "^8.13.1",
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "@types/web-push": "^3.6.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.3"
+  }
+}

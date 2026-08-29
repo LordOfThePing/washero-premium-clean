@@ -1,0 +1,18 @@
+# cloudflared declarative config - routes public hostnames to container services.
+# Copy to selfhost/cloudflared/config.yml and place your tunnel credentials file
+# (from 'cloudflared tunnel create') next to it.
+# Hostnames below are placeholders; set the ones matching your DNS records.
+tunnel: washero-your-tunnel-id-or-name
+credentials-file: /etc/cloudflared/tunnel.json
+
+ingress:
+  # Public Supabase API surface -> Kong (covered: /auth /rest /storage /functions /realtime).
+  - hostname: api.washero.ar
+    service: http://kong:8000
+
+  # Supabase Studio UI.
+  - hostname: studio.washero.ar
+    service: http://studio:3000
+
+  # Catch-all: refuse everything else.
+  - service: http_status:404

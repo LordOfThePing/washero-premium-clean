@@ -41,6 +41,22 @@ supabase/.branches/
 
 # Large source 3D assets (optimized copies live in public/models/)
 assets/source/
+# ---------------------------------------------------------------------------
+# Self-hosted stack (selfhost/) — never commit runtime secrets or data
+# ---------------------------------------------------------------------------
+selfhost/.env
+selfhost/edge-runtime/.env.functions
+selfhost/cloudflared/.env
+selfhost/cloudflared/tunnel.json
+selfhost/cloudflared/*.json
+selfhost/volumes/
+selfhost/edge-runtime/main/functions/
+
 .env*
+
+# Keep the self-host template files (no real secrets) so the stack is reproducible.
+!selfhost/.env.example
+!selfhost/edge-runtime/.env.functions.example
+!selfhost/cloudflared/.env.example
 
 .wrangler/
