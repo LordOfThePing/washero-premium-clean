@@ -94,7 +94,7 @@ export async function processOneJob(admin: SupabaseClient, job: AgentJobRow): Pr
         // Lease-aware outbound pipeline (production-hardening audit — "lease ownership through
         // outbound delivery"): this is the FIRST send attempt, made while the job's lease is (as
         // far as we know) still ours — outbound.ts re-verifies immediately before calling
-        // Botmaker rather than trusting this. Retries (worker sweep / manual admin action) run
+        // the transport rather than trusting this. Retries (worker sweep / manual admin action) run
         // after the job is already 'done' and pass no jobLease — see outbound.ts's module doc.
         jobLease: { jobId: job.id, leaseToken: lease.token },
       });

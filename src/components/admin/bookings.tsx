@@ -69,7 +69,7 @@ import {
 import { fetchInvoiceForBooking, fmtInvoiceDate, generateInvoiceForBooking } from "@/lib/invoices";
 import { OperatorAssignmentFields } from "@/components/admin/OperatorAssignmentFields";
 import { BookingWhatsAppActions } from "@/components/admin/BookingWhatsAppActions";
-import { sendBotmakerMessage } from "@/lib/botmaker-notifications";
+import { sendWhatsappMessage } from "@/lib/whatsapp-notifications";
 
 // ===========================================================================
 // Types
@@ -375,7 +375,7 @@ export function BookingDetail({
             ? "Pago marcado como pagado. Factura generada."
             : "Pago actualizado. La factura ya existía.",
         );
-        void sendBotmakerMessage({
+        void sendWhatsappMessage({
           booking_id: booking.id,
           template_key: "payment_confirmed",
         }).then((r) => {
@@ -402,7 +402,7 @@ export function BookingDetail({
       toast.success(inv.created ? "Factura generada." : "La factura ya existía para esta reserva.");
       invalidatePaymentQueries();
       if (booking.payment_status === "paid") {
-        void sendBotmakerMessage({
+        void sendWhatsappMessage({
           booking_id: booking.id,
           template_key: "payment_confirmed",
         });

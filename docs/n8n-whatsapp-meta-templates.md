@@ -75,11 +75,11 @@ Reminder`) in the n8n canvas (the automation API cannot re-index a switch fan-ou
 | `N8N_WHATSAPP_WEBHOOK_URL` | Supabase Edge secrets | the gateway webhook's production URL |
 | `N8N_WHATSAPP_WEBHOOK_SECRET` | Supabase Edge secrets | matches the dedicated gateway webhook-auth credential |
 | `N8N_WHATSAPP_WEBHOOK_HEADER` (default `x-washero-outbound-secret`) | Supabase Edge secrets | header name the gateway checks |
-| `Washero Outbound Webhook Auth` (`httpHeaderAuth`) | n8n credential | gateway webhook incoming auth (dedicated — NOT botmaker-tools') |
+| `Washero Outbound Webhook Auth` (`httpHeaderAuth`) | n8n credential | gateway webhook incoming auth (dedicated — NOT whatsapp-tools') |
 | n8n `whatsAppTriggerApi` | n8n credential | Inbound webhook |
 | n8n `whatsAppApi` | n8n credential | n8n outbound send (gateway + agent) |
-| n8n `httpHeaderAuth` (carries `x-botmaker-tools-secret`) | n8n credential | `botmaker-tools` calls (inbound tool auth only) |
-| `BOTMAKER_TOOLS_SECRET` | Supabase Edge secrets | `botmaker-tools` auth |
+| n8n `httpHeaderAuth` (carries `x-whatsapp-tools-secret`) | n8n credential | `whatsapp-tools` calls (inbound tool auth only) |
+| `WHATSAPP_TOOLS_SECRET` | Supabase Edge secrets | `whatsapp-tools` auth |
 | `WHATSAPP_CLOUD_API_TOKEN` / `WHATSAPP_CLOUD_PHONE_NUMBER_ID` | **DEPRECATED — do NOT set** | old direct-to-Meta path, removed |
 
 ## Meta asset IDs to collect before build

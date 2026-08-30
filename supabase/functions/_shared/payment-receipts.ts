@@ -1,7 +1,7 @@
 // Payment receipt capture, storage, and booking matching (Transferencia).
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
-import { pick, normalizePhone } from "./botmaker-booking.ts";
-import { normalizeArgentinaWhatsAppPhone } from "./botmaker-outbound.ts";
+import { pick, normalizePhone } from "./text-utils.ts";
+import { normalizeArgentinaWhatsAppPhone } from "./whatsapp-outbound.ts";
 
 export const PAYMENT_RECEIPTS_BUCKET = "payment-receipts";
 
@@ -30,7 +30,7 @@ function pickFromAttachments(payload: Record<string, unknown>): Partial<InboundR
   };
 }
 
-/** Extract receipt-like inbound media from Botmaker webhook payload. */
+/** Extract receipt-like inbound media from an inbound WhatsApp webhook payload. */
 export function extractInboundReceiptMedia(payload: Record<string, unknown>): InboundReceiptMedia | null {
   const attachment = pickFromAttachments(payload);
   const rawType = (
@@ -259,24 +259,22 @@ async function downloadReceiptMedia(
 export type CapturePaymentReceiptInput = {
   phone: string | null;
   customerPhoneNormalized?: string | null;
-  botmakerMessageId?: string | null;
+  whatsappMessageId?: string | null;
   media: InboundReceiptMedia;
   rawPayload: Record<string, unknown>;
 };
 
-/** Shared core: storage upload + booking-match + payment_receipts insert. Download auth differs
- * per transport (Botmaker vs Cloud API), so callers pass already-resolved fetch headers. */
+/** Shared core: storage upload + booking-match + payment_receipts insert. */
 async function captureReceiptCore(
   admin: SupabaseClient,
   input: CapturePaymentReceiptInput,
   downloadHeaders: Record<string, string>,
-  rawPayloadKey: "botmaker" | "cloud_api",
 ): Promise<{ ok: boolean; receiptId?: string; error?: string }> {
-  if (input.botmakerMessageId) {
+  if (input.whatsappMessageId) {
     const { data: dup } = await admin
       .from("payment_receipts")
       .select("id")
-      .eq("botmaker_message_id", input.botmakerMessageId)
+      .eq("whatsapp_message_id", input.whatsappMessageId)
       .maybeSingle();
     if (dup?.id) return { ok: true, receiptId: dup.id, error: "duplicate_message" };
   }
@@ -320,7 +318,7 @@ async function captureReceiptCore(
       booking_id: bookingId,
       customer_phone: phone,
       source: "whatsapp",
-      botmaker_message_id: input.botmakerMessageId ?? null,
+      whatsapp_message_id: input.whatsappMessageId ?? null,
       media_url: input.media.mediaUrl,
       storage_bucket: PAYMENT_RECEIPTS_BUCKET,
       storage_path: uploadOk ? storagePath : null,
@@ -334,7 +332,7 @@ async function captureReceiptCore(
           upload_ok: uploadOk,
           booking_match: bookingId ? "single" : receiptStatus,
         },
-        [rawPayloadKey]: input.rawPayload,
+        cloud_api: input.rawPayload,
       },
     })
     .select("id")
@@ -348,24 +346,14 @@ async function captureReceiptCore(
   return { ok: true, receiptId: inserted.id };
 }
 
-export async function capturePaymentReceiptFromBotmaker(
-  admin: SupabaseClient,
-  input: CapturePaymentReceiptInput,
-): Promise<{ ok: boolean; receiptId?: string; error?: string }> {
-  const token = Deno.env.get("BOTMAKER_API_TOKEN") ?? "";
-  const headers: Record<string, string> = {};
-  if (token) headers["access-token"] = token;
-  return captureReceiptCore(admin, input, headers, "botmaker");
-}
-
-/** Cloud API media URLs (from Meta's Graph API) are not public — they require the same WhatsApp
- * Cloud API bearer token used to send messages, unlike Botmaker's access-token header. */
-export async function capturePaymentReceiptFromCloudApi(
+/** Cloud API media URLs (from Meta's Graph API) are not public — they require the WhatsApp
+ * Cloud API bearer token to download. */
+export async function capturePaymentReceipt(
   admin: SupabaseClient,
   input: CapturePaymentReceiptInput,
 ): Promise<{ ok: boolean; receiptId?: string; error?: string }> {
   const token = Deno.env.get("WHATSAPP_CLOUD_API_TOKEN") ?? "";
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  return captureReceiptCore(admin, input, headers, "cloud_api");
+  return captureReceiptCore(admin, input, headers);
 }

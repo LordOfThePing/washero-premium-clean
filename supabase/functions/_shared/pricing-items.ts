@@ -1,4 +1,4 @@
-// Shared pricing_items lookups for website, admin, and Botmaker flows.
+// Shared pricing_items lookups for website, admin, and WhatsApp booking flows.
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 function foldText(v: unknown) {
@@ -43,7 +43,7 @@ const NONE_EXTRAS = new Set([
   "1",
 ]);
 
-/** Botmaker free-text → pricing_items extra code (longer aliases matched first). */
+/** Free-text → pricing_items extra code (longer aliases matched first). */
 const BOTMAKER_EXTRA_ALIASES: Array<{ code: string; aliases: string[] }> = [
   {
     code: "pelo_mascotas",
@@ -104,7 +104,7 @@ export function formatPriceARS(value: number): string {
   }).format(value);
 }
 
-/** Map Botmaker / free-text vehicle input to pricing_items vehicle_surcharge code. */
+/** Map free-text vehicle input to pricing_items vehicle_surcharge code. */
 export function normalizeVehiclePricingCode(raw: string | null | undefined): string {
   const t = foldText(repairUtf8Mojibake(String(raw ?? "").trim()));
   if (!t) return "auto";
@@ -132,16 +132,16 @@ export function vehicleDisplayTypeFromPricingCode(code: string): string {
   return "Auto";
 }
 
-export function parseBotmakerExtrasInput(raw: unknown): string[] {
+export function parseFreeTextExtrasInput(raw: unknown): string[] {
   if (raw == null) return [];
   if (Array.isArray(raw)) {
-    return raw.flatMap((x) => parseBotmakerExtrasInput(x));
+    return raw.flatMap((x) => parseFreeTextExtrasInput(x));
   }
   const text = String(raw).trim();
   if (!text) return [];
   if (text.startsWith("[") || text.startsWith("{")) {
     try {
-      return parseBotmakerExtrasInput(JSON.parse(text));
+      return parseFreeTextExtrasInput(JSON.parse(text));
     } catch {
       /* fall through */
     }
@@ -229,8 +229,8 @@ function fuzzyMatchExtraCode(token: string, active: ActiveExtraRow[]): string | 
   return match?.code ?? null;
 }
 
-/** Map Botmaker free-text extras to pricing_items extra codes (deduped, stable order). */
-export function normalizeBotmakerExtraCodes(tokens: string[]): string[] {
+/** Map free-text extras to pricing_items extra codes (deduped, stable order). */
+export function normalizeFreeTextExtraCodes(tokens: string[]): string[] {
   const codes: string[] = [];
   const seen = new Set<string>();
   for (const token of tokens) {
@@ -243,11 +243,11 @@ export function normalizeBotmakerExtraCodes(tokens: string[]): string[] {
   return codes;
 }
 
-export function normalizeBotmakerExtras(raw: unknown): {
+export function normalizeFreeTextExtras(raw: unknown): {
   input_extras: string;
   normalized_extras: string[];
 } {
-  const tokens = parseBotmakerExtrasInput(raw);
+  const tokens = parseFreeTextExtrasInput(raw);
   const input_extras = tokens.length
     ? tokens.join(", ")
     : raw == null
@@ -255,11 +255,11 @@ export function normalizeBotmakerExtras(raw: unknown): {
     : String(raw).trim();
   return {
     input_extras,
-    normalized_extras: normalizeBotmakerExtraCodes(tokens),
+    normalized_extras: normalizeFreeTextExtraCodes(tokens),
   };
 }
 
-export type BotmakerExtrasResolution = {
+export type FreeTextExtrasResolution = {
   input_extras: string;
   normalized_extras: string[];
   invalid_extra_tokens: string[];
@@ -298,11 +298,11 @@ function resolveTokensToExtraCodes(
 }
 
 /** Alias map + DB canonical codes for unmatched spellings (e.g. encerado vs encerrado). */
-export async function resolveBotmakerExtras(
+export async function resolveFreeTextExtras(
   admin: SupabaseClient,
   raw: unknown,
-): Promise<BotmakerExtrasResolution> {
-  const tokens = parseBotmakerExtrasInput(raw);
+): Promise<FreeTextExtrasResolution> {
+  const tokens = parseFreeTextExtrasInput(raw);
   const input_extras = tokens.length
     ? tokens.join(", ")
     : raw == null

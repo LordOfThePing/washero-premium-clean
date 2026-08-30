@@ -21,10 +21,10 @@ function WhatsappConfigPage() {
       <Card>
         <CardHeader><CardTitle className="text-base">Proveedor activo</CardTitle></CardHeader>
         <CardContent className="space-y-2 text-sm">
-          <div className="flex items-center gap-2"><Badge>Botmaker</Badge><span className="text-muted-foreground">recibe y envía mensajes vía webhook</span></div>
-          <p className="text-muted-foreground text-xs">Para detalles de webhook, token y eventos, abrí la sección Botmaker.</p>
+          <div className="flex items-center gap-2"><Badge>WhatsApp Cloud API (n8n)</Badge><span className="text-muted-foreground">n8n recibe y envía mensajes directo con Meta</span></div>
+          <p className="text-muted-foreground text-xs">Para diagnóstico de envíos y eventos, ver la sección WhatsApp / Notificaciones.</p>
           <div className="flex gap-2 pt-2">
-            <Button asChild size="sm" variant="outline"><Link to="/admin/botmaker">Ir a Botmaker</Link></Button>
+            <Button asChild size="sm" variant="outline"><Link to="/admin/whatsapp-events">Ver diagnóstico</Link></Button>
             <Button asChild size="sm" variant="outline"><Link to="/admin/mensajes">Ver mensajes</Link></Button>
           </div>
         </CardContent>
@@ -32,7 +32,8 @@ function WhatsappConfigPage() {
 
       <Card className="border-dashed">
         <CardContent className="p-4 text-sm text-muted-foreground">
-          La configuración del número WhatsApp comercial se administra desde el panel de Botmaker.
+          La configuración del número WhatsApp comercial (Meta Business, plantillas, credenciales)
+          se administra desde n8n — ver <code>docs/n8n-whatsapp-cloudapi-cutover.md</code>.
         </CardContent>
       </Card>
     </div>

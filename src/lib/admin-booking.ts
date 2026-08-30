@@ -19,7 +19,7 @@ export type CreateAdminBookingPayload = {
   payment_method: string;
   payment_status?: string;
   booking_status?: string;
-  booking_source?: "admin" | "botmaker";
+  booking_source?: "admin" | "whatsapp";
   notes?: string | null;
   selected_extras?: string[];
   place_id?: string | null;

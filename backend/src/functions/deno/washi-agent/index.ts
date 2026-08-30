@@ -1,5 +1,5 @@
 // @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
-// Bridge between Botmaker AI agent and Washero database.
+// Bridge between an external WhatsApp AI agent and the Washero database.
 // Auth: send header `x-washi-agent-secret` matching env `WASHI_AGENT_SECRET`.
 // Configure with: supabase secrets set WASHI_AGENT_SECRET="valor-seguro"
 import { createClient } from "@supabase/supabase-js";

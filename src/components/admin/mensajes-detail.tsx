@@ -33,12 +33,12 @@ import {
   normalizeAssignment,
   type AssignmentStatus,
   type BookingRequestRow,
-  type BotmakerConversation,
-  type BotmakerEvent,
-  type BotmakerMessage,
+  type WhatsappConversation,
+  type WhatsappEvent,
+  type WhatsappMessage,
   type ConversationAssignment,
   type TimelineEntry,
-} from "@/lib/botmaker-inbox";
+} from "@/lib/whatsapp-inbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -108,11 +108,10 @@ export function InvalidEventsPanel({
       <CardContent className="space-y-3 text-sm">
         <p className="text-muted-foreground">
           {invalidCount} evento(s) rechazados. Último: {formatInboxWhen(lastInvalid)}. Revisá que{" "}
-          <code className="text-xs">auth-bm-token</code> coincida con{" "}
-          <code className="text-xs">BOTMAKER_WEBHOOK_SECRET</code>.
+          este evento provino de un webhook de WhatsApp no autenticado.
         </p>
         <Button asChild size="sm" variant="outline">
-          <Link to="/admin/botmaker">Configuración Botmaker</Link>
+          <Link to="/admin/whatsapp-events">Configuración WhatsApp</Link>
         </Button>
         {isLoading && <Loader2 className="h-5 w-5 animate-spin" />}
         {isError && <p className="text-destructive">Error al cargar eventos.</p>}
@@ -142,7 +141,7 @@ export function ConversationDetail({
   bookingRequest,
   onBack,
 }: {
-  conversation: BotmakerConversation;
+  conversation: WhatsappConversation;
   assignment?: ConversationAssignment;
   bookingRequest?: BookingRequestRow;
   onBack?: () => void;
@@ -156,37 +155,37 @@ export function ConversationDetail({
   }, [conversation.id, assignment?.notes, assignment?.status, assignment?.updated_at]);
 
   const messages = useQuery({
-    queryKey: ["botmaker", "messages", conversation.id],
+    queryKey: ["whatsapp", "messages", conversation.id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("botmaker_messages")
+        .from("whatsapp_messages")
         .select("*")
         .eq("conversation_id", conversation.id)
         .order("created_at", { ascending: true })
         .limit(500);
       if (error) throw error;
-      return data as BotmakerMessage[];
+      return data as WhatsappMessage[];
     },
   });
 
   const events = useQuery({
-    queryKey: ["botmaker", "events", conversation.botmaker_conversation_id],
-    enabled: !!conversation.botmaker_conversation_id,
+    queryKey: ["whatsapp", "events", conversation.external_conversation_id],
+    enabled: !!conversation.external_conversation_id,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("botmaker_events")
+        .from("whatsapp_events")
         .select("id, event_type, sender_type, message_text, created_at, auth_valid")
-        .eq("conversation_id", conversation.botmaker_conversation_id!)
+        .eq("conversation_id", conversation.external_conversation_id!)
         .eq("auth_valid", true)
         .order("created_at", { ascending: true })
         .limit(200);
       if (error) throw error;
-      return data as BotmakerEvent[];
+      return data as WhatsappEvent[];
     },
   });
 
   const linkedBooking = useQuery({
-    queryKey: ["botmaker", "booking", conversation.linked_booking_id],
+    queryKey: ["whatsapp", "booking", conversation.linked_booking_id],
     enabled: !!conversation.linked_booking_id,
     queryFn: async () => {
       const { data, error } = await supabase
@@ -225,35 +224,17 @@ export function ConversationDetail({
     return { summary, confirmation, parsedLocal, raw };
   }, [messages.data, bookingRequest]);
 
-  const reprocess = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("botmaker-reprocess-conversation", {
-        body: { conversation_id: conversation.id },
-      });
-      if (error) throw error;
-      if (data?.ok === false) throw new Error(data.error ?? "No se pudo reprocesar");
-      return data;
-    },
-    onSuccess: (data) => {
-      if (data?.auto_booking_success) toast.success("Reserva creada automáticamente");
-      else if (data?.processed) toast.success("Solicitud creada para revisión");
-      else toast.warning(data?.fallback_reason ?? "No se detectó resumen + confirmación");
-      qc.invalidateQueries({ queryKey: ["botmaker"] });
-    },
-    onError: (e: Error) => toast.error(e.message ?? "Error al reprocesar"),
-  });
-
   const saveAssignment = useMutation({
     mutationFn: async (patch: { status?: AssignmentStatus; notes?: string }) => {
       const payload = {
-        botmaker_conversation_id: conversation.id,
+        conversation_id: conversation.id,
         status: patch.status ?? assignment?.status ?? "open",
         notes: patch.notes !== undefined ? patch.notes : (assignment?.notes ?? null),
         updated_at: new Date().toISOString(),
       };
       const { data, error } = await supabase
         .from("conversation_assignments")
-        .upsert(payload, { onConflict: "botmaker_conversation_id" })
+        .upsert(payload, { onConflict: "conversation_id" })
         .select("*")
         .single();
       if (error) throw error;
@@ -263,8 +244,8 @@ export function ConversationDetail({
     },
     onSuccess: (saved) => {
       toast.success("Estado actualizado");
-      qc.setQueryData<{ conversation: BotmakerConversation; assignment?: ConversationAssignment }[]>(
-        ["botmaker", "conversations"],
+      qc.setQueryData<{ conversation: WhatsappConversation; assignment?: ConversationAssignment }[]>(
+        ["whatsapp", "conversations"],
         (prev) => {
           if (!prev) return prev;
           return prev.map((row) =>
@@ -272,7 +253,7 @@ export function ConversationDetail({
           );
         },
       );
-      qc.invalidateQueries({ queryKey: ["botmaker", "conversations"] });
+      qc.invalidateQueries({ queryKey: ["whatsapp", "conversations"] });
     },
     onError: (e: Error) => toast.error(e.message ?? "Error al guardar"),
   });
@@ -307,15 +288,6 @@ export function ConversationDetail({
               ))}
             </div>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => reprocess.mutate()}
-            disabled={reprocess.isPending}
-          >
-            {reprocess.isPending && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
-            Reprocesar reserva
-          </Button>
         </div>
       </CardHeader>
 
@@ -346,9 +318,9 @@ export function ConversationDetail({
 
         <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
           <p className="font-medium text-foreground mb-1">Responder al cliente</p>
-          <p>Para responder al cliente, abrí esta conversación en Botmaker o WhatsApp Business.</p>
+          <p>Para responder al cliente, abrí esta conversación en WhatsApp Business.</p>
           <Button asChild size="sm" variant="link" className="h-auto p-0 mt-1 text-xs">
-            <Link to="/admin/botmaker">Configuración / diagnóstico Botmaker</Link>
+            <Link to="/admin/whatsapp-events">Configuración / diagnóstico WhatsApp</Link>
           </Button>
         </div>
 
@@ -723,7 +695,7 @@ function ApproveDialog({
         payment_method: form.payment_method,
         payment_status: "pending",
         booking_status: "confirmed",
-        booking_source: "botmaker",
+        booking_source: "whatsapp",
         notes,
         selected_extras: [],
         is_test: !!bookingRequest.is_test,
@@ -735,7 +707,7 @@ function ApproveDialog({
     },
     onSuccess: () => {
       toast.success("Reserva creada");
-      qc.invalidateQueries({ queryKey: ["botmaker"] });
+      qc.invalidateQueries({ queryKey: ["whatsapp"] });
       onClose();
     },
     onError: (e: Error) => toast.error(e.message ?? "Error al aprobar"),

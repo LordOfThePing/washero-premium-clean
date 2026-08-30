@@ -28,9 +28,10 @@ import {
 } from "../slot-capacity.ts";
 import { addDaysIso, isSlotTooSoonForPublic } from "../logistic-availability.ts";
 import {
-  capturePaymentReceiptFromCloudApi,
+  capturePaymentReceipt,
   type InboundReceiptMedia,
 } from "../payment-receipts.ts";
+import { classifyInboundMessage, operatorPushBody, persistInboundRouting } from "../whatsapp-inbound-routing.ts";
 
 export type AgentToolContext = {
   conversationId: string;
@@ -788,15 +789,15 @@ const rescheduleBooking: ToolDefinition = {
 // ---------------------------------------------------------------------------
 // ingest_message / ingest_receipt
 // ---------------------------------------------------------------------------
-// n8n-side replacement for what botmaker-webhook/index.ts used to do on every inbound (and
-// outbound) event when Botmaker itself owned transport: persist the message, keep the
-// botmaker_conversations preview fields current, and tell the caller whether a human has taken
-// this conversation over. Called once per inbound message and once per outbound reply from the
-// n8n WhatsApp Cloud API workflow (see docs/n8n-whatsapp-cloudapi-cutover.md).
+// n8n calls these on every inbound (and outbound) WhatsApp event: persist the message, keep the
+// whatsapp_conversations preview fields current, classify+route the conversation to the right
+// admin/operator inbox, and tell the caller whether a human has taken this conversation over.
+// Called once per inbound message and once per outbound reply from the n8n WhatsApp Cloud API
+// workflow (see docs/n8n-whatsapp-cloudapi-cutover.md).
 
 /** Meta retries webhook deliveries; both tools dedupe on (namespaced-provider, external message
  * id) via the same idempotency table the in-house agent pipeline uses (see
- * whatsapp_agent_processed_events' own migration comment: botmaker_messages/payment_receipts
+ * whatsapp_agent_processed_events' own migration comment: whatsapp_messages/payment_receipts
  * were never given a unique constraint on their message-id columns, so this table is the
  * intentional dedupe point instead of retrofitting one on live tables). The provider string is
  * namespaced per action (":message" vs ":receipt") because both tools may be called for the same
@@ -828,15 +829,37 @@ async function claimOnce(
 }
 
 /** A human operator has an open/in-progress handoff ticket on this conversation (set by
- * request_human_handoff / botmaker-tools' requestHumanHandoffDeterministic, cleared by an admin
- * marking it resolved in /admin/mensajes) → the bot must stay silent until it's resolved. */
+ * request_human_handoff, cleared by an admin marking it resolved in /admin/mensajes) → the bot
+ * must stay silent until it's resolved. */
 async function shouldBotReply(admin: SupabaseClient, conversationRowId: string): Promise<boolean> {
   const { data } = await admin
     .from("conversation_assignments")
     .select("status")
-    .eq("botmaker_conversation_id", conversationRowId)
+    .eq("conversation_id", conversationRowId)
     .maybeSingle();
   return data?.status !== "open" && data?.status !== "in_progress";
+}
+
+/** Fire-and-forget push to the assigned operator's device — best-effort, never throws. */
+async function notifyOperatorPush(bookingId: string, opts: { title?: string; body?: string }): Promise<void> {
+  const pushSecret = process.env.PUSH_INTERNAL_SECRET ?? "";
+  const supabaseUrl = process.env.SUPABASE_URL ?? "";
+  if (!pushSecret || !supabaseUrl) return;
+  try {
+    await fetch(`${supabaseUrl}/functions/v1/send-operator-push`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-internal-secret": pushSecret },
+      body: JSON.stringify({
+        booking_id: bookingId,
+        reason: "new_message_today",
+        force: true,
+        title: opts.title ?? "Mensaje nuevo de cliente",
+        body: opts.body ?? "Tenés un nuevo mensaje operativo.",
+      }),
+    });
+  } catch (e) {
+    console.warn("[ingest_message] send-operator-push failed", String(e));
+  }
 }
 
 function inboundPreviewLabel(messageText: string, messageType: string): string {
@@ -884,16 +907,16 @@ const ingestMessage: ToolDefinition = {
     }
 
     const { data: convo } = await admin
-      .from("botmaker_conversations")
+      .from("whatsapp_conversations")
       .select("customer_name,channel")
       .eq("id", ctx.conversationId)
       .maybeSingle();
 
     const { data: inserted, error } = await admin
-      .from("botmaker_messages")
+      .from("whatsapp_messages")
       .insert({
         conversation_id: ctx.conversationId,
-        botmaker_message_id: externalMessageId,
+        external_message_id: externalMessageId,
         direction,
         sender_type: senderType,
         message_type: messageType,
@@ -912,13 +935,33 @@ const ingestMessage: ToolDefinition = {
 
     const preview = inboundPreviewLabel(messageText, messageType);
     await admin
-      .from("botmaker_conversations")
+      .from("whatsapp_conversations")
       .update({
         last_message: preview,
         last_message_at: new Date().toISOString(),
         last_sender_type: senderType,
       })
       .eq("id", ctx.conversationId);
+
+    if (direction === "inbound" && messageText) {
+      const routing = await classifyInboundMessage(admin, { phone: ctx.customerPhone, messageText });
+      await persistInboundRouting(admin, ctx.conversationId, routing, args);
+
+      if (routing.routing_type === "operational" && routing.linked_booking_id && routing.routing_assigned_operator_id) {
+        const { data: booking } = await admin
+          .from("bookings")
+          .select("customer_name,scheduled_time")
+          .eq("id", routing.linked_booking_id)
+          .maybeSingle();
+        await notifyOperatorPush(routing.linked_booking_id, {
+          title: "Mensaje nuevo de cliente",
+          body: operatorPushBody(
+            String(booking?.customer_name ?? convo?.customer_name ?? "Cliente"),
+            String(booking?.scheduled_time ?? ""),
+          ),
+        });
+      }
+    }
 
     return { ok: true, message_id: inserted?.id ?? null, duplicate: false, should_bot_reply: replyAllowed };
   },
@@ -952,17 +995,16 @@ const ingestReceipt: ToolDefinition = {
       : true;
     if (!claimed) return { ok: true, duplicate: true };
 
-    // Link to the botmaker_messages row ingest_message already wrote for this same WhatsApp
-    // message id, if any — payment_receipts.botmaker_message_id is a uuid column (it predates
-    // this transport and was sized for Botmaker's own ids), so the raw external wamid can't go
-    // in there directly.
+    // Link to the whatsapp_messages row ingest_message already wrote for this same WhatsApp
+    // message id, if any — payment_receipts.whatsapp_message_id is a uuid column, so the raw
+    // external wamid can't go in there directly.
     let linkedMessageRowId: string | null = null;
     if (messageId) {
       const { data: linkedRow } = await admin
-        .from("botmaker_messages")
+        .from("whatsapp_messages")
         .select("id")
         .eq("conversation_id", ctx.conversationId)
-        .eq("botmaker_message_id", messageId)
+        .eq("external_message_id", messageId)
         .maybeSingle();
       linkedMessageRowId = (linkedRow?.id as string) ?? null;
     }
@@ -975,10 +1017,10 @@ const ingestReceipt: ToolDefinition = {
       caption: str(args.caption) || null,
     };
 
-    const result = await capturePaymentReceiptFromCloudApi(admin, {
+    const result = await capturePaymentReceipt(admin, {
       phone: ctx.customerPhone,
       customerPhoneNormalized: ctx.customerPhone,
-      botmakerMessageId: linkedMessageRowId,
+      whatsappMessageId: linkedMessageRowId,
       media,
       rawPayload: args,
     });

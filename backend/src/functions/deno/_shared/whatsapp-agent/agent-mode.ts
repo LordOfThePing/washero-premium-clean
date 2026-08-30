@@ -5,7 +5,7 @@
 // bookings for allowlisted phones, which is a canary rollout, not a shadow run. Four distinct,
 // unambiguous modes now exist so nobody can flip one env var and accidentally start replying to
 // real customers.
-import { normalizeArgentinaWhatsAppPhone } from "../botmaker-outbound.ts";
+import { normalizeArgentinaWhatsAppPhone } from "../whatsapp-outbound.ts";
 
 export type AgentMode = "disabled" | "shadow" | "canary" | "active";
 

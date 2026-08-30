@@ -16,12 +16,12 @@ import {
   normalizeAssignment,
   stripConversationRow,
   type BookingRequestRow,
-  type BotmakerConversation,
-  type BotmakerConversationRow,
+  type WhatsappConversation,
+  type WhatsappConversationRow,
   type ConversationAssignment,
   type InboxBadge,
   type InboxFilter,
-} from "@/lib/botmaker-inbox";
+} from "@/lib/whatsapp-inbox";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,16 +51,16 @@ function MensajesPage() {
   const isMobile = useIsMobile();
 
   const inbox = useQuery({
-    queryKey: ["botmaker", "conversations"],
+    queryKey: ["whatsapp", "conversations"],
     queryFn: async () => {
       const nested = await supabase
-        .from("botmaker_conversations")
+        .from("whatsapp_conversations")
         .select("*, conversation_assignments(*)")
         .order("last_message_at", { ascending: false, nullsFirst: false })
         .limit(250);
 
       if (!nested.error && nested.data) {
-        return (nested.data as BotmakerConversationRow[]).map((row) => ({
+        return (nested.data as WhatsappConversationRow[]).map((row) => ({
           conversation: stripConversationRow(row),
           assignment: extractConversationAssignment(row),
         }));
@@ -68,7 +68,7 @@ function MensajesPage() {
 
       const [convRes, assignRes] = await Promise.all([
         supabase
-          .from("botmaker_conversations")
+          .from("whatsapp_conversations")
           .select("*")
           .order("last_message_at", { ascending: false, nullsFirst: false })
           .limit(250),
@@ -82,7 +82,7 @@ function MensajesPage() {
       );
 
       return (convRes.data ?? []).map((row) => ({
-        conversation: row as BotmakerConversation,
+        conversation: row as WhatsappConversation,
         assignment: assignmentMap.get(row.id),
       }));
     },
@@ -101,7 +101,7 @@ function MensajesPage() {
   }, [inbox.data]);
 
   const bookingRequests = useQuery({
-    queryKey: ["botmaker", "booking-requests-map", conversations.length],
+    queryKey: ["whatsapp", "booking-requests-map", conversations.length],
     enabled: conversations.length > 0,
     queryFn: async () => {
       const ids = [
@@ -131,12 +131,12 @@ function MensajesPage() {
   });
 
   const eventStats = useQuery({
-    queryKey: ["botmaker", "event-stats"],
+    queryKey: ["whatsapp", "event-stats"],
     queryFn: async () => {
       const [invalid, lastInvalid] = await Promise.all([
-        supabase.from("botmaker_events").select("id", { count: "exact", head: true }).eq("auth_valid", false),
+        supabase.from("whatsapp_events").select("id", { count: "exact", head: true }).eq("auth_valid", false),
         supabase
-          .from("botmaker_events")
+          .from("whatsapp_events")
           .select("created_at")
           .eq("auth_valid", false)
           .order("created_at", { ascending: false })
@@ -151,11 +151,11 @@ function MensajesPage() {
   });
 
   const invalidEvents = useQuery({
-    queryKey: ["botmaker", "invalid-events"],
+    queryKey: ["whatsapp", "invalid-events"],
     enabled: filter === "invalid_token",
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("botmaker_events")
+        .from("whatsapp_events")
         .select("id, event_type, customer_phone, customer_name, message_text, created_at, auth_valid")
         .eq("auth_valid", false)
         .order("created_at", { ascending: false })
@@ -196,14 +196,14 @@ function MensajesPage() {
   const showList = !isMobile || !selectedId;
   const showDetail = !isMobile || !!selectedId;
 
-  const refresh = () => qc.invalidateQueries({ queryKey: ["botmaker"] });
+  const refresh = () => qc.invalidateQueries({ queryKey: ["whatsapp"] });
 
   return (
     <div className="space-y-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-            <MessageSquare className="h-6 w-6" /> Inbox Botmaker
+            <MessageSquare className="h-6 w-6" /> Inbox WhatsApp
           </h1>
           <p className="text-sm text-muted-foreground">
             Conversaciones, solicitudes de reserva y casos que requieren atención humana.
@@ -227,7 +227,7 @@ function MensajesPage() {
             Ver eventos
           </Button>
           <Button asChild size="sm" variant="outline" className="h-8">
-            <Link to="/admin/botmaker">Configuración Botmaker</Link>
+            <Link to="/admin/whatsapp-events">Configuración WhatsApp</Link>
           </Button>
         </div>
       )}
@@ -314,7 +314,7 @@ function MensajesPage() {
 }
 
 type EnrichedItem = {
-  c: BotmakerConversation;
+  c: WhatsappConversation;
   br?: BookingRequestRow;
   assignment?: ConversationAssignment;
   badges: InboxBadge[];

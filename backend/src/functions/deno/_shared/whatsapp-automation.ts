@@ -2,282 +2,24 @@
 // Lifecycle WhatsApp notifications (non-blocking callers should void + catch).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  hasOutboundTemplateLog,
-  sendBotmakerTemplateMessage,
-  sendBotmakerWhatsApp,
-  type SendBotmakerMessageResult,
-} from "./botmaker-outbound.ts";
-import {
   hasOutboundTemplateLogChannelOnly,
-  type OutboundLogStatus,
+  sendWhatsAppMessage,
   type SendCloudMessageResult,
-} from "./cloud-api-outbound.ts";
-import { normalizeArgentinaWhatsAppPhone } from "./botmaker-outbound.ts";
+} from "./whatsapp-outbound.ts";
 
-/**
- * Transport toggle for the Botmaker → WhatsApp Cloud API cutover.
- *   WASHERO_TRANSPORT = cloud_api (default after cutover) | botmaker (rollback).
- * Both transports write the same `communication_logs`, so dedupe is safe across a flip.
- */
-type WasheroTransport = "botmaker" | "cloud_api";
-function resolveTransport(): WasheroTransport {
-  const t = (process.env.WASHERO_TRANSPORT ?? "cloud_api").trim().toLowerCase();
-  return t === "botmaker" ? "botmaker" : "cloud_api";
-}
-
-// ---------------------------------------------------------------------------
-// n8n "WhatsApp Outbound Gateway" transport.
-// All outbound Meta/WhatsApp credentials live ONLY in n8n (n8n's own WhatsApp
-// account credential). Supabase never holds a Meta access token.
-// The gateway is a headerAuth-protected webhook that sends text/template
-// messages via n8n's native WhatsApp nodes.
-// ---------------------------------------------------------------------------
-
-const N8N_GATEWAY_URL = (process.env.N8N_WHATSAPP_WEBHOOK_URL ?? "").trim();
-const N8N_GATEWAY_TIMEOUT_MS = 10_000;
-
-const N8N_SENSITIVE_KEY = /^(access[-_]?token|authorization|api[-_]?key|x-api-key|token|secret|password|bearer)$/i;
-
-/** Redact secrets from anything written to communication_logs.raw_payload. */
-function n8nSanitizeForLog(value: unknown, depth = 0): unknown {
-  if (depth > 10) return "[truncated]";
-  const secrets = [
-    process.env.N8N_WHATSAPP_WEBHOOK_SECRET ?? "",
-    process.env.WHATSAPP_CLOUD_API_TOKEN ?? "",
-  ].filter(Boolean);
-  if (value === null || value === undefined) return value;
-  if (typeof value === "string") {
-    for (const s of secrets) value = (value as string).split(s).join("[REDACTED]");
-    return value;
-  }
-  if (typeof value === "number" || typeof value === "boolean") return value;
-  if (Array.isArray(value)) return value.map((v) => n8nSanitizeForLog(v, depth + 1));
-  if (typeof value === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      if (N8N_SENSITIVE_KEY.test(k)) out[k] = "[REDACTED]";
-      else out[k] = n8nSanitizeForLog(v, depth + 1);
-    }
-    return out;
-  }
-  return String(value);
-}
-
-/**
- * Header the gateway webhook checks. Defaults to x-washero-outbound-secret,
- * which must match the dedicated "Washero Outbound Webhook Auth" n8n credential
- * (NOT botmaker-tools' shared secret). Override via N8N_WHATSAPP_WEBHOOK_HEADER.
- */
-function n8nGatewayAuthHeader(): { name: string; value: string } | null {
-  const name = (process.env.N8N_WHATSAPP_WEBHOOK_HEADER ?? "x-washero-outbound-secret").trim();
-  const value = (process.env.N8N_WHATSAPP_WEBHOOK_SECRET ?? "").trim();
-  if (!value) return null;
-  return { name, value };
-}
-
-async function insertCommunicationLog(
-  admin: SupabaseClient,
-  row: {
-    status: OutboundLogStatus;
-    payload: Record<string, unknown>;
-    input: { phone: string; message?: string; booking_id?: string | null; customer_name?: string | null };
-    template_key?: string | null;
-    provider_message_id?: string | null;
-    error?: string | null;
-  },
-): Promise<string | null> {
-  const { data, error } = await admin.from("communication_logs").insert({
-    channel: "whatsapp",
-    provider: "whatsapp_n8n_gateway",
-    direction: "outbound",
-    booking_id: row.input.booking_id ?? null,
-    message_text: row.input.message ?? "",
-    raw_payload: n8nSanitizeForLog({
-      status: row.status,
-      template_key: row.template_key ?? null,
-      customer_phone: row.input.phone,
-      customer_name: row.input.customer_name ?? null,
-      provider_message_id: row.provider_message_id ?? null,
-      error: row.error ?? null,
-      ...row.payload,
-    }),
-  }).select("id").maybeSingle();
-  if (error) {
-    console.warn("[whatsapp-automation] communication_logs insert failed", error);
-    return null;
-  }
-  return data?.id ?? null;
-}
-
-/**
- * POST one outbound message to the n8n gateway webhook. Never throws past the
- * caller: every failure (non-2xx, ok:false, timeout, network error) is logged,
- * written to communication_logs, and returned as an ok:false result so the
- * booking flow never crashes over a notification failure.
- */
-async function sendViaN8nGateway(
-  admin: SupabaseClient,
-  opts: {
-    phone: string;
-    kind: "text" | "template";
-    text?: string;
-    templateKey?: string;
-    templateName?: string;
-    variables?: Record<string, unknown>;
-    conversationId?: string;
-    customerName?: string | null;
-    bookingId?: string;
-    templateKeyLabel?: string | null;
-  },
-): Promise<SendCloudMessageResult> {
-  const phone = normalizeArgentinaWhatsAppPhone(opts.phone);
-  const body: Record<string, unknown> = {
-    kind: opts.kind,
-    phone: phone ?? opts.phone,
-    customer_name: opts.customerName ?? null,
-  };
-  if (opts.kind === "text") {
-    body.text = (opts.text ?? "").trim();
-  } else {
-    body.template_key = opts.templateKey;
-    body.template_name = opts.templateName || opts.templateKey;
-    body.variables = opts.variables ?? {};
-  }
-  body.conversation_id = opts.conversationId || opts.phone;
-
-  const baseLog = {
-    phone: phone ?? opts.phone,
-    message: opts.kind === "text" ? (opts.text ?? "").trim() : "",
-    booking_id: opts.bookingId ?? null,
-    customer_name: opts.customerName ?? undefined,
-  };
-  const tplLabel = opts.templateKeyLabel ?? opts.templateKey ?? null;
-
-  if (!phone) {
-    return { ok: false, status: "skipped", error: "invalid_phone" };
-  }
-  const auth = n8nGatewayAuthHeader();
-  if (!N8N_GATEWAY_URL || !auth) {
-    return {
-      ok: false,
-      status: "failed",
-      error: "missing_n8n_gateway_config",
-      log_id: await insertCommunicationLog(admin, {
-        status: "failed",
-        input: baseLog,
-        template_key: tplLabel,
-        error: "missing_n8n_gateway_config",
-        payload: { kind: opts.kind },
-      }),
-    };
-  }
-
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), N8N_GATEWAY_TIMEOUT_MS);
-    let res: Response;
-    try {
-      res = await fetch(N8N_GATEWAY_URL, {
-        method: "POST",
-        headers: Object.assign({ "Content-Type": "application/json" }, { [auth.name]: auth.value }),
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timer);
-    }
-
-    const textBody = await res.text();
-    let parsed: unknown = null;
-    try {
-      parsed = JSON.parse(textBody);
-    } catch {
-      /* non-JSON */
-    }
-    const parsedObj = (parsed ?? {}) as Record<string, unknown>;
-
-    if (!res.ok) {
-      const err = "n8n_gateway_http_" + res.status + "_" + textBody.slice(0, 300);
-      console.error("[whatsapp-automation] n8n gateway send failed", res.status, textBody.slice(0, 2000));
-      return {
-        ok: false,
-        status: "failed",
-        error: err,
-        log_id: await insertCommunicationLog(admin, {
-          status: "failed",
-          input: baseLog,
-          template_key: tplLabel,
-          error: err,
-          payload: { kind: opts.kind, http_status: res.status },
-        }),
-      };
-    }
-
-    if (parsedObj?.ok !== true) {
-      const err = "n8n_gateway_ok_false_" + String(parsedObj?.error ?? "unknown");
-      console.error("[whatsapp-automation] n8n gateway returned ok:false", textBody.slice(0, 2000));
-      return {
-        ok: false,
-        status: "failed",
-        error: err,
-        log_id: await insertCommunicationLog(admin, {
-          status: "failed",
-          input: baseLog,
-          template_key: tplLabel,
-          error: err,
-          payload: { kind: opts.kind },
-        }),
-      };
-    }
-
-    const provider_message_id =
-      typeof parsedObj?.provider_message_id === "string" && parsedObj.provider_message_id
-        ? parsedObj.provider_message_id
-        : null;
-    return {
-      ok: true,
-      status: "sent",
-      provider_message_id,
-      log_id: await insertCommunicationLog(admin, {
-        status: "sent",
-        input: baseLog,
-        template_key: tplLabel,
-        provider_message_id,
-        payload: { kind: opts.kind },
-      }),
-    };
-  } catch (e) {
-    const err = String((e as Error)?.message ?? e);
-    console.error("[whatsapp-automation] n8n gateway exception", err);
-    return {
-      ok: false,
-      status: "failed",
-      error: err,
-      log_id: await insertCommunicationLog(admin, {
-        status: "failed",
-        input: baseLog,
-        template_key: tplLabel,
-        error: err,
-        payload: { kind: opts.kind },
-      }),
-    };
-  }
-}
-
-/** Provider-agnostic dedupe so a confirmation never fires twice across a transport flip. */
+/** Dedupe so a confirmation never fires twice for the same booking+template. */
 export async function hasOutboundTemplateLogAny(
   admin: SupabaseClient,
   bookingId: string,
   templateKey: string,
   sinceIso?: string,
 ): Promise<boolean> {
-  if (resolveTransport() === "cloud_api") {
-    return hasOutboundTemplateLogChannelOnly(admin, bookingId, templateKey, sinceIso);
-  }
-  return hasOutboundTemplateLog(admin, bookingId, templateKey, sinceIso);
+  return hasOutboundTemplateLogChannelOnly(admin, bookingId, templateKey, sinceIso);
 }
 
-/** Send an approved WhatsApp template through the selected transport. */
+/** Send an approved WhatsApp template through the n8n "WhatsApp Outbound Gateway". The
+ * gateway's per-template branches read NAMED variables (e.g. firstName/service/date/
+ * time/address), which match `variables` key-for-key. */
 export async function sendTemplateViaTransport(
   admin: SupabaseClient,
   opts: {
@@ -285,40 +27,22 @@ export async function sendTemplateViaTransport(
     customerName: string | null;
     bookingId: string;
     templateKey: string;
-    botmakerVariables: Record<string, unknown>;
-    messagePreview: string;
-    /** Cloud API order-sensitive parameters (template body components). */
-    cloudParameters: string[];
+    variables: Record<string, unknown>;
   },
-): Promise<SendBotmakerMessageResult | SendCloudMessageResult> {
-  if (resolveTransport() === "cloud_api") {
-    // Route through the n8n "WhatsApp Outbound Gateway". The gateway's per-template
-    // branches read NAMED variables (e.g. firstName/service/date/time/address),
-    // which match opts.botmakerVariables key-for-key. opts.cloudParameters is the
-    // legacy positional Cloud API array and is intentionally NOT sent to n8n.
-    return sendViaN8nGateway(admin, {
-      phone: opts.customerPhone,
-      kind: "template",
-      templateKey: opts.templateKey,
-      templateName: opts.templateKey,
-      variables: opts.botmakerVariables,
-      customerName: opts.customerName,
-      bookingId: opts.bookingId,
-      // bookingFlow sends a preview for the log; n8n needs the real variables only.
-      templateKeyLabel: opts.templateKey,
-    });
-  }
-  return sendBotmakerTemplateMessage(admin, {
-    customerPhone: opts.customerPhone,
+): Promise<SendCloudMessageResult> {
+  return sendWhatsAppMessage(admin, {
+    phone: opts.customerPhone,
+    kind: "template",
+    templateKey: opts.templateKey,
+    templateName: opts.templateKey,
+    variables: opts.variables,
     customerName: opts.customerName,
     bookingId: opts.bookingId,
-    templateKey: opts.templateKey,
-    variables: opts.botmakerVariables,
-    messagePreview: opts.messagePreview,
+    templateKeyLabel: opts.templateKey,
   });
 }
 
-/** Send a free-form/session WhatsApp text through the selected transport. */
+/** Send a free-form/session WhatsApp text through the n8n "WhatsApp Outbound Gateway". */
 export async function sendTextViaTransport(
   admin: SupabaseClient,
   opts: {
@@ -328,31 +52,19 @@ export async function sendTextViaTransport(
     templateKey: string | null;
     customerName: string | null;
   },
-): Promise<SendBotmakerMessageResult | SendCloudMessageResult> {
-  if (resolveTransport() === "cloud_api") {
-    // Free-form/session text through the n8n gateway. A template_key (e.g. manual
-    // resends of payment_confirmed / booking_reminder_tomorrow) is preserved for
-    // communication_logs labelling but the message is sent as kind:"text".
-    return sendViaN8nGateway(admin, {
-      phone: opts.phone,
-      kind: "text",
-      text: opts.message,
-      customerName: opts.customerName,
-      bookingId: opts.bookingId,
-      templateKeyLabel: opts.templateKey,
-    });
-  }
-  return sendBotmakerWhatsApp(admin, {
+): Promise<SendCloudMessageResult> {
+  return sendWhatsAppMessage(admin, {
     phone: opts.phone,
-    message: opts.message,
-    booking_id: opts.bookingId,
-    template_key: opts.templateKey,
-    customer_name: opts.customerName,
+    kind: "text",
+    text: opts.message,
+    customerName: opts.customerName,
+    bookingId: opts.bookingId,
+    templateKeyLabel: opts.templateKey,
   });
 }
 
-/** Result of any transport-backed WhatsApp send in this module. */
-export type WasheroSendResult = SendBotmakerMessageResult | SendCloudMessageResult;
+/** Result of any WhatsApp send in this module. */
+export type WasheroSendResult = SendCloudMessageResult;
 
 export type BookingNotifyRow = {
   id: string;
@@ -479,7 +191,7 @@ export type WasheroTransferBankDetails = {
   bank: string;
 };
 
-/** Botmaker approved template for website Transferencia bank instructions. */
+/** Meta-approved WhatsApp template for website Transferencia bank instructions. */
 export const BANK_TRANSFER_INFO_TEMPLATE_KEY = "bank_transfer_info";
 
 /** Bank details for Transferencia WhatsApp — from Edge Function secrets only. */
@@ -540,7 +252,7 @@ export async function fetchBookingForNotify(
 export function scheduleBookingCreatedWhatsApp(
   admin: SupabaseClient,
   bookingId: string,
-  opts?: { skipSources?: string[]; allowBotmakerSource?: boolean },
+  opts?: { skipSources?: string[] },
 ): void {
   void notifyBookingCreated(admin, bookingId, opts).catch((e) =>
     console.error("[whatsapp-automation] booking_created", e)
@@ -551,7 +263,7 @@ export function scheduleBookingCreatedWhatsApp(
 export function scheduleBookingConfirmedWhatsApp(
   admin: SupabaseClient,
   bookingId: string,
-  opts?: { skipSources?: string[]; allowBotmakerSource?: boolean },
+  opts?: { skipSources?: string[] },
 ): void {
   void notifyBookingConfirmed(admin, bookingId, opts).catch((e) =>
     console.error("[whatsapp-automation] booking_confirmed", e)
@@ -561,16 +273,13 @@ export function scheduleBookingConfirmedWhatsApp(
 export async function notifyBookingCreated(
   admin: SupabaseClient,
   bookingId: string,
-  opts?: { skipSources?: string[]; allowBotmakerSource?: boolean },
+  opts?: { skipSources?: string[] },
 ): Promise<WasheroSendResult | null> {
   const booking = await fetchBookingForNotify(admin, bookingId);
   if (!booking?.customer_phone?.trim()) return null;
 
   const source = (booking.booking_source ?? "").toLowerCase();
-  if (
-    !opts?.allowBotmakerSource &&
-    (opts?.skipSources?.includes(source) || source === "botmaker")
-  ) {
+  if (opts?.skipSources?.includes(source)) {
     return null;
   }
 
@@ -583,21 +292,13 @@ export async function notifyBookingCreated(
     customerName: booking.customer_name,
     bookingId,
     templateKey: "booking_confirmed_v2",
-    botmakerVariables: {
+    variables: {
       firstName: firstName(booking.customer_name),
       service: booking.service_name,
       date: fmtDate(booking.scheduled_date),
       time: fmtTime(booking.scheduled_time),
       address: addressLine(booking),
     },
-    cloudParameters: [
-      firstName(booking.customer_name),
-      booking.service_name,
-      fmtDate(booking.scheduled_date),
-      fmtTime(booking.scheduled_time),
-      addressLine(booking),
-    ],
-    messagePreview: buildBookingConfirmedPreview(booking),
   });
 }
 
@@ -605,7 +306,7 @@ export async function notifyBookingCreated(
 export async function notifyBookingConfirmed(
   admin: SupabaseClient,
   bookingId: string,
-  opts?: { skipSources?: string[]; allowBotmakerSource?: boolean },
+  opts?: { skipSources?: string[] },
 ): Promise<WasheroSendResult | null> {
   return notifyBookingCreated(admin, bookingId, opts);
 }
@@ -651,7 +352,7 @@ export async function notifyTransferInstructions(
     customerName: booking.customer_name,
     bookingId,
     templateKey: BANK_TRANSFER_INFO_TEMPLATE_KEY,
-    botmakerVariables: {
+    variables: {
       customerName: booking.customer_name,
       amount: formatTransferAmount(booking.price),
       alias: bank.alias,
@@ -661,17 +362,6 @@ export async function notifyTransferInstructions(
       date: fmtDate(booking.scheduled_date),
       time: fmtTime(booking.scheduled_time),
     },
-    cloudParameters: [
-      booking.customer_name,
-      formatTransferAmount(booking.price),
-      bank.alias,
-      bank.cbu,
-      bank.holder,
-      bank.bank,
-      fmtDate(booking.scheduled_date),
-      fmtTime(booking.scheduled_time),
-    ],
-    messagePreview: buildTransferInstructionsPreview(booking, bank),
   });
 }
 

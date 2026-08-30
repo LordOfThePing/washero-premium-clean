@@ -1,5 +1,5 @@
 // @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
-// Coverage matching helpers shared by website + botmaker booking paths.
+// Coverage matching helpers shared by website + WhatsApp booking paths.
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type CoverageZone = {

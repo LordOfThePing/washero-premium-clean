@@ -65,7 +65,7 @@ const config: NavItem[] = [
   { title: "Precios", to: "/admin/precios", icon: Tag },
   { title: "Notificaciones", to: "/admin/notificaciones", icon: Bell },
   { title: "WhatsApp Config", to: "/admin/whatsapp-config", icon: MessageCircle },
-  { title: "Botmaker", to: "/admin/botmaker", icon: Bot },
+  { title: "WhatsApp", to: "/admin/whatsapp-events", icon: Bot },
   { title: "Agente WhatsApp", to: "/admin/agente-whatsapp", icon: Sparkles },
   { title: "App Config", to: "/admin/app-config", icon: Cog },
   { title: "Configuración", to: "/admin/configuracion", icon: Settings },

@@ -84,7 +84,7 @@ function WhatsappAgentPage() {
   });
 
   // Delivery here is at-least-once, not exactly-once (see outbound.ts) — 'ambiguous' rows mean we
-  // lost the response before learning whether Botmaker actually sent the message, so they're
+  // lost the response before learning whether the gateway actually sent the message, so they're
   // never auto-retried. This list is that manual-review surface.
   const ambiguous = useQuery({
     queryKey: ["whatsapp_agent_ambiguous_outbound"],
@@ -119,8 +119,8 @@ function WhatsappAgentPage() {
       toast.error(`No se pudo actualizar: ${String((e as Error)?.message ?? e)}`),
   });
 
-  // Goes through the secure whatsapp-agent-manual-retry Edge Function — the browser never calls
-  // Botmaker directly and never mutates the outbound ledger itself. The function creates its own
+  // Goes through the secure whatsapp-agent-manual-retry Edge Function — the browser never sends
+  // WhatsApp messages directly and never mutates the outbound ledger itself. The function creates its own
   // audit row (admin id, timestamp, reason) and never touches the original ambiguous record.
   const retrySend = useMutation({
     mutationFn: async (id: string) => {
@@ -171,7 +171,7 @@ function WhatsappAgentPage() {
           </p>
         </div>
         <Button asChild size="sm" variant="outline">
-          <Link to="/admin/mensajes">Ver mensajes de Botmaker</Link>
+          <Link to="/admin/mensajes">Ver mensajes de WhatsApp</Link>
         </Button>
       </div>
 
@@ -184,9 +184,9 @@ function WhatsappAgentPage() {
           </CardHeader>
           <CardContent>
             <p className="mb-3 text-xs text-muted-foreground">
-              No sabemos con certeza si Botmaker llegó a enviar estos mensajes (se perdió la
+              No sabemos con certeza si el gateway llegó a enviar estos mensajes (se perdió la
               respuesta antes de confirmar). No se reintentan solos para evitar duplicados — revisá
-              manualmente en Botmaker antes de reintentar.
+              manualmente en WhatsApp antes de reintentar.
             </p>
             <ul className="divide-y divide-border/60">
               {(ambiguous.data ?? []).map((row) => (

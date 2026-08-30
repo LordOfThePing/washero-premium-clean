@@ -13,7 +13,7 @@ export type AgentConversationStatus =
 
 export type AgentConversationRow = {
   id: string;
-  botmaker_conversation_id: string | null;
+  inbox_conversation_id: string | null;
   customer_phone: string;
   customer_id: string | null;
   customer_name: string | null;
@@ -51,7 +51,7 @@ export async function getOrCreateAgentConversation(
   opts: {
     customerPhone: string;
     customerName?: string | null;
-    botmakerConversationId?: string | null;
+    inboxConversationId?: string | null;
     isTest?: boolean;
   },
 ): Promise<AgentConversationRow> {
@@ -67,10 +67,10 @@ export async function getOrCreateAgentConversation(
     if (opts.customerName && opts.customerName !== existing.customer_name)
       patch.customer_name = opts.customerName;
     if (
-      opts.botmakerConversationId &&
-      opts.botmakerConversationId !== existing.botmaker_conversation_id
+      opts.inboxConversationId &&
+      opts.inboxConversationId !== existing.inbox_conversation_id
     ) {
-      patch.botmaker_conversation_id = opts.botmakerConversationId;
+      patch.inbox_conversation_id = opts.inboxConversationId;
     }
     const { data: updated } = await admin
       .from("whatsapp_agent_conversations")
@@ -81,15 +81,15 @@ export async function getOrCreateAgentConversation(
     return (updated ?? existing) as AgentConversationRow;
   }
 
-  // A human may already be handling this conversation inside Botmaker/the admin inbox before the
+  // A human may already be handling this conversation inside the admin inbox before the
   // agent ever sees a message for it (production-hardening audit finding #3) — start paused
   // rather than bot_active in that case, instead of racing a reply against an active operator.
   let initialStatus: AgentConversationRow["status"] = "bot_active";
-  if (opts.botmakerConversationId) {
+  if (opts.inboxConversationId) {
     const { data: assignment } = await admin
       .from("conversation_assignments")
       .select("status")
-      .eq("botmaker_conversation_id", opts.botmakerConversationId)
+      .eq("conversation_id", opts.inboxConversationId)
       .maybeSingle();
     if (assignment && assignment.status !== "resolved") {
       initialStatus = "human_active";
@@ -101,7 +101,7 @@ export async function getOrCreateAgentConversation(
     .insert({
       customer_phone: opts.customerPhone,
       customer_name: opts.customerName ?? null,
-      botmaker_conversation_id: opts.botmakerConversationId ?? null,
+      inbox_conversation_id: opts.inboxConversationId ?? null,
       is_test: !!opts.isTest,
       status: initialStatus,
     })
@@ -113,7 +113,7 @@ export async function getOrCreateAgentConversation(
 }
 
 /** Read-only lookup — never creates a row. Used for signals (e.g. a human took over inside
- * Botmaker) that should sync an *existing* conversation but must not spin up a new one for a
+ * n8n) that should sync an *existing* conversation but must not spin up a new one for a
  * phone number the agent was never tracking in the first place. */
 export async function findOpenAgentConversationByPhone(
   admin: SupabaseClient,

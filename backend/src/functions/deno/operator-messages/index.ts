@@ -107,7 +107,7 @@ Deno.serve(async (req) => {
       if (bookingIds.size === 0) return json({ ok: true, conversations: [] });
 
       const { data: convos, error } = await admin
-        .from("botmaker_conversations")
+        .from("whatsapp_conversations")
         .select(
           "id, linked_booking_id, customer_name, last_message, last_message_at, last_sender_type, routing_type, routing_assigned_operator_id, routing_requires_human",
         )
@@ -140,7 +140,7 @@ Deno.serve(async (req) => {
       const conversationId = String(body.conversation_id ?? "").trim();
       if (!conversationId) return json({ ok: false, status: "missing_conversation_id" }, 400);
       const { data: convo, error: convoErr } = await admin
-        .from("botmaker_conversations")
+        .from("whatsapp_conversations")
         .select(
           "id,linked_booking_id,routing_type,routing_assigned_operator_id,routing_requires_human",
         )
@@ -151,7 +151,7 @@ Deno.serve(async (req) => {
         return json({ ok: false, status: "conversation_forbidden" }, 403);
       }
       const { data: messages, error: msgErr } = await admin
-        .from("botmaker_messages")
+        .from("whatsapp_messages")
         .select("id,created_at,direction,sender_type,message_text")
         .eq("conversation_id", conversationId)
         .order("created_at", { ascending: true })

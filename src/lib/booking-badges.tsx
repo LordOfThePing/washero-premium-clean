@@ -22,6 +22,8 @@ export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 export const BOOKING_SOURCES = [
   "website",
   "admin",
+  "whatsapp",
+  "whatsapp_agent",
   "botmaker",
   "manual",
   "subscription",
@@ -49,7 +51,9 @@ export const paymentStatusLabels: Record<string, string> = {
 export const bookingSourceLabels: Record<string, string> = {
   website: "Web",
   admin: "Admin",
-  botmaker: "Botmaker",
+  whatsapp: "WhatsApp",
+  whatsapp_agent: "Agente WhatsApp",
+  botmaker: "Botmaker (histórico)",
   manual: "Manual",
   subscription: "Suscripción",
   admin_subscription: "Suscripción",

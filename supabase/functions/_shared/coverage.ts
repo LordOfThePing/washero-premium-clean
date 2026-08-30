@@ -1,4 +1,4 @@
-// Coverage matching helpers shared by website + botmaker booking paths.
+// Coverage matching helpers shared by website + WhatsApp booking paths.
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 export type CoverageZone = {

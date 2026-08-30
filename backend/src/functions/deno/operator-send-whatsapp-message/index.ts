@@ -1,12 +1,11 @@
 // @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
 import { createClient } from "@supabase/supabase-js";
 import {
-  buildOperatorBotmakerVariables,
-  buildOperatorTemplateLogPreview,
+  buildOperatorWhatsappVariables,
   getOperatorTemplate,
   isOperatorTemplateConfigured,
   parseOperatorWhatsappAction,
-} from "../_shared/botmaker-operator-templates.ts";
+} from "../_shared/whatsapp-operator-templates.ts";
 import { sendTemplateViaTransport } from "../_shared/whatsapp-automation.ts";
 import { getOperatorGate, isStrictOperatorRole } from "../_shared/operator-auth.ts";
 
@@ -107,14 +106,14 @@ Deno.serve(async (req) => {
       {
         ok: false,
         status: "template_not_configured",
-        message: `Plantilla Botmaker "${templateDef.templateKey}" no configurada. Revisá BOTMAKER_CONFIGURED_TEMPLATES.`,
+        message: `Plantilla WhatsApp "${templateDef.templateKey}" no configurada. Revisá WHATSAPP_CONFIGURED_TEMPLATES.`,
         template_key: templateDef.templateKey,
       },
       422,
     );
   }
 
-  const variables = buildOperatorBotmakerVariables(actionKey, {
+  const variables = buildOperatorWhatsappVariables(actionKey, {
     customer_name: String(booking.customer_name ?? ""),
     service_name: booking.service_name,
     scheduled_date: String(booking.scheduled_date ?? today),
@@ -126,31 +125,12 @@ Deno.serve(async (req) => {
     etaMinutes: Number.isFinite(etaMinutes) && etaMinutes > 0 ? Math.round(etaMinutes) : 20,
   });
 
-  const messagePreview = buildOperatorTemplateLogPreview(
-    templateDef.templateKey,
-    String(booking.customer_name ?? ""),
-  );
-
-  // Cloud API templates use ORDER-SENSITIVE body parameters ({{1}}, {{2}}, ...). The order below
-  // must match the approved Meta template for each key — confirm against
-  // docs/n8n-whatsapp-meta-templates.md before switching WASHERO_TRANSPORT=cloud_api.
-  const cloudParameters: Record<string, string[]> = {
-    operator_on_the_way: [variables.firstName, variables.time, variables.etaMinutes ?? ""],
-    operator_arrived_v2: [variables.firstName, variables.address],
-    operator_delayed_v2: [variables.firstName],
-    operator_access_needed: [variables.firstName],
-    operator_wash_completed: [variables.firstName, variables.date, variables.time],
-    operator_payment_reminder: [variables.firstName, variables.totalAmount ?? ""],
-  }[actionKey];
-
   const result = await sendTemplateViaTransport(admin, {
     customerPhone: String(booking.customer_phone ?? ""),
     customerName: String(booking.customer_name ?? ""),
     bookingId: booking.id,
     templateKey: templateDef.templateKey,
-    botmakerVariables: variables,
-    cloudParameters: cloudParameters ?? [variables.firstName],
-    messagePreview,
+    variables,
   });
 
   return json(

@@ -17,9 +17,9 @@ export const config = {
   publicSiteUrl: process.env.PUBLIC_SITE_URL ?? "http://localhost:8000",
   storageDir: process.env.STORAGE_DIR ?? "./storage",
 
-  botmakerApiToken: process.env.BOTMAKER_API_TOKEN ?? "",
-  botmakerAccountId: process.env.BOTMAKER_ACCOUNT_ID ?? "",
-  botmakerWebhookSecret: process.env.BOTMAKER_WEBHOOK_SECRET ?? "",
+  whatsappToolsSecret: process.env.WHATSAPP_TOOLS_SECRET ?? "",
+  n8nWhatsappWebhookUrl: process.env.N8N_WHATSAPP_WEBHOOK_URL ?? "",
+  n8nWhatsappWebhookSecret: process.env.N8N_WHATSAPP_WEBHOOK_SECRET ?? "",
   mercadopagoAccessToken: process.env.MERCADOPAGO_ACCESS_TOKEN ?? "",
   mercadopagoWebhookSecret: process.env.MERCADOPAGO_WEBHOOK_SECRET ?? "",
   vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? "",

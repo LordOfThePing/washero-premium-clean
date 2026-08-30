@@ -18,7 +18,6 @@ import { Route as PublicReservarRouteImport } from './routes/_public.reservar'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminAgenteWhatsappRouteImport } from './routes/admin.agente-whatsapp'
 import { Route as AdminAppConfigRouteImport } from './routes/admin.app-config'
-import { Route as AdminBotmakerRouteImport } from './routes/admin.botmaker'
 import { Route as AdminCalendarioRouteImport } from './routes/admin.calendario'
 import { Route as AdminClientesRouteImport } from './routes/admin.clientes'
 import { Route as AdminComprobantesRouteImport } from './routes/admin.comprobantes'
@@ -36,6 +35,7 @@ import { Route as AdminPreciosRouteImport } from './routes/admin.precios'
 import { Route as AdminReservasRouteImport } from './routes/admin.reservas'
 import { Route as AdminSuscripcionesRouteImport } from './routes/admin.suscripciones'
 import { Route as AdminWhatsappConfigRouteImport } from './routes/admin.whatsapp-config'
+import { Route as AdminWhatsappEventsRouteImport } from './routes/admin.whatsapp-events'
 import { Route as OperatorIndexRouteImport } from './routes/operator.index'
 import { Route as OperatorHoyRouteImport } from './routes/operator.hoy'
 import { Route as OperatorLoginRouteImport } from './routes/operator.login'
@@ -90,11 +90,6 @@ const AdminAgenteWhatsappRoute = AdminAgenteWhatsappRouteImport.update({
 const AdminAppConfigRoute = AdminAppConfigRouteImport.update({
   id: '/app-config',
   path: '/app-config',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminBotmakerRoute = AdminBotmakerRouteImport.update({
-  id: '/botmaker',
-  path: '/botmaker',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminCalendarioRoute = AdminCalendarioRouteImport.update({
@@ -182,6 +177,11 @@ const AdminWhatsappConfigRoute = AdminWhatsappConfigRouteImport.update({
   path: '/whatsapp-config',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminWhatsappEventsRoute = AdminWhatsappEventsRouteImport.update({
+  id: '/whatsapp-events',
+  path: '/whatsapp-events',
+  getParentRoute: () => AdminRoute,
+} as any)
 const OperatorIndexRoute = OperatorIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -248,7 +248,6 @@ export interface FileRoutesByFullPath {
   '/reservar': typeof PublicReservarRoute
   '/admin/agente-whatsapp': typeof AdminAgenteWhatsappRoute
   '/admin/app-config': typeof AdminAppConfigRoute
-  '/admin/botmaker': typeof AdminBotmakerRoute
   '/admin/calendario': typeof AdminCalendarioRoute
   '/admin/clientes': typeof AdminClientesRoute
   '/admin/comprobantes': typeof AdminComprobantesRoute
@@ -266,6 +265,7 @@ export interface FileRoutesByFullPath {
   '/admin/reservas': typeof AdminReservasRoute
   '/admin/suscripciones': typeof AdminSuscripcionesRoute
   '/admin/whatsapp-config': typeof AdminWhatsappConfigRoute
+  '/admin/whatsapp-events': typeof AdminWhatsappEventsRoute
   '/operator/hoy': typeof OperatorHoyRoute
   '/operator/login': typeof OperatorLoginRoute
   '/operator/mensajes': typeof OperatorMensajesRoute
@@ -284,7 +284,6 @@ export interface FileRoutesByTo {
   '/reservar': typeof PublicReservarRoute
   '/admin/agente-whatsapp': typeof AdminAgenteWhatsappRoute
   '/admin/app-config': typeof AdminAppConfigRoute
-  '/admin/botmaker': typeof AdminBotmakerRoute
   '/admin/calendario': typeof AdminCalendarioRoute
   '/admin/clientes': typeof AdminClientesRoute
   '/admin/comprobantes': typeof AdminComprobantesRoute
@@ -302,6 +301,7 @@ export interface FileRoutesByTo {
   '/admin/reservas': typeof AdminReservasRoute
   '/admin/suscripciones': typeof AdminSuscripcionesRoute
   '/admin/whatsapp-config': typeof AdminWhatsappConfigRoute
+  '/admin/whatsapp-events': typeof AdminWhatsappEventsRoute
   '/operator/hoy': typeof OperatorHoyRoute
   '/operator/login': typeof OperatorLoginRoute
   '/operator/mensajes': typeof OperatorMensajesRoute
@@ -325,7 +325,6 @@ export interface FileRoutesById {
   '/_public/reservar': typeof PublicReservarRoute
   '/admin/agente-whatsapp': typeof AdminAgenteWhatsappRoute
   '/admin/app-config': typeof AdminAppConfigRoute
-  '/admin/botmaker': typeof AdminBotmakerRoute
   '/admin/calendario': typeof AdminCalendarioRoute
   '/admin/clientes': typeof AdminClientesRoute
   '/admin/comprobantes': typeof AdminComprobantesRoute
@@ -343,6 +342,7 @@ export interface FileRoutesById {
   '/admin/reservas': typeof AdminReservasRoute
   '/admin/suscripciones': typeof AdminSuscripcionesRoute
   '/admin/whatsapp-config': typeof AdminWhatsappConfigRoute
+  '/admin/whatsapp-events': typeof AdminWhatsappEventsRoute
   '/operator/hoy': typeof OperatorHoyRoute
   '/operator/login': typeof OperatorLoginRoute
   '/operator/mensajes': typeof OperatorMensajesRoute
@@ -367,7 +367,6 @@ export interface FileRouteTypes {
     | '/reservar'
     | '/admin/agente-whatsapp'
     | '/admin/app-config'
-    | '/admin/botmaker'
     | '/admin/calendario'
     | '/admin/clientes'
     | '/admin/comprobantes'
@@ -385,6 +384,7 @@ export interface FileRouteTypes {
     | '/admin/reservas'
     | '/admin/suscripciones'
     | '/admin/whatsapp-config'
+    | '/admin/whatsapp-events'
     | '/operator/hoy'
     | '/operator/login'
     | '/operator/mensajes'
@@ -403,7 +403,6 @@ export interface FileRouteTypes {
     | '/reservar'
     | '/admin/agente-whatsapp'
     | '/admin/app-config'
-    | '/admin/botmaker'
     | '/admin/calendario'
     | '/admin/clientes'
     | '/admin/comprobantes'
@@ -421,6 +420,7 @@ export interface FileRouteTypes {
     | '/admin/reservas'
     | '/admin/suscripciones'
     | '/admin/whatsapp-config'
+    | '/admin/whatsapp-events'
     | '/operator/hoy'
     | '/operator/login'
     | '/operator/mensajes'
@@ -443,7 +443,6 @@ export interface FileRouteTypes {
     | '/_public/reservar'
     | '/admin/agente-whatsapp'
     | '/admin/app-config'
-    | '/admin/botmaker'
     | '/admin/calendario'
     | '/admin/clientes'
     | '/admin/comprobantes'
@@ -461,6 +460,7 @@ export interface FileRouteTypes {
     | '/admin/reservas'
     | '/admin/suscripciones'
     | '/admin/whatsapp-config'
+    | '/admin/whatsapp-events'
     | '/operator/hoy'
     | '/operator/login'
     | '/operator/mensajes'
@@ -545,13 +545,6 @@ declare module '@tanstack/react-router' {
       path: '/app-config'
       fullPath: '/admin/app-config'
       preLoaderRoute: typeof AdminAppConfigRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/botmaker': {
-      id: '/admin/botmaker'
-      path: '/botmaker'
-      fullPath: '/admin/botmaker'
-      preLoaderRoute: typeof AdminBotmakerRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/calendario': {
@@ -673,6 +666,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminWhatsappConfigRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/whatsapp-events': {
+      id: '/admin/whatsapp-events'
+      path: '/whatsapp-events'
+      fullPath: '/admin/whatsapp-events'
+      preLoaderRoute: typeof AdminWhatsappEventsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/operator/': {
       id: '/operator/'
       path: '/'
@@ -775,7 +775,6 @@ const PublicRouteWithChildren =
 interface AdminRouteChildren {
   AdminAgenteWhatsappRoute: typeof AdminAgenteWhatsappRoute
   AdminAppConfigRoute: typeof AdminAppConfigRoute
-  AdminBotmakerRoute: typeof AdminBotmakerRoute
   AdminCalendarioRoute: typeof AdminCalendarioRoute
   AdminClientesRoute: typeof AdminClientesRoute
   AdminComprobantesRoute: typeof AdminComprobantesRoute
@@ -793,6 +792,7 @@ interface AdminRouteChildren {
   AdminReservasRoute: typeof AdminReservasRoute
   AdminSuscripcionesRoute: typeof AdminSuscripcionesRoute
   AdminWhatsappConfigRoute: typeof AdminWhatsappConfigRoute
+  AdminWhatsappEventsRoute: typeof AdminWhatsappEventsRoute
   AdminIndexRoute: typeof AdminIndexRoute
   AdminFacturasInvoiceIdRoute: typeof AdminFacturasInvoiceIdRoute
 }
@@ -800,7 +800,6 @@ interface AdminRouteChildren {
 const AdminRouteChildren: AdminRouteChildren = {
   AdminAgenteWhatsappRoute: AdminAgenteWhatsappRoute,
   AdminAppConfigRoute: AdminAppConfigRoute,
-  AdminBotmakerRoute: AdminBotmakerRoute,
   AdminCalendarioRoute: AdminCalendarioRoute,
   AdminClientesRoute: AdminClientesRoute,
   AdminComprobantesRoute: AdminComprobantesRoute,
@@ -818,6 +817,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminReservasRoute: AdminReservasRoute,
   AdminSuscripcionesRoute: AdminSuscripcionesRoute,
   AdminWhatsappConfigRoute: AdminWhatsappConfigRoute,
+  AdminWhatsappEventsRoute: AdminWhatsappEventsRoute,
   AdminIndexRoute: AdminIndexRoute,
   AdminFacturasInvoiceIdRoute: AdminFacturasInvoiceIdRoute,
 }

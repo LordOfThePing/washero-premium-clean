@@ -1,12 +1,20 @@
 # Washhero — Botmaker → n8n (WhatsApp Cloud API) Transport Cutover
 
-> **Status:** design + prep artifacts on branch `feat/n8n-whatsapp-cloudapi-cutover`. **Nothing deployed.**
+> **Status update:** the Botmaker vendor integration has since been removed from the codebase
+> entirely (no rollback path kept) and the `botmaker_*` tables/functions renamed to `whatsapp_*` /
+> `whatsapp-tools` — see `supabase/migrations/20260901000000_rename_botmaker_to_whatsapp.sql` and
+> `docs/README.backend-shim.md`. The rest of this document is the original design record; treat
+> every `botmaker_*` table/column name and `botmaker-tools`/`botmaker-booking-tools`/
+> `botmaker-webhook` function reference below as historical — the equivalents that still exist are
+> `whatsapp_conversations`/`whatsapp_messages`/`whatsapp_events`, `whatsapp-tools`, and the n8n
+> WhatsApp Trigger (there is no more Supabase-side inbound webhook). `WHATSAPP_TRANSPORT`/
+> `WASHERO_TRANSPORT` toggles described here as future work were never built and are no longer
+> needed — n8n/Cloud API is the only transport.
 >
 > **Scope (locked):** *transport-only swap.* Replace Botmaker as the WhatsApp transport with the
 > **WhatsApp Cloud API driven through n8n**, while preserving Washero's booking business logic,
-> atomic RPCs, the `botmaker_*` tables, and the `/admin/mensajes` inbox. Re-create Meta-approved
-> templates for the Cloud API. Reuse the existing `botmaker_*` schema. Migrate the **same business
-> number** to the Cloud API.
+> atomic RPCs, the inbox tables, and the `/admin/mensajes` inbox. Re-create Meta-approved
+> templates for the Cloud API. Migrate the **same business number** to the Cloud API.
 
 ---
 
@@ -17,13 +25,13 @@ this codebase Botmaker is used in exactly two roles:
 
 1. **Transport** — inbound webhooks, outbound send, template delivery, human-takeover events.
 2. **Conversation state / booking orchestration** — Botmaker's flow builder holds `bk_*` variables
-   and calls the `botmaker-tools` / `botmaker-booking-tools` Edge Functions.
+   and calls the `whatsapp-tools` / `botmaker-booking-tools` Edge Functions.
 
 The booking logic itself (coverage, pricing, slot capacity, atomic RPCs) is **channel-agnostic**
 and lives in Supabase. That logic is the part we must NOT re-implement.
 
 > **Decision taken:** swap **role 1 (transport)** only. Role 2's per-conversation state moves into
-> **n8n (LangChain agent + session memory)**, talking to the **same `botmaker-tools` Edge Function**
+> **n8n (LangChain agent + session memory)**, talking to the **same `whatsapp-tools` Edge Function**
 > for every business fact and mutation. All business rules stay untouched.
 
 ---
@@ -41,14 +49,14 @@ WhatsApp Cloud API (Meta) ── webhook ──▶ n8n "WhatsApp Trigger" node
   │                                            │                                    tables (reused)
   │                                            ▼
   │                          DeepSeek agent (already in n8n workflow)
-  │                            │   calls botmaker-tools Edge Function as tools:
+  │                            │   calls whatsapp-tools Edge Function as tools:
   │                            │      get_services / validate_service_area
   │                            │      get_available_slots / calculate_booking_price
   │                            │      create_booking / list_customer_bookings
   │                            │      cancel_booking / reschedule_booking
   │                            │      request_human_handoff
   │                            ▼
-  │                  ┌────── botmaker-tools (Edge Function) ──────┐
+  │                  ┌────── whatsapp-tools (Edge Function) ──────┐
   │                  │   atomic RPCs + booking-core + coverage... │   (UNCHANGED)
   │                  └────────────────────────────────────────────┘
   │                            │
@@ -64,8 +72,8 @@ n8n sends reply via WhatsApp Cloud API
   `logistic-availability.ts`
 - Atomic RPCs (`create_booking_atomic`, `cancel_booking_atomic`, `reschedule_booking_atomic`)
 - `supabase/functions/_shared/whatsapp-agent/tools.ts` (13 deterministic tools) — the **contract**
-  both Botmaker and now n8n call through `botmaker-tools`
-- `supabase/functions/botmaker-tools/index.ts` — HTTP dispatcher behind a shared secret
+  both Botmaker and now n8n call through `whatsapp-tools`
+- `supabase/functions/whatsapp-tools/index.ts` — HTTP dispatcher behind a shared secret
 - `botmaker_*` tables, `communication_logs`, `conversation_assignments`, admin inbox queries
 
 ### What gets swapped
@@ -103,15 +111,15 @@ n8n sends reply via WhatsApp Cloud API
 - Credentials required:
   - `whatsAppTriggerApi` (Cloud API app Client ID/Secret) — likely already configured for the trigger.
   - `whatsAppApi` — send credential for the Cloud API messages endpoint.
-  - `httpHeaderAuth` — a credential carrying `x-botmaker-tools-secret` used by the HTTP Request
-    nodes that call the `botmaker-tools` Edge Function.
+  - `httpHeaderAuth` — a credential carrying `x-whatsapp-tools-secret` used by the HTTP Request
+    nodes that call the `whatsapp-tools` Edge Function.
   - `deepSeekApi` — already present.
-- The **`botmaker-tools` endpoint** (`https://<project-ref>.supabase.co/functions/v1/botmaker-tools`)
+- The **`whatsapp-tools` endpoint** (`https://<project-ref>.supabase.co/functions/v1/whatsapp-tools`)
   must be reachable from n8n (public HTTPS). Its auth is a shared secret header
-  (`x-botmaker-tools-secret`).
+  (`x-whatsapp-tools-secret`).
 
 ### 3.3 Washero / Supabase
-- `botmaker-tools` deployed with `BOTMAKER_TOOLS_SECRET` set.
+- `whatsapp-tools` deployed with `WHATSAPP_TOOLS_SECRET` set.
 - NO Anthropic key, `WHATSAPP_AGENT_MODE` stays `disabled` (this cutover does **not** use the
   disabled in-house Claude agent path).
 
@@ -121,8 +129,8 @@ n8n sends reply via WhatsApp Cloud API
 
 | # | Deliverable | Owner | Notes |
 |---|-------------|-------|-------|
-| 1 | n8n inbound handler (persist conversation + message) | n8n workflow | Mirrors `botmaker-webhook/index.ts` upserts |
-| 2 | n8n booking agent (DeepSeek + tools → `botmaker-tools`) | n8n workflow | Built on the existing "Whatsapp bot" workflow |
+| 1 | n8n inbound handler (persist conversation + message) | n8n workflow | Mirrors `(retired; n8n receives Meta webhooks directly)/index.ts` upserts |
+| 2 | n8n booking agent (DeepSeek + tools → `whatsapp-tools`) | n8n workflow | Built on the existing "Whatsapp bot" workflow |
 | 3 | n8n outbound send node + template map | n8n workflow | WhatsApp `send` / `sendTemplate` |
 | 4 | Washero edge changes (outbound → Cloud API, channel flag, template dedup) | Washero repo | Targeted, additive |
 | 5 | Meta template re-approval | infra | See `n8n-whatsapp-meta-templates.md` |
@@ -144,7 +152,7 @@ keep working while making it easy to see which transport a row came from during 
 
 ### 5.2 Outbound — centralized n8n gateway (DECIDED: option B)
 Existing callers (`notifyBookingCreated`, `notifyTransferInstructions`, `notifyPaymentConfirmed`,
-`send-booking-reminders`, `operator-send-whatsapp-message`, `send-botmaker-message`) keep their
+`send-booking-reminders`, `operator-send-whatsapp-message`, `send-whatsapp-message`) keep their
 signatures but send **through the n8n "WhatsApp Outbound Gateway" webhook** (`xLrRt4VrVGgFYwko`).
 
 Mechanism (**B**, locked): `_shared/whatsapp-automation.ts`'s `sendTemplateViaTransport` /
@@ -179,7 +187,7 @@ parallel phase is therefore about **readiness/verification**, not dual number de
 
 1. **Build in n8n shadow/test (no real sends).** Import the extended workflow, and run the
    booking-agent path with `executeWorkflow` in **manual/test** mode against a **staging** Supabase
-   (`derjqvlxhtviuqbnyiwv` per the existing docs) pointing at `botmaker-tools`. Verify tool
+   (`derjqvlxhtviuqbnyiwv` per the existing docs) pointing at `whatsapp-tools`. Verify tool
    responses, pricing, coverage, slot filtering, and the **confirm-before-create** guardrail.
 2. **Destination-verify templates** in a Meta test/QA number before approval of the real number.
 3. **Stand up the Cloud API number** in Meta; configure n8n trigger + send; point Meta's webhook at
@@ -207,12 +215,12 @@ parallel phase is therefore about **readiness/verification**, not dual number de
 ## 8. Security & safety notes
 
 - **Never trust client-supplied price/availability.** Every booking mutation goes through
-  `botmaker-tools` → `create_booking_atomic`, which revalidates price/slot/coverage server-side.
+  `whatsapp-tools` → `create_booking_atomic`, which revalidates price/slot/coverage server-side.
   The n8n agent must **not** fabricate prices; it must call `calculate_booking_price`.
 - **Only call `create_booking` after an explicit full-summary confirmation** and pass the WhatsApp
   `confirmation_message_id` so the idempotency key (`buildBookingIdempotencyKey`) prevents doubles.
 - **Ambiguous failures on mutations → human handoff, never blind retry** of `create_booking`.
-- `botmaker-tools` auth is a **shared secret** (`x-botmaker-tools-secret`). Store it in the
+- `whatsapp-tools` auth is a **shared secret** (`x-whatsapp-tools-secret`). Store it in the
   `httpHeaderAuth` n8n credential; never hardcode in the workflow.
 - `communication_logs` `raw_payload` must keep redacting tokens (`sanitizeForLog`). The Cloud API
   send function must never log the access token.

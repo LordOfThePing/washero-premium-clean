@@ -1,5 +1,6 @@
 // @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
-// Shared booking creation logic used by create-website-booking and botmaker-webhook.
+// Shared booking creation logic used by create-website-booking, create-admin-booking,
+// create-subscription-booking, and the WhatsApp booking tools.
 // Uses an admin (service-role) Supabase client; never expose this to clients.
 
 // deno-lint-ignore-file no-explicit-any
@@ -38,7 +39,7 @@ export type CoreBookingInput = {
   payment_method: string;
   notes?: string | null;
   selected_extras?: string[];
-  source: "website" | "botmaker" | "admin" | "whatsapp_agent";
+  source: "website" | "whatsapp" | "admin" | "whatsapp_agent";
   is_test?: boolean;
   // Optional location fields (Google Places)
   place_id?: string | null;
@@ -46,7 +47,7 @@ export type CoreBookingInput = {
   address_lat?: number | null;
   address_lng?: number | null;
   // Coverage policy
-  enforce_coverage?: boolean; // website=true, botmaker/admin=false unless coords provided
+  enforce_coverage?: boolean; // website=true, whatsapp/admin=false unless coords provided
   // Marketing attribution
   marketing_source?: string | null;
   marketing_medium?: string | null;
@@ -62,8 +63,8 @@ export type CoreBookingInput = {
   /** Admin / approval paths only — must match bookings check constraints */
   requested_booking_status?: string;
   requested_payment_status?: string;
-  /** Botmaker audit fields merged into price_breakdown.botmaker */
-  botmaker_meta?: {
+  /** WhatsApp-sourced audit fields merged into price_breakdown.whatsapp */
+  whatsapp_meta?: {
     input_extras?: string;
     normalized_extras?: string[];
     vehicle_code?: string;
@@ -213,7 +214,7 @@ export function serviceCanonicalKey(v: unknown): ServiceCanonicalKey | null {
   return null;
 }
 
-/** Accent/case-insensitive Botmaker + name-based booking service normalization. */
+/** Accent/case-insensitive WhatsApp + name-based booking service normalization. */
 export function normalizeServiceName(raw: string | null | undefined): string {
   const v = repairUtf8Mojibake(String(raw ?? "").trim());
   if (!v) return "";
@@ -1101,8 +1102,8 @@ export async function tryCreateBooking(
       }),
     ],
   };
-  if (input.botmaker_meta && Object.keys(input.botmaker_meta).length) {
-    price_breakdown.botmaker = input.botmaker_meta;
+  if (input.whatsapp_meta && Object.keys(input.whatsapp_meta).length) {
+    price_breakdown.whatsapp = input.whatsapp_meta;
   }
 
   const { data: existing } = await admin
@@ -1198,7 +1199,7 @@ export async function tryCreateBooking(
     allowedStatuses.has(input.requested_booking_status)
   ) {
     booking_status = input.requested_booking_status as typeof booking_status;
-  } else if (input.source === "botmaker" || input.source === "whatsapp_agent") {
+  } else if (input.source === "whatsapp" || input.source === "whatsapp_agent") {
     booking_status = "confirmed";
   } else {
     booking_status = inside_coverage ? "pending" : "needs_review";
@@ -1206,7 +1207,7 @@ export async function tryCreateBooking(
   if (input.source !== "admin" && pricedUnits.some((unit) => unit.vehicle_type === "Otro")) {
     booking_status = "needs_review";
   }
-  if ((input.source === "botmaker" || input.source === "whatsapp_agent") && !inside_coverage) {
+  if ((input.source === "whatsapp" || input.source === "whatsapp_agent") && !inside_coverage) {
     booking_status = "needs_review";
   }
 

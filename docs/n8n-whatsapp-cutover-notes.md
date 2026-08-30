@@ -52,24 +52,24 @@ dedupe across transports.
 Operator operational templates now send through `sendTemplateViaTransport`. Added an ordered
 `cloudParameters` map per operator action key; **the order must match the approved Meta templates**.
 
-## 4a. `supabase/functions/send-botmaker-message/index.ts`
+## 4a. `supabase/functions/send-whatsapp-message/index.ts`
 
 The admin/manual outbound function now sends through `sendTextViaTransport`, so manual sends also
 respect `WASHERO_TRANSPORT`. The `request`/`response` diagnostic fields of the response were removed
 for cross-transport parity (they remain visible in `communication_logs.raw_payload`).
 
-## 5. `supabase/functions/botmaker-tools/index.ts` + migration
+## 5. `supabase/functions/whatsapp-tools/index.ts` + migration
 
 - Payload accepts an optional `transport` field (`botmaker` default | `cloud_api`).
 - `resolveConversationRow` records it if the column exists; falls back gracefully so the endpoint
   keeps working during rollout even before the migration is applied.
 - New migration `supabase/migrations/20260821000000_botmaker_conversation_transport.sql` adds
-  `botmaker_conversations.transport text` (idempotent).
+  `whatsapp_conversations.transport text` (idempotent).
 
 ## 6. What is intentionally NOT changed
 
 - Booking business logic, atomic RPCs, coverage/pricing/slot files — untouched.
-- The 13 tools in `_shared/whatsapp-agent/tools.ts` and the `botmaker-tools` dispatch — untouched.
+- The 13 tools in `_shared/whatsapp-agent/tools.ts` and the `whatsapp-tools` dispatch — untouched.
 - `botmaker_*` tables and `/admin/mensajes` queries — reused as-is (plus the additive `transport` tag).
 - `whatsapp-agent` (Claude) path stays disabled; no Anthropic key.
 
@@ -79,10 +79,10 @@ These are **Deno** modules; this repo's root `tsc` covers only `src/**`, and Den
 in the current environment. Before deploying, run from the functions directory:
 - `deno check supabase/functions/_shared/cloud-api-outbound.ts`
 - `deno check supabase/functions/_shared/whatsapp-automation.ts`
-- `deno check supabase/functions/botmaker-tools/index.ts`
+- `deno check supabase/functions/whatsapp-tools/index.ts`
 - `deno check supabase/functions/send-booking-reminders/index.ts`
 - `deno check supabase/functions/operator-send-whatsapp-message/index.ts`
 
 Then deploy: `supabase functions deploy cloud-api-outbound` is N/A (shared module); deploy the
 functions that import it (`send-booking-reminders`, `operator-send-whatsapp-message`) and re-deploy
-`botmaker-tools`. Apply the migration via `supabase db push` / SQL editor.
+`whatsapp-tools`. Apply the migration via `supabase db push` / SQL editor.

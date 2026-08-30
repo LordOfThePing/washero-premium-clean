@@ -4,7 +4,7 @@
 // Supabase auth session — see manual-retry.integration.test.ts. The Edge Function itself only
 // adds JWT/admin authentication and HTTP plumbing around this.
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
-import { sendBotmakerWhatsApp } from "../botmaker-outbound.ts";
+import { sendWhatsAppMessage } from "../whatsapp-outbound.ts";
 import { classifySendResult, classifyTimeout } from "./outbound.ts";
 
 const OUTBOUND_SEND_TIMEOUT_MS = 20_000; // matches outbound.ts
@@ -96,11 +96,12 @@ export async function retryAmbiguousDelivery(
   let providerMessageId: string | null = null;
   try {
     const result = await withSendTimeout(
-      sendBotmakerWhatsApp(admin, {
+      sendWhatsAppMessage(admin, {
         phone: conversation.customer_phone,
-        message: original.message_text,
-        customer_name: conversation.customer_name ?? undefined,
-        booking_id: conversation.booking_id ?? undefined,
+        kind: "text",
+        text: original.message_text,
+        customerName: conversation.customer_name ?? undefined,
+        bookingId: conversation.booking_id ?? undefined,
       }),
       OUTBOUND_SEND_TIMEOUT_MS,
     );

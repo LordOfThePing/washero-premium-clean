@@ -450,9 +450,9 @@ export type Database = {
           },
         ];
       };
-      botmaker_conversations: {
+      whatsapp_conversations: {
         Row: {
-          botmaker_conversation_id: string | null;
+          external_conversation_id: string | null;
           channel: string | null;
           created_at: string;
           customer_name: string | null;
@@ -468,7 +468,7 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
-          botmaker_conversation_id?: string | null;
+          external_conversation_id?: string | null;
           channel?: string | null;
           created_at?: string;
           customer_name?: string | null;
@@ -484,7 +484,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
-          botmaker_conversation_id?: string | null;
+          external_conversation_id?: string | null;
           channel?: string | null;
           created_at?: string;
           customer_name?: string | null;
@@ -501,36 +501,36 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: "botmaker_conversations_linked_booking_id_fkey";
+            foreignKeyName: "whatsapp_conversations_linked_booking_id_fkey";
             columns: ["linked_booking_id"];
             isOneToOne: false;
             referencedRelation: "bookings";
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "botmaker_conversations_linked_booking_request_id_fkey";
+            foreignKeyName: "whatsapp_conversations_linked_booking_request_id_fkey";
             columns: ["linked_booking_request_id"];
             isOneToOne: false;
             referencedRelation: "booking_requests";
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "botmaker_conversations_linked_customer_id_fkey";
+            foreignKeyName: "whatsapp_conversations_linked_customer_id_fkey";
             columns: ["linked_customer_id"];
             isOneToOne: false;
             referencedRelation: "customers";
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "conversation_assignments_botmaker_conversation_id_fkey";
+            foreignKeyName: "conversation_assignments_conversation_id_fkey";
             columns: ["id"];
             isOneToOne: false;
             referencedRelation: "conversation_assignments";
-            referencedColumns: ["botmaker_conversation_id"];
+            referencedColumns: ["conversation_id"];
           },
         ];
       };
-      botmaker_events: {
+      whatsapp_events: {
         Row: {
           auth_valid: boolean;
           channel: string | null;
@@ -572,9 +572,9 @@ export type Database = {
         };
         Relationships: [];
       };
-      botmaker_messages: {
+      whatsapp_messages: {
         Row: {
-          botmaker_message_id: string | null;
+          external_message_id: string | null;
           channel: string | null;
           conversation_id: string | null;
           created_at: string;
@@ -588,7 +588,7 @@ export type Database = {
           sender_type: string | null;
         };
         Insert: {
-          botmaker_message_id?: string | null;
+          external_message_id?: string | null;
           channel?: string | null;
           conversation_id?: string | null;
           created_at?: string;
@@ -602,7 +602,7 @@ export type Database = {
           sender_type?: string | null;
         };
         Update: {
-          botmaker_message_id?: string | null;
+          external_message_id?: string | null;
           channel?: string | null;
           conversation_id?: string | null;
           created_at?: string;
@@ -617,10 +617,10 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: "botmaker_messages_conversation_id_fkey";
+            foreignKeyName: "whatsapp_messages_conversation_id_fkey";
             columns: ["conversation_id"];
             isOneToOne: false;
-            referencedRelation: "botmaker_conversations";
+            referencedRelation: "whatsapp_conversations";
             referencedColumns: ["id"];
           },
         ];
@@ -744,7 +744,7 @@ export type Database = {
       whatsapp_agent_conversations: {
         Row: {
           booking_id: string | null;
-          botmaker_conversation_id: string | null;
+          inbox_conversation_id: string | null;
           created_at: string;
           customer_id: string | null;
           customer_name: string | null;
@@ -759,7 +759,7 @@ export type Database = {
         };
         Insert: {
           booking_id?: string | null;
-          botmaker_conversation_id?: string | null;
+          inbox_conversation_id?: string | null;
           created_at?: string;
           customer_id?: string | null;
           customer_name?: string | null;
@@ -774,7 +774,7 @@ export type Database = {
         };
         Update: {
           booking_id?: string | null;
-          botmaker_conversation_id?: string | null;
+          inbox_conversation_id?: string | null;
           created_at?: string;
           customer_id?: string | null;
           customer_name?: string | null;
@@ -796,10 +796,10 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "whatsapp_agent_conversations_botmaker_conversation_id_fkey";
-            columns: ["botmaker_conversation_id"];
+            foreignKeyName: "whatsapp_agent_conversations_inbox_conversation_id_fkey";
+            columns: ["inbox_conversation_id"];
             isOneToOne: false;
-            referencedRelation: "botmaker_conversations";
+            referencedRelation: "whatsapp_conversations";
             referencedColumns: ["id"];
           },
           {
@@ -983,7 +983,7 @@ export type Database = {
       conversation_assignments: {
         Row: {
           assigned_to: string | null;
-          botmaker_conversation_id: string;
+          conversation_id: string;
           created_at: string;
           id: string;
           notes: string | null;
@@ -992,7 +992,7 @@ export type Database = {
         };
         Insert: {
           assigned_to?: string | null;
-          botmaker_conversation_id: string;
+          conversation_id: string;
           created_at?: string;
           id?: string;
           notes?: string | null;
@@ -1001,7 +1001,7 @@ export type Database = {
         };
         Update: {
           assigned_to?: string | null;
-          botmaker_conversation_id?: string;
+          conversation_id?: string;
           created_at?: string;
           id?: string;
           notes?: string | null;
@@ -1010,10 +1010,10 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: "conversation_assignments_botmaker_conversation_id_fkey";
-            columns: ["botmaker_conversation_id"];
+            foreignKeyName: "conversation_assignments_conversation_id_fkey";
+            columns: ["conversation_id"];
             isOneToOne: true;
-            referencedRelation: "botmaker_conversations";
+            referencedRelation: "whatsapp_conversations";
             referencedColumns: ["id"];
           },
         ];
@@ -1461,7 +1461,7 @@ export type Database = {
           booking_id: string | null;
           customer_phone: string | null;
           source: string;
-          botmaker_message_id: string | null;
+          whatsapp_message_id: string | null;
           media_url: string | null;
           storage_bucket: string;
           storage_path: string | null;
@@ -1481,7 +1481,7 @@ export type Database = {
           booking_id?: string | null;
           customer_phone?: string | null;
           source?: string;
-          botmaker_message_id?: string | null;
+          whatsapp_message_id?: string | null;
           media_url?: string | null;
           storage_bucket?: string;
           storage_path?: string | null;
@@ -1501,7 +1501,7 @@ export type Database = {
           booking_id?: string | null;
           customer_phone?: string | null;
           source?: string;
-          botmaker_message_id?: string | null;
+          whatsapp_message_id?: string | null;
           media_url?: string | null;
           storage_bucket?: string;
           storage_path?: string | null;

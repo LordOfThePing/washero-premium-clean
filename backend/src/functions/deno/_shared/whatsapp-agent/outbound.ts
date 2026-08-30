@@ -3,30 +3,25 @@
 // audit findings #7 and, later passes, "outbound delivery ambiguity" and "lease ownership through
 // outbound delivery").
 //
-// BOTMAKER API CAPABILITY — researched, not assumed: Botmaker's plain-text send endpoint
-// (/chats-actions/send-message, see botmaker-outbound.ts) accepts chatPlatform/platformContactId/
-// messageText with no documented client-supplied idempotency key or external-reference field, and
-// I could not find (nor access — the full APIv2 reference is behind a logged-in Botmaker account
-// at go.botmaker.com/#/api) any endpoint to look up a previously sent message's delivery status by
-// such a reference. Botmaker's own docs do mention delivery-confirmation webhooks exist for
-// ordering purposes ("wait for delivery confirmation by webhook... before sending the next
-// message"), but this repo does not currently parse a distinct delivery-status event type out of
-// the generic botmaker-webhook payload, and I could not verify the exact event shape without
-// platform access.
+// Every send goes through sendWhatsAppMessage() (../whatsapp-outbound.ts), which POSTs to the n8n
+// "WhatsApp Outbound Gateway" webhook — a plain HTTP call, so the same at-least-once delivery
+// caveat applies as with any webhook-based transport: we cannot tell whether a network failure
+// happened before or after n8n actually sent the message.
 //
 // CONCLUSION: outbound delivery here is AT-LEAST-ONCE, not exactly-once, and this module treats
 // it that way — it does NOT claim reconciliation-based exactly-once delivery. Every send outcome
 // is classified into one of three durable buckets:
-//   'sent'      — Botmaker returned a definite success response. Considered delivered-enough;
+//   'sent'      — the gateway returned a definite success response. Considered delivered-enough;
 //                 never resent.
-//   'failed'    — Botmaker returned a definite error response (a real HTTP status, just not 2xx/
-//                 ok). Nothing was delivered — safe to retry the identical text later.
-//   'ambiguous' — we timed out or the connection failed before any response was received. Botmaker
-//                 may or may not have received/sent the message. NEVER auto-retried — surfaced for
-//                 manual admin review instead (see whatsapp-agent-manual-retry/index.ts and
-//                 /admin/agente-whatsapp). Booking creation itself stays idempotent regardless of
-//                 this classification — see booking-core.ts's idempotency_key, which is entirely
-//                 independent of whether the *confirmation text* delivery is ambiguous.
+//   'failed'    — the gateway returned a definite error response (a real HTTP status, just not
+//                 2xx/ok). Nothing was delivered — safe to retry the identical text later.
+//   'ambiguous' — we timed out or the connection failed before any response was received. The
+//                 gateway may or may not have received/sent the message. NEVER auto-retried —
+//                 surfaced for manual admin review instead (see whatsapp-agent-manual-retry/
+//                 index.ts and /admin/agente-whatsapp). Booking creation itself stays idempotent
+//                 regardless of this classification — see booking-core.ts's idempotency_key,
+//                 which is entirely independent of whether the *confirmation text* delivery is
+//                 ambiguous.
 //
 // TWO CONCURRENCY GUARDS, layered, because two different callers have two different amounts of
 // context available (production-hardening audit — "lease ownership through outbound delivery"):
@@ -34,21 +29,21 @@
 //     atomically transitions the outbound row from 'pending'/'retryable' to 'sending' via a
 //     conditional UPDATE. If that affects zero rows, another concurrent attempt already claimed
 //     it (e.g. two overlapping worker-sweep invocations both trying to retry the same row) — this
-//     attempt backs off immediately without ever calling Botmaker. This guard applies to every
+//     attempt backs off immediately without ever calling the gateway. This guard applies to every
 //     caller, with or without an active job lease.
 //  2. Job-lease guard (only when a job is actively being processed, i.e. the FIRST send attempt
 //     from job-processor.ts — retries from the worker sweep or manual admin action happen *after*
 //     the job that generated the reply is already 'done', so there is no job lease to check by
 //     then, and none is required — see "use the same lease-aware outbound pipeline WHERE
 //     APPLICABLE"). When a job lease is passed, this module re-verifies it immediately before
-//     calling Botmaker (never relying only on the earlier check in orchestrator.ts/
+//     calling the gateway (never relying only on the earlier check in orchestrator.ts/
 //     job-processor.ts) and stamps it onto the row so the final write is also conditioned on it —
 //     an obsolete worker whose lease was reclaimed mid-send cannot overwrite whatever the new
 //     lease holder already recorded. This narrows, but cannot eliminate, the astronomically rare
 //     case of a truly in-flight (uncancellable) fetch completing after reclaim — see module-level
 //     honesty note above: delivery is at-least-once, not exactly-once.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { sendBotmakerWhatsApp } from "../botmaker-outbound.ts";
+import { sendWhatsAppMessage } from "../whatsapp-outbound.ts";
 import { renewLease } from "./job-queue.ts";
 
 // Matches orchestrator.ts's OUTBOUND_SEND_TIMEOUT_MS (kept as an independent constant here to
@@ -79,12 +74,14 @@ function withSendTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId)) as Promise<T>;
 }
 
-/** The subset of SendBotmakerMessageResult this module's classification cares about. */
+/** The subset of SendCloudMessageResult this module's classification cares about. */
 export type ClassifiableSendResult = {
   ok: boolean;
   status?: string;
   error?: string | null;
-  response?: { status: number } | null;
+  /** See SendCloudMessageResult.httpResponded: true once the gateway actually returned an HTTP
+   * response, as opposed to a network error/timeout where delivery is unknowable. */
+  httpResponded?: boolean;
 };
 
 export type SendClassification = {
@@ -105,12 +102,12 @@ export function classifySendResult(result: ClassifiableSendResult): SendClassifi
   }
 
   // Two kinds of definite (non-ambiguous) failure:
-  //  - "skipped": sendBotmakerWhatsApp never even attempted a network call (invalid phone, empty
-  //    message, missing token) — nothing was sent, no ambiguity possible.
-  //  - a real HTTP response, even an error one: Botmaker definitely responded.
-  // Anything else (network error with no response, status 0/absent) is NOT definite — the
-  // request may have reached Botmaker before the connection dropped.
-  const gotDefiniteResponse = result.status === "skipped" || (result.response?.status ?? 0) > 0;
+  //  - "skipped": sendWhatsAppMessage never even attempted a network call (invalid phone, empty
+  //    message, missing gateway config) — nothing was sent, no ambiguity possible.
+  //  - a real HTTP response, even an error one: the gateway definitely responded.
+  // Anything else (network error with no response, timeout) is NOT definite — the request may
+  // have reached the gateway before the connection dropped.
+  const gotDefiniteResponse = result.status === "skipped" || result.httpResponded === true;
   if (gotDefiniteResponse) {
     return { dbStatus: "retryable", outcome: "failed", error: result.error ?? "unknown_error" };
   }
@@ -223,12 +220,12 @@ async function attemptSend(
 ): Promise<SendAgentReplyResult> {
   // Guard 2 (job-lease path only): immediate, re-verified-here ownership check — never rely only
   // on a check performed earlier in the orchestrator/job-processor. An obsolete worker must not
-  // reach the Botmaker call at all.
+  // reach the send call at all.
   if (opts.jobLease) {
     const stillOwns = await renewLease(admin, opts.jobLease.jobId, opts.jobLease.leaseToken);
     if (!stillOwns) {
       console.warn(
-        "[whatsapp-agent/outbound] lease lost immediately before send — refusing to call Botmaker",
+        "[whatsapp-agent/outbound] lease lost immediately before send — refusing to send",
         {
           job_id: opts.jobLease.jobId,
         },
@@ -239,7 +236,7 @@ async function attemptSend(
 
   // Guard 1 (always): atomic claim. Two concurrent attempts at the same row (e.g. overlapping
   // worker-sweep invocations both retrying the same 'retryable' row) can't both proceed — only
-  // the one whose UPDATE actually matches a row moves on to call Botmaker.
+  // the one whose UPDATE actually matches a row moves on to send.
   const claimUpdate: Record<string, unknown> = { status: "sending" };
   if (opts.jobLease) claimUpdate.lease_token = opts.jobLease.leaseToken;
   const { data: claimed, error: claimErr } = await admin
@@ -264,11 +261,12 @@ async function attemptSend(
   let providerMessageId: string | null = null;
   try {
     const result = await withSendTimeout(
-      sendBotmakerWhatsApp(admin, {
+      sendWhatsAppMessage(admin, {
         phone: opts.phone,
-        message: opts.text,
-        customer_name: opts.customerName ?? undefined,
-        booking_id: opts.bookingId ?? undefined,
+        kind: "text",
+        text: opts.text,
+        customerName: opts.customerName ?? undefined,
+        bookingId: opts.bookingId ?? undefined,
       }),
       OUTBOUND_SEND_TIMEOUT_MS,
     );

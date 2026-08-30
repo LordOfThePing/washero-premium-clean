@@ -1,7 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { Loader2, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
-import { sendBotmakerMessage } from "@/lib/botmaker-notifications";
+import { sendWhatsappMessage } from "@/lib/whatsapp-notifications";
 import type { Booking } from "@/components/admin/bookings";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,7 +20,7 @@ const TEMPLATES = [
 export function BookingWhatsAppActions({ booking }: { booking: Booking }) {
   const send = useMutation({
     mutationFn: (template_key: string) =>
-      sendBotmakerMessage({
+      sendWhatsappMessage({
         booking_id: booking.id,
         phone: booking.customer_phone,
         customer_name: booking.customer_name,
@@ -29,14 +29,14 @@ export function BookingWhatsAppActions({ booking }: { booking: Booking }) {
     onSuccess: (r, template_key) => {
       if (!r.ok) {
         const msg =
-          r.error === "missing_botmaker_token"
-            ? "WhatsApp no configurado: falta BOTMAKER_API_TOKEN en el servidor."
+          r.error === "missing_n8n_gateway_config"
+            ? "WhatsApp no configurado: falta N8N_WHATSAPP_WEBHOOK_URL/SECRET en el servidor."
             : r.error ?? "No se pudo enviar el WhatsApp.";
         toast.error(msg);
         return;
       }
       const label = TEMPLATES.find((t) => t.key === template_key)?.label ?? "Mensaje";
-      toast.success(`${label} enviado por Botmaker.`);
+      toast.success(`${label} enviado.`);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -45,7 +45,7 @@ export function BookingWhatsAppActions({ booking }: { booking: Booking }) {
 
   return (
     <div className="space-y-2 border-t pt-3">
-      <p className="text-xs font-medium text-muted-foreground">WhatsApp (Botmaker)</p>
+      <p className="text-xs font-medium text-muted-foreground">WhatsApp</p>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button type="button" size="sm" variant="outline" disabled={send.isPending}>

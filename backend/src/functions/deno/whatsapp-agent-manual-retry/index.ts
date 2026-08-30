@@ -1,8 +1,8 @@
 // @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
 // Secure server-side endpoint for manually retrying an AMBIGUOUS outbound delivery (production-
-// hardening audit — "ambiguous delivery review and manual retry"). The frontend must never call
-// Botmaker directly and must never silently flip an outbound row's status — this function is the
-// only path allowed to do either. Core retry logic lives in
+// hardening audit — "ambiguous delivery review and manual retry"). The frontend must never send
+// WhatsApp messages directly and must never silently flip an outbound row's status — this
+// function is the only path allowed to do either. Core retry logic lives in
 // _shared/whatsapp-agent/manual-retry.ts (testable without a live HTTP server); this file only
 // adds JWT/admin authentication and HTTP plumbing around it.
 import { createClient } from "@supabase/supabase-js";

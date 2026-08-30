@@ -11,7 +11,7 @@ export type PaymentReceiptRow = {
   booking_id: string | null;
   customer_phone: string | null;
   source: string;
-  botmaker_message_id: string | null;
+  whatsapp_message_id: string | null;
   media_url: string | null;
   storage_bucket: string;
   storage_path: string | null;

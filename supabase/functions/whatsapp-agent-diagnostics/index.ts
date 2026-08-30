@@ -25,7 +25,7 @@ import {
 import { enqueueJob } from "../_shared/whatsapp-agent/job-queue.ts";
 import { runJobProcessingLoop } from "../_shared/whatsapp-agent/job-processor.ts";
 import { getAgentMode, isPhoneEligibleForAgent } from "../_shared/whatsapp-agent/agent-mode.ts";
-import { normalizeArgentinaWhatsAppPhone } from "../_shared/botmaker-outbound.ts";
+import { normalizeArgentinaWhatsAppPhone } from "../_shared/whatsapp-outbound.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

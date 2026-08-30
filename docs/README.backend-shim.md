@@ -188,10 +188,10 @@ SUPABASE_SERVICE_ROLE_KEY=<SERVICE_ROLE_KEY from backend/.env>
   list (e.g. full-text search, `cs`/`cd` array containment beyond the basics) will need a
   small addition to `backend/src/rest/query-builder.ts`.
 - **Some edge functions are faithful ports but still depend on external services**
-  (Botmaker, MercadoPago, web-push/VAPID, Google Maps/Sheets) that need real secrets in
-  `backend/.env` to actually do anything — they were not re-tested against those live
-  services here, only type-checked and load-tested for wiring (no 404s, correct auth
-  gating).
+  (the n8n WhatsApp Outbound Gateway, MercadoPago, web-push/VAPID, Google Maps/Sheets) that
+  need real secrets in `backend/.env` to actually do anything — they were not re-tested
+  against those live services here, only type-checked and load-tested for wiring (no 404s,
+  correct auth gating).
 - Any function directory under `supabase/functions/*` that has no corresponding
   `backend/src/functions/deno/<name>/index.ts` responds `501 not_implemented` with a
   clear message instead of a 404 — grep `backend/src/functions/deno` to confirm every

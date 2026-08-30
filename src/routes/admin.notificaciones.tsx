@@ -8,10 +8,10 @@ import {
   communicationLogPhone,
   communicationLogStatus,
   communicationLogTemplate,
-  fetchBotmakerDiagnostics,
+  fetchWhatsappDiagnostics,
   sendBookingReminders,
-  sendBotmakerMessage,
-} from "@/lib/botmaker-notifications";
+  sendWhatsappMessage,
+} from "@/lib/whatsapp-notifications";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -117,8 +117,8 @@ function NotificacionesPage() {
   const [testMessage, setTestMessage] = useState("Hola 👋 Mensaje de prueba desde Washero.");
 
   const diagnostics = useQuery({
-    queryKey: ["botmaker", "diagnostics", "status"],
-    queryFn: fetchBotmakerDiagnostics,
+    queryKey: ["whatsapp", "diagnostics", "status"],
+    queryFn: fetchWhatsappDiagnostics,
   });
 
   const logs = useQuery({
@@ -128,7 +128,6 @@ function NotificacionesPage() {
         .from("communication_logs")
         .select("*")
         .eq("channel", "whatsapp")
-        .eq("provider", "botmaker")
         .eq("direction", "outbound")
         .order("created_at", { ascending: false })
         .limit(100);
@@ -155,7 +154,7 @@ function NotificacionesPage() {
 
   const testSend = useMutation({
     mutationFn: () =>
-      sendBotmakerMessage({
+      sendWhatsappMessage({
         phone: testPhone.trim(),
         message: testMessage.trim(),
         template_key: "manual_test",
@@ -163,12 +162,12 @@ function NotificacionesPage() {
     onSuccess: (r) => {
       if (!r.ok) {
         const msg =
-          r.error === "missing_botmaker_token"
-            ? "Falta BOTMAKER_API_TOKEN en el servidor."
+          r.error === "missing_n8n_gateway_config"
+            ? "Falta N8N_WHATSAPP_WEBHOOK_URL/SECRET en el servidor."
             : r.error ?? "No se pudo enviar.";
         toast.error(msg);
       } else {
-        toast.success("Mensaje enviado por Botmaker.");
+        toast.success("Mensaje enviado.");
       }
       qc.invalidateQueries({ queryKey: ["communication_logs"] });
       diagnostics.refetch();
@@ -177,7 +176,7 @@ function NotificacionesPage() {
   });
 
   const d = diagnostics.data;
-  const tokenOk = d?.botmaker_api_token_configured ?? false;
+  const gatewayOk = !!(d?.gateway_url_configured && d?.gateway_secret_configured);
 
   return (
     <div className="space-y-6">
@@ -186,18 +185,18 @@ function NotificacionesPage() {
           <Bell className="h-5 w-5" /> Notificaciones WhatsApp
         </h1>
         <p className="text-sm text-muted-foreground">
-          Automatización saliente vía Botmaker. Los fallos no bloquean reservas ni pagos.
+          Automatización saliente vía el gateway de n8n. Los fallos no bloquean reservas ni pagos.
         </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Token Botmaker API</CardTitle>
+            <CardTitle className="text-sm font-medium">Gateway n8n</CardTitle>
           </CardHeader>
           <CardContent>
-            <Badge variant={tokenOk ? "default" : "destructive"}>
-              {tokenOk ? "Configurado" : "No configurado"}
+            <Badge variant={gatewayOk ? "default" : "destructive"}>
+              {gatewayOk ? "Configurado" : "No configurado"}
             </Badge>
           </CardContent>
         </Card>
@@ -219,68 +218,13 @@ function NotificacionesPage() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Webhook entrante</CardTitle>
+            <CardTitle className="text-sm font-medium">Conversaciones</CardTitle>
           </CardHeader>
-          <CardContent>
-            <Badge variant={d?.secret_configured ? "default" : "secondary"}>
-              {d?.secret_configured ? "Secreto OK" : "Sin secreto"}
-            </Badge>
+          <CardContent className="text-2xl font-semibold">
+            {d?.inbox?.conversations ?? "—"}
           </CardContent>
         </Card>
       </div>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Configuración template Botmaker</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-1 text-xs text-muted-foreground">
-          <p>
-            Base URL: <code>{d?.outbound_whatsapp?.template_base_url ?? "—"}</code>
-          </p>
-          <p>
-            Path: <code>{d?.outbound_whatsapp?.template_send_path ?? "—"}</code>
-          </p>
-          <p>
-            Modo: <code>{d?.outbound_whatsapp?.template_send_mode ?? "—"}</code>
-          </p>
-          <p>
-            Channel ID:{" "}
-            <code>{d?.outbound_whatsapp?.channel_id ?? "—"}</code>
-            {!d?.outbound_whatsapp?.channel_id_configured && (
-              <span className="ml-2 text-amber-700 dark:text-amber-400">(falta BOTMAKER_CHANNEL_ID)</span>
-            )}
-          </p>
-        </CardContent>
-      </Card>
-
-      {d?.outbound_whatsapp?.last_template_sent && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Último template enviado</CardTitle>
-            <CardDescription>
-              {new Date(d.outbound_whatsapp.last_template_sent.created_at).toLocaleString("es-AR")}
-              {d.outbound_whatsapp.last_template_sent.template_key
-                ? ` · ${d.outbound_whatsapp.last_template_sent.template_key}`
-                : ""}
-              {d.outbound_whatsapp.last_template_sent.send_mode
-                ? ` · ${d.outbound_whatsapp.last_template_sent.send_mode}`
-                : ""}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="text-sm">
-            {d.outbound_whatsapp.last_template_sent.message_preview && (
-              <p className="mb-2 whitespace-pre-wrap text-muted-foreground">
-                {d.outbound_whatsapp.last_template_sent.message_preview}
-              </p>
-            )}
-            <HttpDebugCollapsible
-              request={(d.outbound_whatsapp.last_template_sent.request as HttpDebugBlock | null) ?? null}
-              response={(d.outbound_whatsapp.last_template_sent.response as HttpDebugBlock | null) ?? null}
-              label="Ver request/response del template"
-            />
-          </CardContent>
-        </Card>
-      )}
 
       {d?.outbound_whatsapp?.last_sent && (
         <Card>
@@ -309,7 +253,7 @@ function NotificacionesPage() {
         <CardContent>
           <Button
             type="button"
-            disabled={reminders.isPending || !tokenOk}
+            disabled={reminders.isPending || !gatewayOk}
             onClick={() => reminders.mutate()}
           >
             {reminders.isPending ? (
@@ -319,9 +263,9 @@ function NotificacionesPage() {
             )}
             Enviar recordatorios de mañana
           </Button>
-          {!tokenOk && (
+          {!gatewayOk && (
             <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-              Configurá <code>BOTMAKER_API_TOKEN</code> en Supabase para habilitar envíos.
+              Configurá <code>N8N_WHATSAPP_WEBHOOK_URL</code> / <code>N8N_WHATSAPP_WEBHOOK_SECRET</code> en Supabase para habilitar envíos.
             </p>
           )}
         </CardContent>
@@ -330,7 +274,7 @@ function NotificacionesPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Prueba manual</CardTitle>
-          <CardDescription>Envía un mensaje de prueba vía Botmaker (no expone el token).</CardDescription>
+          <CardDescription>Envía un mensaje de prueba vía el gateway de n8n (no expone secretos).</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 max-w-lg">
           <div className="space-y-1">
@@ -379,31 +323,6 @@ function NotificacionesPage() {
           </CardHeader>
           <CardContent className="text-sm">
             <p className="text-destructive">{d.outbound_whatsapp.last_failed.error ?? "Error desconocido"}</p>
-            <HttpDebugCollapsible
-              request={(d.outbound_whatsapp.last_failed.request as HttpDebugBlock | null) ?? null}
-              response={(d.outbound_whatsapp.last_failed.response as HttpDebugBlock | null) ?? null}
-            />
-          </CardContent>
-        </Card>
-      )}
-
-      {d?.outbound_whatsapp?.last_template_failed && (
-        <Card className="border-destructive/40">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base text-destructive">Último error de template</CardTitle>
-            <CardDescription>
-              {new Date(d.outbound_whatsapp.last_template_failed.created_at).toLocaleString("es-AR")}
-              {d.outbound_whatsapp.last_template_failed.template_key
-                ? ` · ${d.outbound_whatsapp.last_template_failed.template_key}`
-                : ""}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="text-sm">
-            <p className="text-destructive">{d.outbound_whatsapp.last_template_failed.error ?? "Error desconocido"}</p>
-            <HttpDebugCollapsible
-              request={(d.outbound_whatsapp.last_template_failed.request as HttpDebugBlock | null) ?? null}
-              response={(d.outbound_whatsapp.last_template_failed.response as HttpDebugBlock | null) ?? null}
-            />
           </CardContent>
         </Card>
       )}
@@ -422,11 +341,6 @@ function NotificacionesPage() {
                     {f.template_key ? ` · ${f.template_key}` : ""}
                   </span>
                   <p className="text-destructive">{f.error ?? "Error desconocido"}</p>
-                  <HttpDebugCollapsible
-                    request={(f.request as HttpDebugBlock | null) ?? null}
-                    response={(f.response as HttpDebugBlock | null) ?? null}
-                    label="Ver request/response"
-                  />
                 </li>
               ))}
             </ul>

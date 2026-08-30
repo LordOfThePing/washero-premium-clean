@@ -1,9 +1,9 @@
 // @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
 // Human handoff state machine for the WhatsApp agent.
 //
-// Reuses the existing conversation_assignments table (the same one the legacy Botmaker inbox
-// already surfaces in /admin/mensajes) so a human handoff from the new agent shows up in the
-// operator/admin UI operators already use — no separate handoff queue.
+// Reuses the existing conversation_assignments table (the same one /admin/mensajes already
+// surfaces) so a human handoff from the agent shows up in the operator/admin UI operators
+// already use — no separate handoff queue.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AgentConversationRow, AgentConversationStatus } from "./state.ts";
 
@@ -22,9 +22,9 @@ export async function requestHumanHandoff(
     .update({ status: "human_requested", last_activity_at: new Date().toISOString() })
     .eq("id", conversation.id);
 
-  if (!conversation.botmaker_conversation_id) {
+  if (!conversation.inbox_conversation_id) {
     console.warn(
-      "[whatsapp-agent/handoff] no botmaker_conversation_id to link — handoff recorded on agent conversation only",
+      "[whatsapp-agent/handoff] no inbox_conversation_id to link — handoff recorded on agent conversation only",
       {
         conversation_id: conversation.id,
         reason,
@@ -36,7 +36,7 @@ export async function requestHumanHandoff(
   const { data: existing } = await admin
     .from("conversation_assignments")
     .select("id,status,notes")
-    .eq("botmaker_conversation_id", conversation.botmaker_conversation_id)
+    .eq("conversation_id", conversation.inbox_conversation_id)
     .maybeSingle();
 
   const note = `[Agente WhatsApp] Derivado a humano: ${reason}`;
@@ -51,7 +51,7 @@ export async function requestHumanHandoff(
     }
   } else {
     await admin.from("conversation_assignments").insert({
-      botmaker_conversation_id: conversation.botmaker_conversation_id,
+      conversation_id: conversation.inbox_conversation_id,
       status: "open",
       notes: note,
     });

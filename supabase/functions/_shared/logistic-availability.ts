@@ -1,4 +1,4 @@
-// Shared logistic availability (used by get-logistic-availability and botmaker-get-availability).
+// Shared logistic availability (used by get-logistic-availability and the WhatsApp booking tools).
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import {
   resolveLogisticBookingDurationMinutes,

@@ -60,7 +60,7 @@ type Payload = {
   payment_method?: string;
   payment_status?: string;
   booking_status?: string;
-  booking_source?: "admin" | "botmaker";
+  booking_source?: "admin" | "whatsapp";
   notes?: string | null;
   selected_extras?: string[];
   place_id?: string | null;
@@ -105,8 +105,8 @@ Deno.serve(async (req) => {
     }, 400);
   }
 
-  const booking_source = body.booking_source === "botmaker" ? "botmaker" : "admin";
-  const coreSource = booking_source === "botmaker" ? "botmaker" : "admin";
+  const booking_source = body.booking_source === "whatsapp" ? "whatsapp" : "admin";
+  const coreSource = booking_source === "whatsapp" ? "whatsapp" : "admin";
 
   const hasCoverageCoords =
     !!body.place_id ||
@@ -157,13 +157,13 @@ Deno.serve(async (req) => {
   }
 
   if (body.conversation_id) {
-    await admin.from("botmaker_conversations").update({
+    await admin.from("whatsapp_conversations").update({
       linked_booking_id: bookingId,
     }).eq("id", body.conversation_id);
   }
 
   scheduleBookingCreatedWhatsApp(admin, bookingId, {
-    skipSources: ["botmaker"],
+    skipSources: ["whatsapp"],
   });
   if ((body.payment_status ?? "pending") === "paid") {
     schedulePaymentConfirmedWhatsApp(admin, bookingId);
