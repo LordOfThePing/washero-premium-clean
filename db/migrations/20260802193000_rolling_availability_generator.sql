@@ -27,7 +27,22 @@
 --   select cron.unschedule(jobid) from cron.job where jobname = 'washero-generate-availability';
 --   drop function if exists public.generate_availability_slots(integer, date);
 
-create extension if not exists pg_cron;
+-- Self-hosted note: the Supabase postgres image only allows `create extension pg_cron` inside
+-- a database literally named "postgres" (a hardcoded restriction independent of the
+-- cron.database_name GUC), which this stack's "washero" database isn't. Rather than fail the
+-- whole migration over an optional scheduling nicety, this is best-effort: if pg_cron can't be
+-- installed here, generate_availability_slots() still gets created and seeded below, and you
+-- need an external periodic trigger instead (host crontab running
+-- `psql ... -c "select public.generate_availability_slots(97);"`, or an n8n Schedule Trigger
+-- workflow calling the same). See selfhost/scripts/migrate.sh's RUN_OPTIONAL_SCHEDULES for the
+-- older bash-based equivalent of this same gate.
+do $pgcron$
+begin
+  create extension if not exists pg_cron;
+exception when others then
+  raise warning 'pg_cron unavailable (%), skipping schedule -- see comment above generate_availability_slots for the self-hosted alternative.', sqlerrm;
+end;
+$pgcron$;
 
 create or replace function public.generate_availability_slots(
   p_days integer default 90,
@@ -84,9 +99,15 @@ grant execute on function public.generate_availability_slots(integer, date) to s
 -- Seed the current window immediately, then keep it topped up every night.
 select public.generate_availability_slots(97);
 
-select cron.unschedule(jobid) from cron.job where jobname = 'washero-generate-availability';
-select cron.schedule(
-  'washero-generate-availability',
-  '10 6 * * *',
-  $job$ select public.generate_availability_slots(97); $job$
-);
+do $schedule$
+begin
+  perform cron.unschedule(jobid) from cron.job where jobname = 'washero-generate-availability';
+  perform cron.schedule(
+    'washero-generate-availability',
+    '10 6 * * *',
+    $job$ select public.generate_availability_slots(97); $job$
+  );
+exception when others then
+  raise warning 'pg_cron scheduling skipped (%) -- set up an external periodic trigger for generate_availability_slots(97) instead.', sqlerrm;
+end;
+$schedule$;
