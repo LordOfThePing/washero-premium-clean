@@ -1,0 +1,60 @@
+name: Deploy to Cloudflare Pages
+
+# Bypasses Cloudflare Pages' native GitHub App integration entirely (which needs the app
+# granted access to this repo in GitHub's UI) -- this workflow only needs a Cloudflare API
+# token, set as a repo secret. Push to main deploys production; any other branch/PR gets a
+# Cloudflare Pages preview deployment (wrangler picks production vs. preview automatically
+# based on the branch name).
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          # VITE_ vars are bundled into the client JS -- not secret, but still supplied via
+          # repo Variables/Secrets so real values never live in this file. Add/remove to match
+          # .env.example.
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_ANON_KEY: ${{ vars.VITE_ANON_KEY }}
+          VITE_GOOGLE_MAPS_PUBLIC_KEY: ${{ vars.VITE_GOOGLE_MAPS_PUBLIC_KEY }}
+          VITE_WEB_PUSH_PUBLIC_KEY: ${{ vars.VITE_WEB_PUSH_PUBLIC_KEY }}
+          VITE_GOOGLE_ADS_ID: ${{ vars.VITE_GOOGLE_ADS_ID }}
+          VITE_GOOGLE_ADS_BOOKING_CONVERSION_LABEL: ${{ vars.VITE_GOOGLE_ADS_BOOKING_CONVERSION_LABEL }}
+          VITE_GOOGLE_ADS_PAYMENT_CONVERSION_LABEL: ${{ vars.VITE_GOOGLE_ADS_PAYMENT_CONVERSION_LABEL }}
+          VITE_ADDRESS_FIRST_BOOKING: ${{ vars.VITE_ADDRESS_FIRST_BOOKING }}
+          VITE_ADDRESS_FIRST_ENABLED: ${{ vars.VITE_ADDRESS_FIRST_ENABLED }}
+          # Also read server-side by src/integrations/db/auth-middleware.ts during the SSR build.
+          API_URL: ${{ vars.VITE_API_URL }}
+          ANON_KEY: ${{ vars.VITE_ANON_KEY }}
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=washero
