@@ -18,6 +18,10 @@ services:
     # postgresql-*-cron apt package works too if you'd rather not depend on this image.
     image: public.ecr.aws/supabase/postgres:17.6.1.143
     restart: unless-stopped
+    # pg_cron defaults to expecting jobs scheduled from a database named "postgres" (its
+    # cron.database_name GUC) -- we use "washero" as the actual db name, so this has to be
+    # pointed at it explicitly or `create extension pg_cron` / `cron.schedule(...)` fail.
+    command: ["postgres", "-c", "cron.database_name=washero"]
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in a root .env}
       POSTGRES_DB: washero
