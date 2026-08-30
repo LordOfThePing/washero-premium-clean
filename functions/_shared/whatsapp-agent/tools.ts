@@ -786,6 +786,234 @@ const rescheduleBooking: ToolDefinition = {
 };
 
 // ---------------------------------------------------------------------------
+// list_coverage_zones
+// ---------------------------------------------------------------------------
+const listCoverageZones: ToolDefinition = {
+  name: "list_coverage_zones",
+  kind: "read_only",
+  description:
+    "Lista los barrios/zonas y barrios privados que Washero cubre actualmente. Usalo cuando el cliente pregunta en general qué zonas cubrís, en vez de validar una dirección puntual (para eso usá validate_service_area).",
+  input_schema: { type: "object", properties: {} },
+  execute: async (admin) => {
+    const zones = await loadActiveZones(admin);
+    const { data: privateNeighborhoods } = await admin
+      .from("private_neighborhoods")
+      .select("name")
+      .eq("active", true)
+      .order("name");
+    return {
+      ok: true,
+      zones: zones
+        .slice()
+        .sort((a, b) => a.display_order - b.display_order)
+        .map((z) => z.name),
+      private_neighborhoods: (privateNeighborhoods ?? []).map((r) => (r as { name: string }).name),
+    };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// update_booking
+// ---------------------------------------------------------------------------
+const updateBooking: ToolDefinition = {
+  name: "update_booking",
+  kind: "mutation",
+  description:
+    "Cambia el servicio, tipo de vehículo y/o dirección de una reserva existente del cliente (NO la fecha/horario — para eso usá reschedule_booking). Recalcula el precio automáticamente. Confirmá el nuevo resumen (y el nuevo precio) con el cliente antes de llamarlo. Solo funciona sobre reservas propias, no completadas ni canceladas.",
+  input_schema: {
+    type: "object",
+    properties: {
+      booking_id: { type: "string" },
+      service_id: { type: "string" },
+      service_name: { type: "string" },
+      vehicle_type: { type: "string", enum: VEHICLE_TYPES as unknown as string[] },
+      address: { type: "string" },
+      neighborhood: { type: "string", description: "Requerido si cambiás address." },
+    },
+    required: ["booking_id"],
+  },
+  execute: async (admin, args, ctx) => {
+    const booking_id = str(args.booking_id);
+    if (!booking_id) return badArgs("Falta booking_id.");
+
+    const { data: booking, error: fetchErr } = await admin
+      .from("bookings")
+      .select("id,customer_phone,service_name,vehicle_type,address,neighborhood,booking_status")
+      .eq("id", booking_id)
+      .eq("customer_phone", ctx.customerPhone)
+      .maybeSingle();
+    if (fetchErr) return { ok: false, error: "server_error" };
+    if (!booking) return { ok: false, error: "not_found" };
+    if (["completed", "cancelled"].includes(String(booking.booking_status))) {
+      return { ok: false, error: "invalid_status", booking_status: booking.booking_status };
+    }
+
+    const newAddress = str(args.address) || undefined;
+    const newNeighborhood = str(args.neighborhood) || undefined;
+    if (newAddress && !newNeighborhood && !booking.neighborhood) {
+      return badArgs("Falta neighborhood para validar la nueva dirección.");
+    }
+
+    const update: Record<string, unknown> = {};
+
+    if (newNeighborhood) {
+      const zones = await loadActiveZones(admin);
+      const match = matchZone(zones, { neighborhood: newNeighborhood });
+      if (!match.zone) {
+        return { ok: false, error: "out_of_coverage", neighborhood: newNeighborhood };
+      }
+      update.neighborhood = newNeighborhood;
+    }
+    if (newAddress) update.address = newAddress;
+
+    const serviceId = str(args.service_id);
+    const serviceName = str(args.service_name);
+    const vehicleType = str(args.vehicle_type) || booking.vehicle_type;
+    if (args.vehicle_type && !(VEHICLE_TYPES as readonly string[]).includes(vehicleType)) {
+      return badArgs("vehicle_type inválido.");
+    }
+
+    let newPrice: number | undefined;
+    let resolvedServiceName: string | undefined;
+    if (serviceId || serviceName || args.vehicle_type) {
+      const lookup = await resolveActiveServiceLookup(
+        admin,
+        { service_id: serviceId, service_name: serviceName || booking.service_name },
+        { includeAvailable: true },
+      );
+      if (!lookup.service) {
+        return { ok: false, error: "service_not_found", available_services: lookup.available_services };
+      }
+      const quote = await calculateBookingQuote(admin, {
+        service_id: lookup.service.id,
+        vehicle_type: vehicleType,
+        selected_extras: [],
+      });
+      if ("ok" in quote && quote.ok === false) {
+        return { ok: false, error: "invalid_extra", missing: quote.missing };
+      }
+      newPrice = (quote as Exclude<typeof quote, { ok: false }>).total_amount;
+      resolvedServiceName = lookup.service.name;
+      update.service_name = resolvedServiceName;
+      update.vehicle_type = vehicleType;
+      update.price = newPrice;
+    }
+
+    if (Object.keys(update).length === 0) {
+      return badArgs("No enviaste ningún cambio (service_id/service_name/vehicle_type/address).");
+    }
+
+    if (ctx.dryRun) return { ok: true, dry_run: true, would_update: update };
+
+    update.updated_at = new Date().toISOString();
+    const { data: updated, error: updErr } = await admin
+      .from("bookings")
+      .update(update)
+      .eq("id", booking_id)
+      .eq("customer_phone", ctx.customerPhone)
+      .select(BOOKING_SELECT)
+      .maybeSingle();
+    if (updErr || !updated) return { ok: false, error: "server_error" };
+    return { ok: true, booking: updated };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// get_payment_link
+// ---------------------------------------------------------------------------
+const getPaymentLink: ToolDefinition = {
+  name: "get_payment_link",
+  kind: "read_only",
+  description:
+    "Genera (o reutiliza) un link de pago de Mercado Pago para una reserva del cliente cuyo payment_method sea MercadoPago. Usalo después de create_booking cuando el cliente eligió pagar con Mercado Pago, para mandarle el link de pago real.",
+  input_schema: {
+    type: "object",
+    properties: { booking_id: { type: "string" } },
+    required: ["booking_id"],
+  },
+  execute: async (admin, args, ctx) => {
+    const booking_id = str(args.booking_id);
+    if (!booking_id) return badArgs("Falta booking_id.");
+
+    const { data: booking, error: fetchErr } = await admin
+      .from("bookings")
+      .select("id,customer_phone,customer_name,customer_email,service_name,price,payment_method,payment_status")
+      .eq("id", booking_id)
+      .eq("customer_phone", ctx.customerPhone)
+      .maybeSingle();
+    if (fetchErr) return { ok: false, error: "server_error" };
+    if (!booking) return { ok: false, error: "not_found" };
+    if (booking.payment_method !== "MercadoPago") {
+      return { ok: false, error: "wrong_payment_method", payment_method: booking.payment_method };
+    }
+    if (booking.payment_status === "paid") {
+      return { ok: true, already_paid: true };
+    }
+
+    if (ctx.dryRun) return { ok: true, dry_run: true, would_generate_link_for: booking_id };
+
+    const MP_TOKEN = Deno.env.get("MERCADOPAGO_ACCESS_TOKEN");
+    if (!MP_TOKEN) {
+      return { ok: false, error: "mercadopago_not_configured" };
+    }
+
+    const SITE_ORIGIN = Deno.env.get("PUBLIC_SITE_URL") ?? "https://washero.ar";
+    const API_URL_ROOT = Deno.env.get("API_URL") ?? "";
+    const preferenceBody = {
+      items: [
+        {
+          title: `Washero - ${booking.service_name}`,
+          quantity: 1,
+          currency_id: "ARS",
+          unit_price: booking.price,
+        },
+      ],
+      payer: { name: booking.customer_name, email: booking.customer_email ?? undefined },
+      external_reference: booking.id,
+      metadata: { booking_id: booking.id, customer_phone: booking.customer_phone },
+      back_urls: {
+        success: `${SITE_ORIGIN}/gracias?payment=success`,
+        pending: `${SITE_ORIGIN}/gracias?payment=pending`,
+        failure: `${SITE_ORIGIN}/gracias?payment=failure`,
+      },
+      auto_return: "approved",
+      notification_url: `${API_URL_ROOT}/functions/v1/mercadopago-webhook`,
+      statement_descriptor: "WASHERO",
+    };
+
+    let preference: Record<string, unknown> | null = null;
+    try {
+      const res = await fetch("https://api.mercadopago.com/checkout/preferences", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${MP_TOKEN}`, "Content-Type": "application/json" },
+        body: JSON.stringify(preferenceBody),
+      });
+      if (res.ok) preference = await res.json();
+      else console.error("[get_payment_link] MP preference failed", res.status, await res.text());
+    } catch (e) {
+      console.error("[get_payment_link] MP preference exception", e);
+    }
+    if (!preference) return { ok: false, error: "payment_link_failed" };
+
+    await admin.from("payments").insert({
+      booking_id: booking.id,
+      provider: "mercadopago",
+      provider_payment_id: (preference.id as string | undefined) ?? null,
+      amount: booking.price,
+      status: "pending",
+      raw_payload: preference,
+    });
+
+    const checkoutUrl =
+      (preference.init_point as string | undefined) ??
+      (preference.sandbox_init_point as string | undefined) ??
+      null;
+    if (!checkoutUrl) return { ok: false, error: "payment_link_failed" };
+    return { ok: true, checkout_url: checkoutUrl };
+  },
+};
+
+// ---------------------------------------------------------------------------
 // ingest_message / ingest_receipt
 // ---------------------------------------------------------------------------
 // n8n calls these on every inbound (and outbound) WhatsApp event: persist the message, keep the
@@ -1054,6 +1282,7 @@ export const AGENT_TOOLS: ToolDefinition[] = [
   getServices,
   getServiceDetails,
   validateServiceArea,
+  listCoverageZones,
   getAvailableDates,
   getAvailableSlots,
   calculateBookingPrice,
@@ -1062,6 +1291,8 @@ export const AGENT_TOOLS: ToolDefinition[] = [
   listCustomerBookings,
   cancelBooking,
   rescheduleBooking,
+  updateBooking,
+  getPaymentLink,
   ingestMessage,
   ingestReceipt,
   requestHumanHandoff,
