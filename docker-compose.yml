@@ -21,7 +21,10 @@ services:
     # pg_cron defaults to expecting jobs scheduled from a database named "postgres" (its
     # cron.database_name GUC) -- we use "washero" as the actual db name, so this has to be
     # pointed at it explicitly or `create extension pg_cron` / `cron.schedule(...)` fail.
-    command: ["postgres", "-c", "cron.database_name=washero"]
+    # listen_addresses is normally injected by the image's own entrypoint, but only when the
+    # container's default CMD is left untouched -- overriding `command:` at all (as above)
+    # skips that, so it must be re-added explicitly or other containers get ECONNREFUSED.
+    command: ["postgres", "-c", "listen_addresses=*", "-c", "cron.database_name=washero"]
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in a root .env}
       POSTGRES_DB: washero
