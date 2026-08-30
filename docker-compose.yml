@@ -32,6 +32,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+    # Hard cap so a bad query or connection spike can't crowd out the other apps sharing this
+    # server (n8n, vuelto, poligiros, etc). Raise if Postgres OOMs under real traffic.
+    mem_limit: 512m
 
   migrate:
     build:
@@ -47,6 +50,7 @@ services:
       DATABASE_URL: postgres://supabase_admin:${POSTGRES_PASSWORD}@db:5432/washero
     command: ["npx", "tsx", "src/migrate.ts"]
     restart: "no"
+    mem_limit: 256m
 
   backend:
     build:
@@ -71,6 +75,9 @@ services:
       # (http://backend:8000), not through this published port. Useful for host-side curl
       # during setup; remove once the tunnel is verified working.
       - "127.0.0.1:8000:8000"
+    # The Node process itself is small (~60-120MB observed); capped higher than that to leave
+    # room for request-handling spikes without letting a leak run unbounded.
+    mem_limit: 256m
 
   cloudflared:
     image: cloudflare/cloudflared:latest
@@ -80,6 +87,8 @@ services:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in a root .env}
     depends_on:
       - backend
+    # Matches what your other cloudflared containers actually use (~15-20MB each).
+    mem_limit: 64m
 
 volumes:
   washero_pgdata:
