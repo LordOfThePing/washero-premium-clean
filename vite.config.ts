@@ -16,7 +16,7 @@ export default defineConfig({
     }),
     viteReact(),
     nitro({
-      preset: "cloudflare_module",
+      preset: "cloudflare_pages",
       compatibilityDate: "2024-09-19",
       cloudflare: {
         deployConfig: true,
