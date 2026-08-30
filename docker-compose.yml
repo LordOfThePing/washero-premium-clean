@@ -1,0 +1,86 @@
+# Washero self-hosted stack: Postgres + backend shim + Cloudflare Tunnel, all as containers.
+# Runs alongside "Vuelto" on the same server — give this stack its own project name so it
+# doesn't collide: `docker compose -p washero --env-file .env.docker up -d --build`.
+#
+# Usage:
+#   cp backend/.env.example backend/.env         # fill in real backend secrets
+#   cp .env.docker.example .env.docker           # fill in POSTGRES_PASSWORD, CLOUDFLARE_TUNNEL_TOKEN
+#   docker compose -p washero --env-file .env.docker up -d --build
+#   docker compose -p washero logs -f backend
+#
+# .env.docker is kept separate from the root .env (Vite's frontend build-time env) so infra
+# secrets never end up in a client-bundled file.
+
+services:
+  db:
+    # Supabase's own Postgres image, used purely for the pg_cron extension some migrations
+    # require -- nothing else about hosted Supabase is involved. Plain postgres:17 + the
+    # postgresql-*-cron apt package works too if you'd rather not depend on this image.
+    image: public.ecr.aws/supabase/postgres:17.6.1.143
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in a root .env}
+      POSTGRES_DB: washero
+    volumes:
+      - washero_pgdata:/var/lib/postgresql/data
+    ports:
+      # Loopback-only -- not reachable outside this host. Remove entirely once you no longer
+      # need direct psql access from the host.
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U supabase_admin -d washero"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - backend/.env
+    environment:
+      # Runs once against the `db` service and exits -- not the long-running server.
+      DATABASE_URL: postgres://supabase_admin:${POSTGRES_PASSWORD}@db:5432/washero
+    command: ["npx", "tsx", "src/migrate.ts"]
+    restart: "no"
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - backend/.env
+    environment:
+      DATABASE_URL: postgres://supabase_admin:${POSTGRES_PASSWORD}@db:5432/washero
+      HOST: 0.0.0.0
+      PORT: 8000
+    volumes:
+      - washero_storage:/app/storage
+    ports:
+      # Loopback-only -- cloudflared reaches this over the compose network by service name
+      # (http://backend:8000), not through this published port. Useful for host-side curl
+      # during setup; remove once the tunnel is verified working.
+      - "127.0.0.1:8000:8000"
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in a root .env}
+    depends_on:
+      - backend
+
+volumes:
+  washero_pgdata:
+  washero_storage:

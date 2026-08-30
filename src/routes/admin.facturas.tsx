@@ -10,7 +10,7 @@ import {
   ClipboardList,
 } from "lucide-react";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -55,7 +55,7 @@ function FacturasPage() {
   const invoices = useQuery({
     queryKey: ["facturas"],
     queryFn: async (): Promise<Invoice[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("invoices")
         .select("*")
         .order("issued_at", { ascending: false, nullsFirst: false })

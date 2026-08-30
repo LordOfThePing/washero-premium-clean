@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // System prompt for the WhatsApp booking agent. Kept in one place so tone/safety-rule changes
 // don't require touching the orchestrator.
 

@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Outbound message idempotency ledger + delivery-outcome classification (production-hardening
 // audit findings #7 and, later passes, "outbound delivery ambiguity" and "lease ownership through
 // outbound delivery").

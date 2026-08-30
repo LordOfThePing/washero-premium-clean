@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useOperatorAuth } from "@/hooks/use-operator-auth";
 import { OperatorNotifications } from "@/components/operator/OperatorNotifications";
 import { OperatorPwaInstallCard } from "@/components/operator/OperatorPwaInstallCard";
@@ -44,7 +44,7 @@ function OperatorPerfilPage() {
         variant="destructive"
         className="h-12 w-full"
         onClick={async () => {
-          await supabase.auth.signOut();
+          await db.auth.signOut();
           navigate({ to: "/operator/login" });
         }}
       >

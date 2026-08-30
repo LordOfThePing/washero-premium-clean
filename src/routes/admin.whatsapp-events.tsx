@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ function WhatsappEventsPage() {
   const events = useQuery({
     queryKey: ["whatsapp_events"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("whatsapp_events")
         .select("*")
         .order("created_at", { ascending: false })
@@ -27,7 +27,7 @@ function WhatsappEventsPage() {
   const legacyRequests = useQuery({
     queryKey: ["legacy-botmaker-booking-requests"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("booking_requests")
         .select("id, customer_name, status, created_at, missing_fields")
         .eq("source", "botmaker")
@@ -58,7 +58,7 @@ function WhatsappEventsPage() {
         <CardContent className="space-y-2">
           <p className="text-xs text-muted-foreground">
             Esta tabla ya no recibe eventos nuevos automáticamente: Meta envía los webhooks directo a n8n,
-            no a Supabase. Solo va a mostrar historial previo al cutover, salvo que se agregue un paso en
+            no al backend. Solo va a mostrar historial previo al cutover, salvo que se agregue un paso en
             n8n que registre eventos acá también.
           </p>
           {events.isLoading ? (

@@ -8,14 +8,14 @@ import { registerStorageRoutes } from "./storage/routes.js";
 import { registerFunctionRoutes } from "./functions/routes.js";
 import { loadFunctionRegistry } from "./functions/registry.js";
 
-// The ported edge functions (backend/src/functions/deno/**) read SUPABASE_URL /
-// SUPABASE_SERVICE_ROLE_KEY / SUPABASE_ANON_KEY at import time and use supabase-js
-// against them -- pointing those at this same server means they transparently talk
-// to our own REST/Auth/Storage implementation instead of hosted Supabase.
-process.env.SUPABASE_URL ??= `http://127.0.0.1:${config.port}`;
-process.env.SUPABASE_SERVICE_ROLE_KEY ??= config.serviceRoleKey;
-process.env.SUPABASE_ANON_KEY ??= config.anonKey;
-process.env.SUPABASE_PUBLISHABLE_KEY ??= config.anonKey;
+// The ported backend functions (backend/src/functions/deno/**) read API_URL /
+// SERVICE_ROLE_KEY / ANON_KEY at import time and use supabase-js (the npm client
+// library, which still speaks this same REST/Auth/Storage protocol) against them --
+// pointing those at this same server means they transparently talk to our own
+// implementation instead of any external service.
+process.env.API_URL ??= `http://127.0.0.1:${config.port}`;
+process.env.SERVICE_ROLE_KEY ??= config.serviceRoleKey;
+process.env.ANON_KEY ??= config.anonKey;
 
 const app = Fastify({ logger: true, bodyLimit: 25 * 1024 * 1024 });
 

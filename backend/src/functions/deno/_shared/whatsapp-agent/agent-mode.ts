@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Explicit WhatsApp agent rollout modes (production-hardening audit finding #4).
 //
 // The old "shadow mode" name was misleading — it actually sent real replies and created real

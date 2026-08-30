@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, ChevronDown, Loader2, MessageCircle, Send } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import {
   communicationLogPhone,
   communicationLogStatus,
@@ -124,7 +124,7 @@ function NotificacionesPage() {
   const logs = useQuery({
     queryKey: ["communication_logs", "whatsapp-outbound"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("communication_logs")
         .select("*")
         .eq("channel", "whatsapp")
@@ -265,7 +265,7 @@ function NotificacionesPage() {
           </Button>
           {!gatewayOk && (
             <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-              Configurá <code>N8N_WHATSAPP_WEBHOOK_URL</code> / <code>N8N_WHATSAPP_WEBHOOK_SECRET</code> en Supabase para habilitar envíos.
+              Configurá <code>N8N_WHATSAPP_WEBHOOK_URL</code> / <code>N8N_WHATSAPP_WEBHOOK_SECRET</code> en el backend para habilitar envíos.
             </p>
           )}
         </CardContent>

@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Renewable lease / heartbeat for a claimed whatsapp_agent_job (second-pass correctness fix,
 // replacing a fixed "reclaim after N seconds since claim" threshold — see job-queue.ts and the
 // migration 20260722100400 comments for why that was wrong).

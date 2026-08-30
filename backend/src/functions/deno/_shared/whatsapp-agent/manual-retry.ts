@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Core logic for manually retrying an ambiguous outbound delivery (production-hardening audit —
 // "ambiguous delivery review and manual retry"). Factored out of
 // whatsapp-agent-manual-retry/index.ts so it's testable without a live HTTP server or a real

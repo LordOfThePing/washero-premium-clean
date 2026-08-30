@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Shared "real JWT, cross-checked against admin_users.active" auth check, extracted so it's
 // testable without a live HTTP server (production-hardening audit — auth requirements for the
 // manual-retry endpoint). See admin-auth.test.ts for the parts of this that don't require a live

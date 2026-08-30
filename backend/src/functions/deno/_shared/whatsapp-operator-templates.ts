@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 export type OperatorWhatsappAction =
   | "operator_on_the_way"
   | "operator_arrived"

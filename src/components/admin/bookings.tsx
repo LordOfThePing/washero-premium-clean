@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -153,13 +153,13 @@ export async function upsertCustomerByPhone(b: {
 }) {
   const phone = b.customer_phone.trim();
   if (!phone) return null;
-  const { data: existing } = await supabase
+  const { data: existing } = await db
     .from("customers")
     .select("id")
     .eq("phone", phone)
     .maybeSingle();
   if (existing?.id) {
-    await supabase
+    await db
       .from("customers")
       .update({
         full_name: b.customer_name,
@@ -170,7 +170,7 @@ export async function upsertCustomerByPhone(b: {
       .eq("id", existing.id);
     return existing.id;
   }
-  const { data: created } = await supabase
+  const { data: created } = await db
     .from("customers")
     .insert({
       phone,
@@ -192,7 +192,7 @@ export function useLookups() {
   const services = useQuery({
     queryKey: ["lookup", "services"],
     queryFn: async (): Promise<Service[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("services")
         .select("id,name,base_price,duration_minutes")
         .eq("active", true)
@@ -204,7 +204,7 @@ export function useLookups() {
   const areas = useQuery({
     queryKey: ["lookup", "coverage_zones"],
     queryFn: async (): Promise<ServiceArea[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("coverage_zones")
         .select("id,name")
         .eq("active", true)
@@ -223,7 +223,7 @@ export function useSlotsForDate(date: string) {
     queryKey: ["lookup", "slots", date],
     enabled: !!date,
     queryFn: async (): Promise<AvailabilitySlot[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("availability_slots")
         .select("id,date,start_time,end_time,capacity,active")
         .eq("date", date);
@@ -237,7 +237,7 @@ export function useQuickBookingStatus(opts?: { onSuccess?: () => void }) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: { id: string; booking_status: string }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("bookings")
         .update({ booking_status: input.booking_status })
         .eq("id", input.id);
@@ -275,7 +275,7 @@ function useLatestPayment(bookingId: string) {
     queryKey: ["admin", "booking-payment", bookingId],
     enabled: !!bookingId,
     queryFn: async (): Promise<LatestPayment | null> => {
-      const { data } = await supabase
+      const { data } = await db
         .from("payments")
         .select("id,provider,provider_payment_id,status,amount,updated_at,raw_payload")
         .eq("booking_id", bookingId)
@@ -335,12 +335,12 @@ export function BookingDetail({
   const manualPay = useMutation({
     mutationFn: async (newStatus: string) => {
       const previous = booking.payment_status;
-      const { error: updErr } = await supabase
+      const { error: updErr } = await db
         .from("bookings")
         .update({ payment_status: newStatus, updated_at: new Date().toISOString() })
         .eq("id", booking.id);
       if (updErr) throw updErr;
-      const { error: payErr } = await supabase.from("payments").insert({
+      const { error: payErr } = await db.from("payments").insert({
         booking_id: booking.id,
         provider: "manual",
         amount: booking.price,
@@ -352,7 +352,7 @@ export function BookingDetail({
         },
       });
       if (payErr) throw payErr;
-      await supabase.from("communication_logs").insert({
+      await db.from("communication_logs").insert({
         booking_id: booking.id,
         provider: "manual",
         channel: "admin",
@@ -764,7 +764,7 @@ export function BookingEditForm({
 
   const save = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase
+      const { error } = await db
         .from("bookings")
         .update({
           customer_name: form.customer_name.trim(),

@@ -10,8 +10,8 @@ vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => vi.fn(),
 }));
 
-vi.mock("@/integrations/supabase/client", () => ({
-  supabase: {
+vi.mock("@/integrations/db/client", () => ({
+  db: {
     functions: { invoke: (...args: unknown[]) => invokeMock(...args) },
     from: (...args: unknown[]) => fromMock(...args),
   },

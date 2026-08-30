@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Logo } from "@/components/brand/Logo";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAdminAuth } from "@/hooks/use-admin-auth";
 
 export const Route = createFileRoute("/admin/login")({
@@ -30,7 +30,7 @@ function AdminLogin() {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
-    const { error: signInErr } = await supabase.auth.signInWithPassword({
+    const { error: signInErr } = await db.auth.signInWithPassword({
       email: email.trim(),
       password,
     });
@@ -105,7 +105,7 @@ function AdminLogin() {
           <details className="mt-6 rounded-md border border-border/60 bg-muted/40 p-3 text-xs text-muted-foreground">
             <summary className="cursor-pointer font-medium">¿Primer admin?</summary>
             <p className="mt-2">
-              Creá un usuario en Supabase Auth y luego agregá su <code>user_id</code> a la tabla{" "}
+              Creá un usuario en auth.users y luego agregá su <code>user_id</code> a la tabla{" "}
               <code>admin_users</code>:
             </p>
             <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded bg-background p-2 text-[10px]">

@@ -6,16 +6,16 @@ import { config } from "./config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const backendRoot = path.resolve(__dirname, "..");
-// In local dev, supabase/migrations lives at the repo root (one level up from backend/).
+// In local dev, db/migrations lives at the repo root (one level up from backend/).
 // In the Docker image, it's copied in alongside backend/ itself (see Dockerfile), so both
 // locations are checked.
 const candidateDirs = [
-  path.join(backendRoot, "supabase", "migrations"),
-  path.join(backendRoot, "..", "supabase", "migrations"),
+  path.join(backendRoot, "db", "migrations"),
+  path.join(backendRoot, "..", "db", "migrations"),
 ];
 const migrationsDir = candidateDirs.find((d) => fs.existsSync(d));
 if (!migrationsDir) {
-  throw new Error(`Could not find supabase/migrations in any of: ${candidateDirs.join(", ")}`);
+  throw new Error(`Could not find db/migrations in any of: ${candidateDirs.join(", ")}`);
 }
 
 async function run() {

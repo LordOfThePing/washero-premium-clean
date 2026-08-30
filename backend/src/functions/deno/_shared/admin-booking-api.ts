@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Helpers for create-admin-booking edge function.
 // deno-lint-ignore-file no-explicit-any
 

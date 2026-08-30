@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Worker-secret authentication for whatsapp-agent-worker (production-hardening audit — "worker
 // authentication and scheduling"). Extracted so it's directly unit-testable — see
 // worker-auth.test.ts.

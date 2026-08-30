@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Shared pricing_items lookups for website, admin, and WhatsApp booking flows.
 import type { SupabaseClient } from "@supabase/supabase-js";
 

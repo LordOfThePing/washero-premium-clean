@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 export type OperatorGate = {

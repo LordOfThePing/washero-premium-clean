@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Supabase Edge Function: create-website-booking
 // Secure server-side booking creation; uses shared booking-core helper.
 import { createClient } from "@supabase/supabase-js";
@@ -17,8 +17,8 @@ const corsHeaders = {
 
 const SITE_ORIGIN = process.env.PUBLIC_SITE_URL ?? "https://washero.ar";
 const PUSH_INTERNAL_SECRET = process.env.PUSH_INTERNAL_SECRET ?? "";
-const SUPABASE_URL_ROOT = process.env.SUPABASE_URL!;
-const WEBHOOK_URL = `${SUPABASE_URL_ROOT}/functions/v1/mercadopago-webhook`;
+const API_URL_ROOT = process.env.API_URL!;
+const WEBHOOK_URL = `${API_URL_ROOT}/functions/v1/mercadopago-webhook`;
 // Test/dev-only escape hatch for environments without a MercadoPago account (e.g. a fresh
 // ownership migration before a real merchant account exists). Never set true in production —
 // every booking is marked paid without any payment ever being collected.
@@ -100,7 +100,7 @@ function isSlotTooSoonForPublic(dateIso: string, timeHHMM: string, nowMs = Date.
 async function notifyOperatorPush(bookingId: string, reason: "booking_assigned_today" | "booking_updated_today" | "new_message_today") {
   if (!PUSH_INTERNAL_SECRET) return;
   try {
-    await fetch(`${SUPABASE_URL_ROOT}/functions/v1/send-operator-push`, {
+    await fetch(`${API_URL_ROOT}/functions/v1/send-operator-push`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -117,9 +117,9 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ ok: false, status: "method_not_allowed" }, 405);
 
-  const SUPABASE_URL = process.env.SUPABASE_URL!;
-  const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+  const API_URL = process.env.API_URL!;
+  const SERVICE_ROLE = process.env.SERVICE_ROLE_KEY!;
+  const admin = createClient(API_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 
   let body: Payload;
   try { body = await req.json(); } catch {

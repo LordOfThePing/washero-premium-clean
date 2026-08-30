@@ -4,7 +4,7 @@ import { z } from "zod";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Search } from "lucide-react";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -80,7 +80,7 @@ function AdminReservas() {
   const bookingsQuery = useQuery({
     queryKey: ["admin", "bookings", { dateFilter, statusFilter, paymentFilter, sourceFilter }],
     queryFn: async () => {
-      let q = supabase.from("bookings").select("*");
+      let q = db.from("bookings").select("*");
 
       const today = todayIso();
       if (dateFilter === "today") q = q.eq("scheduled_date", today);

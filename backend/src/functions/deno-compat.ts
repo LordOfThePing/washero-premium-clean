@@ -1,7 +1,7 @@
 /**
- * Minimal Deno-runtime shim so the edge functions ported verbatim from
- * supabase/functions/**\/index.ts (Deno.serve handlers using supabase-js against
- * SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY) run unmodified under Node. Each ported
+ * Minimal Deno-runtime shim so the functions ported verbatim from
+ * functions/**\/index.ts (Deno.serve handlers using supabase-js against
+ * API_URL/SERVICE_ROLE_KEY) run unmodified under Node. Each ported
  * module still calls `Deno.serve(handler)` at import time -- we just capture the
  * handler instead of actually starting a server, then dispatch fetch-style
  * Request/Response objects to it ourselves from Fastify routes.

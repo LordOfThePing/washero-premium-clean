@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Deterministic, validated tools the WhatsApp agent's LLM may call.
 //
 // The model NEVER touches the database directly. Every business fact (services, prices,
@@ -843,7 +843,7 @@ async function shouldBotReply(admin: SupabaseClient, conversationRowId: string):
 /** Fire-and-forget push to the assigned operator's device — best-effort, never throws. */
 async function notifyOperatorPush(bookingId: string, opts: { title?: string; body?: string }): Promise<void> {
   const pushSecret = process.env.PUSH_INTERNAL_SECRET ?? "";
-  const supabaseUrl = process.env.SUPABASE_URL ?? "";
+  const supabaseUrl = process.env.API_URL ?? "";
   if (!pushSecret || !supabaseUrl) return;
   try {
     await fetch(`${supabaseUrl}/functions/v1/send-operator-push`, {

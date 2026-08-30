@@ -1,0 +1,21 @@
+-- Optional: schedule periodic sync of Google Form expenses into finance_expenses.
+-- Requires FINANCE_SYNC_SECRET set in backend/.env and the pg_net extension (bundled by the
+-- Supabase postgres image used in docker-compose.yml's `db` service).
+--
+-- Example -- run against the `db` container; 'backend' below is the Compose service name/port,
+-- reachable from other containers on the same network without a published port:
+--
+-- select cron.schedule(
+--   'sync-finance-expenses-hourly',
+--   '0 * * * *',
+--   $$
+--   select net.http_post(
+--     url := 'http://backend:8000/functions/v1/sync-finance-expenses',
+--     headers := jsonb_build_object(
+--       'Content-Type', 'application/json',
+--       'x-internal-secret', '<FINANCE_SYNC_SECRET>'
+--     ),
+--     body := '{}'::jsonb
+--   );
+--   $$
+-- );

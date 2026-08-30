@@ -13,7 +13,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -509,7 +509,7 @@ function BookingForm({
           });
           return;
         }
-        const { data, error } = await supabase.functions.invoke("validate-address-location", {
+        const { data, error } = await db.functions.invoke("validate-address-location", {
           body: {
             place_id: place.place_id,
             formatted_address: place.formatted_address,
@@ -628,7 +628,7 @@ function BookingForm({
       wbraid: attribution?.wbraid ?? null,
     };
 
-    const { data, error } = await supabase.functions.invoke("create-website-booking", {
+    const { data, error } = await db.functions.invoke("create-website-booking", {
       body: payload,
     });
     const res = parseCreateWebsiteBookingResponse(data);

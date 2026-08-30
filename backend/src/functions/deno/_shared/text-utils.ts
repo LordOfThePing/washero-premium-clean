@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Small channel-agnostic text/phone helpers, split out of the old vendor-specific
 // `botmaker-booking.ts` (which otherwise only contained Botmaker flow-summary parsing that
 // no longer applies now that booking is driven by structured tool calls, not free-text

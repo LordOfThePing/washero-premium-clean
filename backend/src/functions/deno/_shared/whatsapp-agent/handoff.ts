@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Human handoff state machine for the WhatsApp agent.
 //
 // Reuses the existing conversation_assignments table (the same one /admin/mensajes already

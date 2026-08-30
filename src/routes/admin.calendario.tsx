@@ -9,7 +9,7 @@ import {
   Calendar as CalIcon,
 } from "lucide-react";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -133,7 +133,7 @@ function AdminCalendar() {
   const bookingsQuery = useQuery({
     queryKey: ["admin", "calendar", range],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("bookings")
         .select("*")
         .gte("scheduled_date", range.start)

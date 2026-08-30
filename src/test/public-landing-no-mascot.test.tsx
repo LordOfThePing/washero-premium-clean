@@ -14,8 +14,8 @@ vi.mock("@tanstack/react-router", () => ({
   ),
 }));
 
-vi.mock("@/integrations/supabase/client", () => ({
-  supabase: {
+vi.mock("@/integrations/db/client", () => ({
+  db: {
     from: () => {
       const builder: Record<string, unknown> = {};
       const self = () => builder;

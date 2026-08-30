@@ -15,7 +15,7 @@ import {
   Sparkles,
 } from "lucide-react";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { PlacesAutocomplete, type PlaceSelection } from "@/components/PlacesAutocomplete";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -362,7 +362,7 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
           });
           return;
         }
-        const { data, error } = await supabase.functions.invoke("validate-address-location", {
+        const { data, error } = await db.functions.invoke("validate-address-location", {
           body: {
             address_type: "street",
             place_id: place.place_id,
@@ -427,7 +427,7 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
     setCoverage({ kind: "validating" });
     (async () => {
       try {
-        const { data, error } = await supabase.functions.invoke("validate-address-location", {
+        const { data, error } = await db.functions.invoke("validate-address-location", {
           body: {
             address_type: "private_neighborhood",
             private_neighborhood_id: form.private_neighborhood_id,
@@ -742,7 +742,7 @@ export function AddressFirstFlow({ attribution }: { attribution?: BookingAttribu
       payload.address_type = "street";
     }
 
-    const { data, error } = await supabase.functions.invoke("create-website-booking", {
+    const { data, error } = await db.functions.invoke("create-website-booking", {
       body: payload,
     });
     const res = parseCreateWebsiteBookingResponse(data);

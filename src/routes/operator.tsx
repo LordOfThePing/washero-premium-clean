@@ -1,7 +1,7 @@
 import { createFileRoute, Outlet, Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { Loader2, LogOut } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useOperatorAuth } from "@/hooks/use-operator-auth";
 import { OperatorBottomNav } from "@/components/operator/OperatorBottomNav";
 import { Logo } from "@/components/brand/Logo";
@@ -64,7 +64,7 @@ function OperatorGuarded() {
         </p>
         <Button
           onClick={async () => {
-            await supabase.auth.signOut();
+            await db.auth.signOut();
             navigate({ to: "/operator/login" });
           }}
         >

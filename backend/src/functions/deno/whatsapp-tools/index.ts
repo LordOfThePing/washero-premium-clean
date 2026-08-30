@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Secure tool endpoints the n8n WhatsApp booking agent calls directly during a conversation
 // (the no-Anthropic architecture). n8n owns transport/conversation/intents/state; every business
 // fact (services, prices, coverage, availability) and every mutation (booking create/cancel/
@@ -25,11 +25,11 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const API_URL = process.env.API_URL!;
+const SERVICE_ROLE = process.env.SERVICE_ROLE_KEY!;
 const TOOLS_SECRET = process.env.WHATSAPP_TOOLS_SECRET ?? "";
 
-const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+const admin = createClient(API_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {

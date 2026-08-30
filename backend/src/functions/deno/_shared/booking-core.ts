@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Shared booking creation logic used by create-website-booking, create-admin-booking,
 // create-subscription-booking, and the WhatsApp booking tools.
 // Uses an admin (service-role) Supabase client; never expose this to clients.

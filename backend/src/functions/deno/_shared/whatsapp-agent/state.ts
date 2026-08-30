@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Conversation state + message transcript persistence for the WhatsApp agent.
 // Nothing here calls an LLM or a WhatsApp provider — purely Supabase reads/writes, so the
 // orchestrator (which does call the LLM) stays easy to reason about and test.

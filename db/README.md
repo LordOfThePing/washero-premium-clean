@@ -1,41 +1,17 @@
 # Washero — Database
 
-This project uses an **external Supabase** project (not Lovable Cloud).
-SQL files here must be run manually on your Supabase instance.
+Plain, self-hosted Postgres (no hosted Supabase). Schema lives here as an ordered set of
+idempotent SQL migrations, applied by the backend shim, not by any external CLI.
 
-## How to apply
+- `migrations/` — the real, current schema: tables, RLS policies, RPC functions, seed data.
+  Applied in filename order by `backend/src/migrate.ts` (`cd backend && npm run migrate`),
+  which also runs `backend/sql/bootstrap.sql` first (roles, `auth`/`storage` schemas,
+  `auth.uid()`/`auth.role()` helpers) and `backend/sql/post-migrate.sql` last (grants).
+- `optional/` — SQL snippets for scheduled jobs (e.g. `pg_cron` schedules for the WhatsApp
+  agent worker and finance-expenses sync) that aren't required for the app to run, applied
+  manually if/when you want that specific automation.
+- `legacy/` — an old, superseded bootstrap script from before the migration system existed.
+  Kept for history only; not applied anywhere.
 
-Open Supabase → SQL Editor and run, in order:
-
-1. `db/migrations/0001_init_washero.sql` — schema, RLS, policies
-2. `db/seed/0001_seed_washero.sql` — services, service areas, 14-day availability
-
-Both scripts are **idempotent** — safe to re-run.
-
-## Tables
-
-`customers`, `service_areas`, `services`, `bookings`, `availability_slots`,
-`admin_users`, `payments`, `booking_requests`, `communication_logs`.
-
-## Security model
-
-- RLS is enabled on every table.
-- **Public (anon)** can:
-  - read active `services`, `service_areas`, `availability_slots`
-  - insert into `booking_requests` (intake from website / Botmaker)
-- **Public cannot** write to `bookings` directly. Real bookings are created
-  server-side from validated `booking_requests` using the **service role key**.
-- **Admins** = rows in `admin_users` where `active = true` and `user_id`
-  matches `auth.uid()`. Checked via `public.is_active_admin()` (security
-  definer, avoids recursive RLS).
-- Admins can read/write all operational tables.
-- The service role key is **server-only** — never expose it client-side.
-
-## Promoting a user to admin
-
-After the user signs up via Supabase Auth, in SQL Editor:
-
-```sql
-insert into public.admin_users (user_id, email, role, active)
-values ('<auth-user-uuid>', 'admin@washero.ar', 'admin', true);
-```
+See `docs/README.backend-shim.md` for the full setup/runbook (bootstrapping Postgres,
+running migrations, creating the first admin user).

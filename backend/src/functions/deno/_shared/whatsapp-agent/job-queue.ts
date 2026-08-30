@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Durable job queue for async webhook processing (production-hardening audit finding #1 and #2).
 // All exclusivity guarantees live in Postgres (claim_next_whatsapp_agent_job), not in this
 // process's memory — required because Edge Function instances are stateless/ephemeral and

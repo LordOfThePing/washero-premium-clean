@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizeArgentinaWhatsAppPhone } from "./whatsapp-outbound.ts";
 

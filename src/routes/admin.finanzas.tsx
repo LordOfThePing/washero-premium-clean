@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FinanceHeader } from "@/components/admin/finance/FinanceHeader";
@@ -75,7 +75,7 @@ async function fetchPaymentsForBookings(bookingIds: string[]): Promise<FinancePa
   const byId = new Map<string, FinancePayment>();
 
   const linked = await fetchInChunks(bookingIds, async (chunk) => {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("payments")
       .select(PAYMENT_SELECT)
       .in("booking_id", chunk);
@@ -84,7 +84,7 @@ async function fetchPaymentsForBookings(bookingIds: string[]): Promise<FinancePa
   });
   for (const p of linked) byId.set(p.id, p);
 
-  const { data: orphans, error: orphanErr } = await supabase
+  const { data: orphans, error: orphanErr } = await db
     .from("payments")
     .select(PAYMENT_SELECT)
     .is("booking_id", null)
@@ -99,7 +99,7 @@ async function fetchPaymentsForBookings(bookingIds: string[]): Promise<FinancePa
 async function fetchReceiptsForBookings(bookingIds: string[]): Promise<FinanceReceipt[]> {
   if (bookingIds.length === 0) return [];
   return fetchInChunks(bookingIds, async (chunk) => {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("payment_receipts")
       .select(RECEIPT_SELECT)
       .in("booking_id", chunk);
@@ -109,7 +109,7 @@ async function fetchReceiptsForBookings(bookingIds: string[]): Promise<FinanceRe
 }
 
 async function fetchExpenses(): Promise<FinanceExpense[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("finance_expenses")
     .select(EXPENSE_SELECT)
     .order("expense_date", { ascending: false })
@@ -119,7 +119,7 @@ async function fetchExpenses(): Promise<FinanceExpense[]> {
 }
 
 async function fetchFinanceSettings(): Promise<FinanceSettings> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("finance_settings")
     .select("id, truck_owner_pct, washero_pct, updated_at")
     .eq("id", 1)
@@ -132,7 +132,7 @@ async function fetchFinanceSettings(): Promise<FinanceSettings> {
 async function fetchFinanceData(from: string, to: string) {
   const today = todayIso();
 
-  const bookingsRes = await supabase
+  const bookingsRes = await db
     .from("bookings")
     .select(BOOKING_SELECT)
     .gte("scheduled_date", from)
@@ -150,7 +150,7 @@ async function fetchFinanceData(from: string, to: string) {
   const [payments, receipts, alertBookingsRes, expenses, settings] = await Promise.all([
     fetchPaymentsForBookings(bookingIds),
     fetchReceiptsForBookings(bookingIds),
-    supabase
+    db
       .from("bookings")
       .select(BOOKING_SELECT)
       .lt("scheduled_date", today)
@@ -254,7 +254,7 @@ function FinanzasPage() {
 
   const syncMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("sync-finance-expenses", {
+      const { data, error } = await db.functions.invoke("sync-finance-expenses", {
         body: {},
       });
       if (error) throw error;
@@ -280,7 +280,7 @@ function FinanzasPage() {
 
   const saveSettingsMutation = useMutation({
     mutationFn: async (next: Pick<FinanceSettings, "truck_owner_pct" | "washero_pct">) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("finance_settings")
         .upsert({ id: 1, ...next }, { onConflict: "id" });
       if (error) throw error;

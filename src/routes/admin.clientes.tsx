@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -113,7 +113,7 @@ function ClientesPage() {
   const customersQuery = useQuery({
     queryKey: ["admin", "customers"],
     queryFn: async (): Promise<Customer[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("customers")
         .select(
           "id,full_name,phone,email,address,neighborhood,notes,created_at,updated_at",
@@ -128,7 +128,7 @@ function ClientesPage() {
   const aggregatesQuery = useQuery({
     queryKey: ["admin", "customers", "aggregates"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("bookings")
         .select("customer_id,customer_phone,scheduled_date")
         .order("scheduled_date", { ascending: false })
@@ -237,7 +237,7 @@ function ClientesPage() {
       let linked = 0;
       for (const c of customers) {
         if (!c.phone) continue;
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("bookings")
           .update({ customer_id: c.id })
           .eq("customer_phone", c.phone)
@@ -555,7 +555,7 @@ function CustomerDetail({
       const orFilter = customer.phone
         ? `customer_id.eq.${customer.id},customer_phone.eq.${customer.phone}`
         : `customer_id.eq.${customer.id}`;
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("bookings")
         .select(BOOKING_SELECT)
         .or(orFilter)
@@ -570,7 +570,7 @@ function CustomerDetail({
   const linkByPhone = useMutation({
     mutationFn: async () => {
       if (!customer.phone) return 0;
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("bookings")
         .update({ customer_id: customer.id })
         .eq("customer_phone", customer.phone)
@@ -753,7 +753,7 @@ function CustomerForm({
       };
       if (mode === "create") {
         // Prevent duplicates by phone
-        const { data: existing } = await supabase
+        const { data: existing } = await db
           .from("customers")
           .select("id")
           .eq("phone", payload.phone)
@@ -763,11 +763,11 @@ function CustomerForm({
           setBusy(false);
           return;
         }
-        const { error } = await supabase.from("customers").insert(payload);
+        const { error } = await db.from("customers").insert(payload);
         if (error) throw error;
         toast.success("Cliente creado.");
       } else if (initial) {
-        const { error } = await supabase
+        const { error } = await db
           .from("customers")
           .update(payload)
           .eq("id", initial.id);

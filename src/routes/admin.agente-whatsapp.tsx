@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -70,7 +70,7 @@ function WhatsappAgentPage() {
   const conversations = useQuery({
     queryKey: ["whatsapp_agent_conversations"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("whatsapp_agent_conversations")
         .select(
           "id,customer_phone,customer_name,status,booking_id,is_test,last_activity_at,created_at",
@@ -89,7 +89,7 @@ function WhatsappAgentPage() {
   const ambiguous = useQuery({
     queryKey: ["whatsapp_agent_ambiguous_outbound"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("whatsapp_agent_outbound_messages")
         .select(
           "id,message_text,error,created_at,whatsapp_agent_conversations(customer_phone,customer_name)",
@@ -105,7 +105,7 @@ function WhatsappAgentPage() {
 
   const setStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: ConversationRow["status"] }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("whatsapp_agent_conversations")
         .update({ status })
         .eq("id", id);
@@ -124,9 +124,9 @@ function WhatsappAgentPage() {
   // audit row (admin id, timestamp, reason) and never touches the original ambiguous record.
   const retrySend = useMutation({
     mutationFn: async (id: string) => {
-      const { data: sessionData } = await supabase.auth.getSession();
+      const { data: sessionData } = await db.auth.getSession();
       const token = sessionData.session?.access_token;
-      const { data, error } = await supabase.functions.invoke("whatsapp-agent-manual-retry", {
+      const { data, error } = await db.functions.invoke("whatsapp-agent-manual-retry", {
         body: { outbound_message_id: id, reason: "Reintento manual desde /admin/agente-whatsapp" },
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });

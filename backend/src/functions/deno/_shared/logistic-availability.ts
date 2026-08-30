@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Shared logistic availability (used by get-logistic-availability and the WhatsApp booking tools).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {

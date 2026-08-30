@@ -250,7 +250,7 @@ export function OperatorNotifications({ userId }: Props) {
                 <DiagnosticRow label="Permiso" value={diag.notificationPermission} />
                 <DiagnosticRow label="SW registrado" value={yesNo(diag.serviceWorkerRegistered)} />
                 <DiagnosticRow label="Suscripción en navegador" value={yesNo(diag.browserSubscription)} />
-                <DiagnosticRow label="Suscripción en Supabase" value={yesNo(diag.supabaseSubscription)} />
+                <DiagnosticRow label="Suscripción en base de datos" value={yesNo(diag.dbSubscription)} />
                 <DiagnosticRow label="Clave pública VAPID" value={yesNo(diag.publicKeyConfigured)} />
                 <DiagnosticRow label="Última prueba" value={lastTestLabel} />
               </>

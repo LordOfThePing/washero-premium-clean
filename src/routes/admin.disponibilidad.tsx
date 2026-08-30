@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -251,7 +251,7 @@ function SlotsTab({ onChanged }: { onChanged: () => void }) {
   const slotsQuery = useQuery({
     queryKey: ["availability_slots", from, to],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("availability_slots")
         .select("*")
         .gte("date", from)
@@ -266,7 +266,7 @@ function SlotsTab({ onChanged }: { onChanged: () => void }) {
   const bookingsQuery = useQuery({
     queryKey: ["availability_bookings", from, to],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("bookings")
         .select("scheduled_date, scheduled_time, duration_minutes, booking_status")
         .gte("scheduled_date", from)
@@ -377,7 +377,7 @@ function SlotsTab({ onChanged }: { onChanged: () => void }) {
       );
       if (!ok) return;
     }
-    const { error } = await supabase
+    const { error } = await db
       .from("availability_slots")
       .update({ active: !s.active })
       .eq("id", s.id);
@@ -389,7 +389,7 @@ function SlotsTab({ onChanged }: { onChanged: () => void }) {
   const dayActivate = async (date: string, active: boolean) => {
     const ids = (slotsQuery.data ?? []).filter((s) => s.date === date).map((s) => s.id);
     if (!ids.length) return;
-    const { error } = await supabase
+    const { error } = await db
       .from("availability_slots")
       .update({ active })
       .in("id", ids);
@@ -402,7 +402,7 @@ function SlotsTab({ onChanged }: { onChanged: () => void }) {
     const slots = (slotsQuery.data ?? []).filter((s) => s.date === date);
     const empty = slots.filter((s) => overlapCountForSlot(s) === 0);
     if (!empty.length) return toast.info("No hay horarios sin reservas en este día.");
-    const { error } = await supabase
+    const { error } = await db
       .from("availability_slots")
       .delete()
       .in("id", empty.map((s) => s.id));
@@ -417,14 +417,14 @@ function SlotsTab({ onChanged }: { onChanged: () => void }) {
     if (!ids.length) return;
 
     if (bulkConfirm === "activate") {
-      const { error } = await supabase
+      const { error } = await db
         .from("availability_slots")
         .update({ active: true })
         .in("id", ids);
       if (error) return toast.error("Error", { description: error.message });
       toast.success(`${ids.length} horarios activados`);
     } else if (bulkConfirm === "deactivate") {
-      const { error } = await supabase
+      const { error } = await db
         .from("availability_slots")
         .update({ active: false })
         .in("id", ids);
@@ -435,7 +435,7 @@ function SlotsTab({ onChanged }: { onChanged: () => void }) {
         ? selectedSlots
         : selectedSlots.filter((s) => overlapCountForSlot(s) === 0);
       if (!targets.length) return toast.info("No hay horarios para eliminar.");
-      const { error } = await supabase
+      const { error } = await db
         .from("availability_slots")
         .delete()
         .in("id", targets.map((s) => s.id));
@@ -454,7 +454,7 @@ function SlotsTab({ onChanged }: { onChanged: () => void }) {
         );
         if (!ok) return;
       }
-      const { error } = await supabase
+      const { error } = await db
         .from("availability_slots")
         .update({ capacity: newCap })
         .in("id", ids);
@@ -877,7 +877,7 @@ function SlotFormDialog({
     setSaving(true);
     try {
       if (isEdit && slot) {
-        const { error } = await supabase
+        const { error } = await db
           .from("availability_slots")
           .update({
             date,
@@ -890,7 +890,7 @@ function SlotFormDialog({
         if (error) throw error;
         toast.success("Horario actualizado");
       } else {
-        const { data: dup } = await supabase
+        const { data: dup } = await db
           .from("availability_slots")
           .select("id")
           .eq("date", date)
@@ -901,7 +901,7 @@ function SlotFormDialog({
           setSaving(false);
           return;
         }
-        const { error } = await supabase.from("availability_slots").insert({
+        const { error } = await db.from("availability_slots").insert({
           date,
           start_time: toTimeStr(startTime),
           end_time: toTimeStr(endTime),
@@ -998,7 +998,7 @@ function DeleteSlotDialog({
     if (requiresStrong && confirmText.trim().toLowerCase() !== "eliminar") {
       return toast.error("Escribí 'eliminar' para confirmar");
     }
-    const { error } = await supabase.from("availability_slots").delete().eq("id", slot.id);
+    const { error } = await db.from("availability_slots").delete().eq("id", slot.id);
     if (error) return toast.error("No se pudo eliminar", { description: error.message });
     toast.success("Horario eliminado");
     onDeleted();
@@ -1097,7 +1097,7 @@ function GeneradorTab({ onSaved }: { onSaved: () => void }) {
   const doPreview = async () => {
     const cand = generateCandidates();
     if (!cand.length) return setPreview({ created: 0, skipped: 0 });
-    const { data: existing } = await supabase
+    const { data: existing } = await db
       .from("availability_slots")
       .select("date, start_time")
       .gte("date", startDate)
@@ -1113,7 +1113,7 @@ function GeneradorTab({ onSaved }: { onSaved: () => void }) {
     try {
       const cand = generateCandidates();
       if (!cand.length) return toast.error("No hay horarios para generar");
-      const { data: existing } = await supabase
+      const { data: existing } = await db
         .from("availability_slots")
         .select("date, start_time")
         .gte("date", startDate)
@@ -1126,7 +1126,7 @@ function GeneradorTab({ onSaved }: { onSaved: () => void }) {
         toast.info("Todos los horarios ya existían");
         return;
       }
-      const { error } = await supabase.from("availability_slots").insert(rows);
+      const { error } = await db.from("availability_slots").insert(rows);
       if (error) throw error;
       toast.success(`Se crearon ${rows.length} horarios`, {
         description: `Omitidos: ${cand.length - rows.length}`,
@@ -1262,7 +1262,7 @@ function WeeklyRulesTab({ onSaved }: { onSaved: () => void }) {
   const rulesQuery = useQuery({
     queryKey: ["weekly_rules"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("weekly_availability_rules")
         .select("*")
         .order("day_of_week", { ascending: true });
@@ -1285,7 +1285,7 @@ function WeeklyRulesTab({ onSaved }: { onSaved: () => void }) {
     setDraft((s) => ({ ...s, [id]: { ...s[id], ...patch } }));
 
   const saveOne = async (r: WeeklyRule) => {
-    const { error } = await supabase
+    const { error } = await db
       .from("weekly_availability_rules")
       .update({
         is_open: r.is_open,
@@ -1315,7 +1315,7 @@ function WeeklyRulesTab({ onSaved }: { onSaved: () => void }) {
       const cand: { date: string; start_time: string; end_time: string; capacity: number; active: boolean }[] = [];
 
       // exceptions to skip
-      const { data: excs } = await supabase
+      const { data: excs } = await db
         .from("availability_exceptions")
         .select("date,is_closed")
         .gte("date", start)
@@ -1352,7 +1352,7 @@ function WeeklyRulesTab({ onSaved }: { onSaved: () => void }) {
         cur = addDays(cur, 1);
       }
 
-      const { data: existing } = await supabase
+      const { data: existing } = await db
         .from("availability_slots")
         .select("date,start_time")
         .gte("date", start)
@@ -1363,7 +1363,7 @@ function WeeklyRulesTab({ onSaved }: { onSaved: () => void }) {
         toast.info("Todos los horarios ya existían");
         return;
       }
-      const { error } = await supabase.from("availability_slots").insert(rows);
+      const { error } = await db.from("availability_slots").insert(rows);
       if (error) throw error;
       toast.success(`Generados ${rows.length} horarios`, {
         description: `Duplicados omitidos: ${cand.length - rows.length}`,
@@ -1509,7 +1509,7 @@ function BlocksTab({ onSaved }: { onSaved: () => void }) {
   const exceptionsQuery = useQuery({
     queryKey: ["availability_exceptions"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("availability_exceptions")
         .select("*")
         .order("date", { ascending: true });
@@ -1526,7 +1526,7 @@ function BlocksTab({ onSaved }: { onSaved: () => void }) {
   const blockOne = async () => {
     setBusy(true);
     try {
-      const { count } = await supabase
+      const { count } = await db
         .from("bookings")
         .select("id", { head: true, count: "exact" })
         .eq("scheduled_date", singleDate)
@@ -1537,24 +1537,24 @@ function BlocksTab({ onSaved }: { onSaved: () => void }) {
         );
         if (!ok) return;
       }
-      const { data: existing } = await supabase
+      const { data: existing } = await db
         .from("availability_exceptions")
         .select("id")
         .eq("date", singleDate)
         .maybeSingle();
       if (existing) {
-        await supabase.from("availability_exceptions").update({
+        await db.from("availability_exceptions").update({
           is_closed: true,
           note: singleNote || null,
         }).eq("id", existing.id);
       } else {
-        await supabase.from("availability_exceptions").insert({
+        await db.from("availability_exceptions").insert({
           date: singleDate,
           is_closed: true,
           note: singleNote || null,
         });
       }
-      await supabase.from("availability_slots").update({ active: false }).eq("date", singleDate);
+      await db.from("availability_slots").update({ active: false }).eq("date", singleDate);
       toast.success("Fecha bloqueada");
       setSingleNote("");
       refresh();
@@ -1569,7 +1569,7 @@ function BlocksTab({ onSaved }: { onSaved: () => void }) {
     if (rangeTo < rangeFrom) return toast.error("Rango inválido");
     setBusy(true);
     try {
-      const { count } = await supabase
+      const { count } = await db
         .from("bookings")
         .select("id", { head: true, count: "exact" })
         .gte("scheduled_date", rangeFrom)
@@ -1587,26 +1587,26 @@ function BlocksTab({ onSaved }: { onSaved: () => void }) {
         dates.push(cur);
         cur = addDays(cur, 1);
       }
-      const { data: existing } = await supabase
+      const { data: existing } = await db
         .from("availability_exceptions")
         .select("id,date")
         .in("date", dates);
       const existMap = new Map((existing ?? []).map((e: any) => [e.date, e.id]));
       for (const d of dates) {
         if (existMap.has(d)) {
-          await supabase
+          await db
             .from("availability_exceptions")
             .update({ is_closed: true, note: rangeNote || null })
             .eq("id", existMap.get(d)!);
         } else {
-          await supabase.from("availability_exceptions").insert({
+          await db.from("availability_exceptions").insert({
             date: d,
             is_closed: true,
             note: rangeNote || null,
           });
         }
       }
-      await supabase
+      await db
         .from("availability_slots")
         .update({ active: false })
         .gte("date", rangeFrom)
@@ -1625,9 +1625,9 @@ function BlocksTab({ onSaved }: { onSaved: () => void }) {
     const reactivate = window.confirm(
       `Desbloquear ${e.date}.\n¿Reactivar también los horarios existentes de ese día?`,
     );
-    await supabase.from("availability_exceptions").delete().eq("id", e.id);
+    await db.from("availability_exceptions").delete().eq("id", e.id);
     if (reactivate) {
-      await supabase.from("availability_slots").update({ active: true }).eq("date", e.date);
+      await db.from("availability_slots").update({ active: true }).eq("date", e.date);
     }
     toast.success("Fecha desbloqueada");
     refresh();
@@ -1728,7 +1728,7 @@ function DiagnosticoTab() {
   const slotsQuery = useQuery({
     queryKey: ["availability_slots", today, horizon],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("availability_slots")
         .select("*")
         .gte("date", today)
@@ -1743,7 +1743,7 @@ function DiagnosticoTab() {
   const bookingsQuery = useQuery({
     queryKey: ["availability_bookings", today, horizon],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("bookings")
         .select("scheduled_date,scheduled_time,duration_minutes,booking_status")
         .gte("scheduled_date", today)
@@ -1813,13 +1813,13 @@ function DiagnosticoTab() {
   };
 
   const deactivate = async (id: string) => {
-    await supabase.from("availability_slots").update({ active: false }).eq("id", id);
+    await db.from("availability_slots").update({ active: false }).eq("id", id);
     toast.success("Slot desactivado");
     refresh();
   };
   const remove = async (id: string) => {
     if (!window.confirm("¿Eliminar slot?")) return;
-    await supabase.from("availability_slots").delete().eq("id", id);
+    await db.from("availability_slots").delete().eq("id", id);
     toast.success("Slot eliminado");
     refresh();
   };

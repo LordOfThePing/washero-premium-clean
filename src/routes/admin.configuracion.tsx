@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -51,8 +51,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { formatPrice } from "@/lib/booking-badges";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-const PROJECT_REF = SUPABASE_URL.replace(/^https?:\/\//, "").split(".")[0];
+const API_URL = import.meta.env.VITE_API_URL as string;
 
 export const Route = createFileRoute("/admin/configuracion")({
   component: ConfigPage,
@@ -127,7 +126,7 @@ function ServicesTab() {
   const q = useQuery({
     queryKey: ["admin", "services"],
     queryFn: async (): Promise<Service[]> => {
-      const { data, error } = await supabase.from("services").select("*").order("name");
+      const { data, error } = await db.from("services").select("*").order("name");
       if (error) throw error;
       return data ?? [];
     },
@@ -137,7 +136,7 @@ function ServicesTab() {
 
   const toggleActive = useMutation({
     mutationFn: async (svc: Service) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("services")
         .update({ active: !svc.active })
         .eq("id", svc.id);
@@ -151,7 +150,7 @@ function ServicesTab() {
   });
 
   const askDelete = async (svc: Service) => {
-    const { count } = await supabase
+    const { count } = await db
       .from("bookings")
       .select("id", { count: "exact", head: true })
       .eq("service_id", svc.id);
@@ -160,7 +159,7 @@ function ServicesTab() {
 
   const doDelete = useMutation({
     mutationFn: async (svc: Service) => {
-      const { error } = await supabase.from("services").delete().eq("id", svc.id);
+      const { error } = await db.from("services").delete().eq("id", svc.id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -371,11 +370,11 @@ function ServiceForm({
         active,
       };
       if (initial) {
-        const { error } = await supabase.from("services").update(payload).eq("id", initial.id);
+        const { error } = await db.from("services").update(payload).eq("id", initial.id);
         if (error) throw error;
         toast.success("Servicio actualizado.");
       } else {
-        const { error } = await supabase.from("services").insert(payload);
+        const { error } = await db.from("services").insert(payload);
         if (error) throw error;
         toast.success("Servicio creado.");
       }
@@ -484,13 +483,13 @@ async function syncLegacyServiceArea(opts: {
   // Keep service_areas aligned for any remaining legacy consumers / health counts.
   if (opts.remove) {
     if (opts.previousName) {
-      await supabase.from("service_areas").delete().eq("name", opts.previousName);
+      await db.from("service_areas").delete().eq("name", opts.previousName);
     }
-    await supabase.from("service_areas").delete().eq("name", opts.name);
+    await db.from("service_areas").delete().eq("name", opts.name);
     return;
   }
   if (opts.previousName && opts.previousName !== opts.name) {
-    const { data: renamedRows, error: renameError } = await supabase
+    const { data: renamedRows, error: renameError } = await db
       .from("service_areas")
       .update({ name: opts.name, active: opts.active, coverage_notes: opts.coverage_notes })
       .eq("name", opts.previousName)
@@ -498,20 +497,20 @@ async function syncLegacyServiceArea(opts: {
     if (renameError) throw renameError;
     if ((renamedRows ?? []).length > 0) return;
   }
-  const { data: existing } = await supabase
+  const { data: existing } = await db
     .from("service_areas")
     .select("id")
     .eq("name", opts.name)
     .maybeSingle();
   if (existing?.id) {
-    const { error } = await supabase
+    const { error } = await db
       .from("service_areas")
       .update({ active: opts.active, coverage_notes: opts.coverage_notes })
       .eq("id", existing.id);
     if (error) throw error;
     return;
   }
-  const { error } = await supabase.from("service_areas").insert({
+  const { error } = await db.from("service_areas").insert({
     name: opts.name,
     active: opts.active,
     coverage_notes: opts.coverage_notes,
@@ -528,7 +527,7 @@ function AreasTab() {
   const q = useQuery({
     queryKey: ["admin", "coverage_zones"],
     queryFn: async (): Promise<Area[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("coverage_zones")
         .select("id,name,active,aliases,coverage_notes,display_order,created_at,updated_at")
         .order("display_order")
@@ -560,7 +559,7 @@ function AreasTab() {
   const toggleActive = useMutation({
     mutationFn: async (a: Area) => {
       const nextActive = !a.active;
-      const { error } = await supabase
+      const { error } = await db
         .from("coverage_zones")
         .update({ active: nextActive })
         .eq("id", a.id);
@@ -580,11 +579,11 @@ function AreasTab() {
 
   const askDelete = async (area: Area) => {
     const [b, c] = await Promise.all([
-      supabase
+      db
         .from("bookings")
         .select("id", { count: "exact", head: true })
         .eq("coverage_zone_id", area.id),
-      supabase
+      db
         .from("customers")
         .select("id", { count: "exact", head: true })
         .eq("coverage_zone_id", area.id),
@@ -594,7 +593,7 @@ function AreasTab() {
 
   const doDelete = useMutation({
     mutationFn: async (a: Area) => {
-      const { error } = await supabase.from("coverage_zones").delete().eq("id", a.id);
+      const { error } = await db.from("coverage_zones").delete().eq("id", a.id);
       if (error) throw error;
       await syncLegacyServiceArea({
         name: a.name,
@@ -818,7 +817,7 @@ function AreaForm({
         display_order: initial?.display_order ?? existing.length + 1,
       };
       if (initial) {
-        const { error } = await supabase
+        const { error } = await db
           .from("coverage_zones")
           .update(payload)
           .eq("id", initial.id);
@@ -831,7 +830,7 @@ function AreaForm({
         });
         toast.success("Zona actualizada.");
       } else {
-        const { error } = await supabase.from("coverage_zones").insert(payload);
+        const { error } = await db.from("coverage_zones").insert(payload);
         if (error) throw error;
         await syncLegacyServiceArea({
           name: trimmed,
@@ -935,7 +934,7 @@ function PrivateNeighborhoodsTab() {
   const zonesQ = useQuery({
     queryKey: ["admin", "coverage_zones", "options"],
     queryFn: async (): Promise<CoverageZoneOption[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("coverage_zones")
         .select("id,name")
         .eq("active", true)
@@ -949,7 +948,7 @@ function PrivateNeighborhoodsTab() {
   const q = useQuery({
     queryKey: ["admin", "private_neighborhoods"],
     queryFn: async (): Promise<PrivateNeighborhood[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("private_neighborhoods")
         .select("*")
         .order("display_order")
@@ -969,7 +968,7 @@ function PrivateNeighborhoodsTab() {
 
   const toggleActive = useMutation({
     mutationFn: async (row: PrivateNeighborhood) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("private_neighborhoods")
         .update({ active: !row.active })
         .eq("id", row.id);
@@ -983,7 +982,7 @@ function PrivateNeighborhoodsTab() {
   });
 
   const askDelete = async (row: PrivateNeighborhood) => {
-    const { count } = await supabase
+    const { count } = await db
       .from("bookings")
       .select("id", { count: "exact", head: true })
       .eq("private_neighborhood_id", row.id);
@@ -992,7 +991,7 @@ function PrivateNeighborhoodsTab() {
 
   const doDelete = useMutation({
     mutationFn: async (row: PrivateNeighborhood) => {
-      const { error } = await supabase.from("private_neighborhoods").delete().eq("id", row.id);
+      const { error } = await db.from("private_neighborhoods").delete().eq("id", row.id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -1244,14 +1243,14 @@ function PrivateNeighborhoodForm({
         display_order: Math.round(orderNum),
       };
       if (initial) {
-        const { error } = await supabase
+        const { error } = await db
           .from("private_neighborhoods")
           .update(payload)
           .eq("id", initial.id);
         if (error) throw error;
         toast.success("Barrio actualizado.");
       } else {
-        const { error } = await supabase.from("private_neighborhoods").insert(payload);
+        const { error } = await db.from("private_neighborhoods").insert(payload);
         if (error) throw error;
         toast.success("Barrio creado.");
       }
@@ -1439,7 +1438,7 @@ function HealthTab() {
       "booking_requests",
     ] as const;
     const results = await Promise.all(
-      tables.map((t) => supabase.from(t).select("id", { count: "exact", head: true })),
+      tables.map((t) => db.from(t).select("id", { count: "exact", head: true })),
     );
     const next: Counts = {};
     tables.forEach((t, i) => {
@@ -1473,16 +1472,16 @@ function HealthTab() {
         payment_method: "Pagar después",
         notes: tag,
       };
-      const ok = await supabase.from("bookings").insert(base);
+      const ok = await db.from("bookings").insert(base);
       setInsertResult(ok.error ? `FAIL: ${ok.error.message}` : "OK");
 
-      const bad = await supabase.from("bookings").insert({ ...base, booking_source: "admin" });
+      const bad = await db.from("bookings").insert({ ...base, booking_source: "admin" });
       setForbiddenResult(
         bad.error ? `OK (bloqueado: ${bad.error.code})` : "FAIL (insert permitido!)",
       );
 
       // Cleanup as admin
-      await supabase.from("bookings").delete().eq("notes", tag);
+      await db.from("bookings").delete().eq("notes", tag);
     } finally {
       setRunning(false);
     }
@@ -1490,7 +1489,7 @@ function HealthTab() {
 
   async function pingEdge() {
     try {
-      const { error } = await supabase.functions.invoke("create-website-booking", {
+      const { error } = await db.functions.invoke("create-website-booking", {
         body: { __ping: true },
       });
       // Function should reject ping with 4xx → that means it's reachable.
@@ -1517,8 +1516,8 @@ function HealthTab() {
         <CardContent className="space-y-4 text-sm">
           <div className="grid gap-2">
             <Row
-              label="Supabase project ref"
-              value={<code className="font-mono text-xs">{PROJECT_REF}</code>}
+              label="API URL"
+              value={<code className="font-mono text-xs">{API_URL}</code>}
             />
             <Row label="services" value={loading ? "…" : String(counts.services)} />
             <Row label="service_areas" value={loading ? "…" : String(counts.service_areas)} />
@@ -1572,13 +1571,13 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 // MERCADO PAGO HEALTH
 // ===========================================================================
 
-const MP_WEBHOOK_URL = `${SUPABASE_URL}/functions/v1/mercadopago-webhook`;
+const MP_WEBHOOK_URL = `${API_URL}/functions/v1/mercadopago-webhook`;
 
 function MercadoPagoHealthCard() {
   const diagnostics = useQuery({
     queryKey: ["admin", "mp-diagnostics"],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("mp-diagnostics", { body: {} });
+      const { data, error } = await db.functions.invoke("mp-diagnostics", { body: {} });
       if (error) throw error;
       return data as {
         mercadopago_access_token_configured: boolean;
@@ -1593,16 +1592,16 @@ function MercadoPagoHealthCard() {
   const counts = useQuery({
     queryKey: ["admin", "mp-payment-counts"],
     queryFn: async () => {
-      const all = await supabase.from("payments").select("id", { count: "exact", head: true });
-      const pend = await supabase
+      const all = await db.from("payments").select("id", { count: "exact", head: true });
+      const pend = await db
         .from("payments")
         .select("id", { count: "exact", head: true })
         .eq("status", "pending");
-      const paid = await supabase
+      const paid = await db
         .from("payments")
         .select("id", { count: "exact", head: true })
         .eq("status", "paid");
-      const failed = await supabase
+      const failed = await db
         .from("payments")
         .select("id", { count: "exact", head: true })
         .eq("status", "failed");
@@ -1618,7 +1617,7 @@ function MercadoPagoHealthCard() {
   const latestPayment = useQuery({
     queryKey: ["admin", "mp-latest-payment"],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await db
         .from("payments")
         .select("id,provider,status,amount,updated_at,provider_payment_id")
         .order("updated_at", { ascending: false })
@@ -1631,7 +1630,7 @@ function MercadoPagoHealthCard() {
   const latestLog = useQuery({
     queryKey: ["admin", "mp-latest-webhook-log"],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await db
         .from("communication_logs")
         .select("id,created_at,channel,direction,message_text")
         .eq("provider", "mercadopago")
@@ -1720,7 +1719,7 @@ function MercadoPagoHealthCard() {
           <p className="pt-1">
             Cuando publiques <code className="font-mono">washero.ar</code>, configurar el secret{" "}
             <code className="font-mono">PUBLIC_SITE_URL=https://washero.ar</code> en las funciones
-            de Supabase.
+            del backend.
           </p>
         </div>
       </CardContent>

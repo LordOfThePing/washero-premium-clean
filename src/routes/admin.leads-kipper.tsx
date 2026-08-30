@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ function KipperPage() {
   const detected = useQuery({
     queryKey: ["kipper-bookings"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("bookings")
         .select("id, customer_name, customer_phone, customer_email, scheduled_date, scheduled_time, vehicle_type, service_name, notes")
         .ilike("notes", "%kipper%")
@@ -36,7 +36,7 @@ function KipperPage() {
   const stored = useQuery({
     queryKey: ["kipper_leads"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("kipper_leads")
         .select("*")
         .order("created_at", { ascending: false });
@@ -48,9 +48,9 @@ function KipperPage() {
   const ensureLead = async (b: any, status: string) => {
     const existing = (stored.data ?? []).find((l: any) => l.booking_id === b.id);
     if (existing) {
-      await supabase.from("kipper_leads").update({ status }).eq("id", existing.id);
+      await db.from("kipper_leads").update({ status }).eq("id", existing.id);
     } else {
-      await supabase.from("kipper_leads").insert({
+      await db.from("kipper_leads").insert({
         booking_id: b.id,
         full_name: b.customer_name,
         phone: b.customer_phone,

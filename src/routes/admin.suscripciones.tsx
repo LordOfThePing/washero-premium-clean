@@ -3,7 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarPlus, CreditCard, Loader2, Pencil, Plus, Power, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import {
   ScheduleSubscriptionWashDialog,
   type ScheduleSubContext,
@@ -157,7 +157,7 @@ function PlansTab() {
   const plans = useQuery({
     queryKey: ["admin", "subscriptions", "plans"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("subscription_plans")
         .select("*")
         .order("display_order", { ascending: true })
@@ -170,7 +170,7 @@ function PlansTab() {
   const services = useQuery({
     queryKey: ["admin", "subscriptions", "services-lookup"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("services").select("id, name").order("name");
+      const { data, error } = await db.from("services").select("id, name").order("name");
       if (error) throw error;
       return data ?? [];
     },
@@ -178,7 +178,7 @@ function PlansTab() {
 
   const toggleActive = useMutation({
     mutationFn: async ({ id, active }: { id: string; active: boolean }) => {
-      const { error } = await supabase.from("subscription_plans").update({ active }).eq("id", id);
+      const { error } = await db.from("subscription_plans").update({ active }).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -317,13 +317,13 @@ function PlanDialog({
       };
       if (!payload.name) throw new Error("El nombre es obligatorio.");
       if (plan?.id) {
-        const { error } = await supabase
+        const { error } = await db
           .from("subscription_plans")
           .update(payload)
           .eq("id", plan.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("subscription_plans").insert(payload);
+        const { error } = await db.from("subscription_plans").insert(payload);
         if (error) throw error;
       }
     },
@@ -432,7 +432,7 @@ function ActiveSubscriptionsTab({ onSchedule }: { onSchedule: (ctx: ScheduleSubC
   const subs = useQuery({
     queryKey: ["admin", "subscriptions", "list"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("customer_subscriptions")
         .select(
           `
@@ -450,7 +450,7 @@ function ActiveSubscriptionsTab({ onSchedule }: { onSchedule: (ctx: ScheduleSubC
   const usages = useQuery({
     queryKey: ["admin", "subscriptions", "usages-counts"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("subscription_usages")
         .select("customer_subscription_id, period_start, period_end");
       if (error) throw error;
@@ -474,7 +474,7 @@ function ActiveSubscriptionsTab({ onSchedule }: { onSchedule: (ctx: ScheduleSubC
 
   const setStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: SubscriptionStatus }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("customer_subscriptions")
         .update({ status })
         .eq("id", id);
@@ -491,7 +491,7 @@ function ActiveSubscriptionsTab({ onSchedule }: { onSchedule: (ctx: ScheduleSubC
     mutationFn: async (id: string) => {
       const start = todayIso();
       const end = periodEndFromStart(start);
-      const { error } = await supabase
+      const { error } = await db
         .from("customer_subscriptions")
         .update({ current_period_start: start, current_period_end: end })
         .eq("id", id);
@@ -686,7 +686,7 @@ function CreateSubscriptionTab() {
   const customers = useQuery({
     queryKey: ["admin", "subscriptions", "customers"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("customers")
         .select("id, full_name, phone")
         .order("full_name", { ascending: true })
@@ -699,7 +699,7 @@ function CreateSubscriptionTab() {
   const plans = useQuery({
     queryKey: ["admin", "subscriptions", "plans-active"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("subscription_plans")
         .select("id, name, monthly_price, washes_per_month")
         .eq("active", true)
@@ -713,7 +713,7 @@ function CreateSubscriptionTab() {
     mutationFn: async () => {
       if (!customerId || !planId) throw new Error("Elegí cliente y plan.");
       const periodEnd = periodEndFromStart(startDate);
-      const { error } = await supabase.from("customer_subscriptions").insert({
+      const { error } = await db.from("customer_subscriptions").insert({
         customer_id: customerId,
         plan_id: planId,
         status: "active",
@@ -815,7 +815,7 @@ function UsageHistoryTab() {
   const rows = useQuery({
     queryKey: ["admin", "subscriptions", "usage-history"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("subscription_usages")
         .select(
           `

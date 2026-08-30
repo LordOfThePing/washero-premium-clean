@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { fetchMyOperatorProfile, type OperatorProfile } from "@/lib/operator";
 
 export type OperatorAuthState =
@@ -33,11 +33,11 @@ export function useOperatorAuth(): OperatorAuthState {
       }
     }
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+    const { data: sub } = db.auth.onAuthStateChange((_e, session) => {
       setTimeout(() => check(session), 0);
     });
 
-    supabase.auth.getSession().then(({ data }) => check(data.session));
+    db.auth.getSession().then(({ data }) => check(data.session));
 
     return () => {
       active = false;

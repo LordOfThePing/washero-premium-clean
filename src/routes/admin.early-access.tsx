@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +33,7 @@ function EarlyAccessPage() {
   const list = useQuery({
     queryKey: ["early_access_leads"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("early_access_leads")
         .select("*")
         .order("created_at", { ascending: false })
@@ -55,7 +55,7 @@ function EarlyAccessPage() {
   });
 
   const updateStatus = async (id: string, status: Status) => {
-    const { error } = await supabase
+    const { error } = await db
       .from("early_access_leads")
       .update({ status })
       .eq("id", id);
@@ -153,7 +153,7 @@ function NewLeadDialog({ onClose }: { onClose: () => void }) {
 
   const submit = async () => {
     setSaving(true);
-    const { error } = await supabase.from("early_access_leads").insert({
+    const { error } = await db.from("early_access_leads").insert({
       full_name, phone, email, neighborhood, notes, source: "manual",
     });
     setSaving(false);

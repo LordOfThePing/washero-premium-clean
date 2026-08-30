@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, ExternalLink, Loader2, Map as MapIcon, X } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { DemandMapCanvas } from "@/components/admin/DemandMapCanvas";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -104,7 +104,7 @@ function MapaDemandaPage() {
   const bookingsQuery = useQuery({
     queryKey: ["admin", "mapa-demanda", "bookings", dateRange.from, dateRange.to],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("bookings")
         .select(BOOKING_FIELDS)
         .gte("scheduled_date", dateRange.from)
@@ -120,7 +120,7 @@ function MapaDemandaPage() {
   const zonesQuery = useQuery({
     queryKey: ["admin", "mapa-demanda", "zones"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("coverage_zones")
         .select("id,name,active,center_lat,center_lng,radius_km,polygon_geojson,display_order")
         .order("display_order", { ascending: true })
@@ -133,7 +133,7 @@ function MapaDemandaPage() {
   const servicesQuery = useQuery({
     queryKey: ["admin", "mapa-demanda", "services"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("services")
         .select("name")
         .eq("active", true)

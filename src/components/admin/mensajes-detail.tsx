@@ -15,7 +15,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import {
   ADMIN_PAYMENT_METHODS,
   ADMIN_VEHICLE_TYPES,
@@ -157,7 +157,7 @@ export function ConversationDetail({
   const messages = useQuery({
     queryKey: ["whatsapp", "messages", conversation.id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("whatsapp_messages")
         .select("*")
         .eq("conversation_id", conversation.id)
@@ -172,7 +172,7 @@ export function ConversationDetail({
     queryKey: ["whatsapp", "events", conversation.external_conversation_id],
     enabled: !!conversation.external_conversation_id,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("whatsapp_events")
         .select("id, event_type, sender_type, message_text, created_at, auth_valid")
         .eq("conversation_id", conversation.external_conversation_id!)
@@ -188,7 +188,7 @@ export function ConversationDetail({
     queryKey: ["whatsapp", "booking", conversation.linked_booking_id],
     enabled: !!conversation.linked_booking_id,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("bookings")
         .select("id, booking_status, payment_status, scheduled_date, scheduled_time, service_name, price, customer_name")
         .eq("id", conversation.linked_booking_id!)
@@ -232,7 +232,7 @@ export function ConversationDetail({
         notes: patch.notes !== undefined ? patch.notes : (assignment?.notes ?? null),
         updated_at: new Date().toISOString(),
       };
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("conversation_assignments")
         .upsert(payload, { onConflict: "conversation_id" })
         .select("*")
@@ -651,7 +651,7 @@ function ApproveDialog({
   const services = useQuery({
     queryKey: ["services-active"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("services").select("*").eq("active", true);
+      const { data, error } = await db.from("services").select("*").eq("active", true);
       if (error) throw error;
       return data;
     },

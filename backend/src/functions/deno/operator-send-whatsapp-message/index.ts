@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 import { createClient } from "@supabase/supabase-js";
 import {
   buildOperatorWhatsappVariables,
@@ -15,12 +15,12 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const ANON_KEY = process.env.SUPABASE_ANON_KEY ?? process.env.SUPABASE_PUBLISHABLE_KEY!;
+const API_URL = process.env.API_URL!;
+const SERVICE_ROLE = process.env.SERVICE_ROLE_KEY!;
+const ANON_KEY = process.env.ANON_KEY!;
 const ALLOW_UNASSIGNED_TODAY = String(process.env.OPERATOR_ALLOW_UNASSIGNED_TODAY ?? "false").toLowerCase() === "true";
 
-const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+const admin = createClient(API_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 
 type Payload = {
   booking_id?: string;
@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
 
   const gate = await getOperatorGate({
     authHeader: req.headers.get("authorization"),
-    supabaseUrl: SUPABASE_URL,
+    supabaseUrl: API_URL,
     anonKey: ANON_KEY,
     admin,
   });

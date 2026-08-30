@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export type WhatsappDiagnosticsStatus = {
   gateway_url_configured: boolean;
@@ -26,7 +26,7 @@ export type SendWhatsappMessageResponse = {
 };
 
 export async function fetchWhatsappDiagnostics(): Promise<WhatsappDiagnosticsStatus> {
-  const { data, error } = await supabase.functions.invoke("whatsapp-diagnostics", {
+  const { data, error } = await db.functions.invoke("whatsapp-diagnostics", {
     body: { action: "status" },
   });
   if (error) throw error;
@@ -41,7 +41,7 @@ export async function sendWhatsappMessage(payload: {
   invoice_id?: string | null;
   template_key?: string | null;
 }): Promise<SendWhatsappMessageResponse> {
-  const { data, error } = await supabase.functions.invoke("send-whatsapp-message", { body: payload });
+  const { data, error } = await db.functions.invoke("send-whatsapp-message", { body: payload });
   if (error) return { ok: false, error: error.message };
   return (data ?? { ok: false, error: "empty_response" }) as SendWhatsappMessageResponse;
 }
@@ -55,7 +55,7 @@ export async function sendBookingReminders(): Promise<{
   failed?: number;
   error?: string;
 }> {
-  const { data, error } = await supabase.functions.invoke("send-booking-reminders", { body: {} });
+  const { data, error } = await db.functions.invoke("send-booking-reminders", { body: {} });
   if (error) return { ok: false, error: error.message };
   return data as {
     ok: boolean;

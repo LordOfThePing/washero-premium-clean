@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export const ADMIN_PAYMENT_METHODS = ["MercadoPago", "Transferencia", "Pagar después"] as const;
 export type AdminPaymentMethod = (typeof ADMIN_PAYMENT_METHODS)[number];
@@ -47,7 +47,7 @@ export type CreateAdminBookingResponse = {
 export async function invokeCreateAdminBooking(
   payload: CreateAdminBookingPayload,
 ): Promise<CreateAdminBookingResponse> {
-  const { data, error } = await supabase.functions.invoke("create-admin-booking", { body: payload });
+  const { data, error } = await db.functions.invoke("create-admin-booking", { body: payload });
   if (error) {
     return { ok: false, status: "server_error", customer_message: error.message };
   }

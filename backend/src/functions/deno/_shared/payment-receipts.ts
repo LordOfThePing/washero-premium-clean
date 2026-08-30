@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Payment receipt capture, storage, and booking matching (Transferencia).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { pick, normalizePhone } from "./text-utils.ts";

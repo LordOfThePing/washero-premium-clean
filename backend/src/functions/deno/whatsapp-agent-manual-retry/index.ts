@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Secure server-side endpoint for manually retrying an AMBIGUOUS outbound delivery (production-
 // hardening audit — "ambiguous delivery review and manual retry"). The frontend must never send
 // WhatsApp messages directly and must never silently flip an outbound row's status — this
@@ -15,11 +15,11 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const ANON_KEY = process.env.SUPABASE_ANON_KEY ?? process.env.SUPABASE_PUBLISHABLE_KEY!;
+const API_URL = process.env.API_URL!;
+const SERVICE_ROLE = process.env.SERVICE_ROLE_KEY!;
+const ANON_KEY = process.env.ANON_KEY!;
 
-const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+const admin = createClient(API_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ ok: false, error: "method_not_allowed" }, 405);
 
   const identity = await requireActiveAdmin(admin, {
-    supabaseUrl: SUPABASE_URL,
+    supabaseUrl: API_URL,
     anonKey: ANON_KEY,
     authHeader: req.headers.get("Authorization"),
   });

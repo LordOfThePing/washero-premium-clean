@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { bookingStatusLabels, paymentStatusLabels } from "@/lib/booking-badges";
 
 export type OperatorProfile = {
@@ -290,7 +290,7 @@ export async function fetchMyOperatorProfile(): Promise<{
   profile: OperatorProfile | null;
   error: string | null;
 }> {
-  const { data, error } = await (supabase as unknown as {
+  const { data, error } = await (db as unknown as {
     rpc: (fn: string) => Promise<{ data: OperatorProfile[] | OperatorProfile | null; error: { message: string } | null }>;
   }).rpc("get_my_operator_profile");
   if (error) return { profile: null, error: error.message };
@@ -634,7 +634,7 @@ export async function invokeOperatorUpdateBooking(payload: {
   issue_note?: string | null;
   mark_paid?: boolean;
 }): Promise<OperatorUpdateResponse> {
-  const { data, error } = await supabase.functions.invoke("operator-update-booking", { body: payload });
+  const { data, error } = await db.functions.invoke("operator-update-booking", { body: payload });
   if (error) return { ok: false, status: "server_error", message: error.message };
   return (data ?? { ok: false, status: "server_error" }) as OperatorUpdateResponse;
 }
@@ -644,7 +644,7 @@ export async function invokeOperatorSendWhatsapp(payload: {
   action_key: OperatorWhatsappAction;
   eta_minutes?: number | null;
 }): Promise<OperatorWhatsappResponse> {
-  const { data, error } = await supabase.functions.invoke("operator-send-whatsapp-message", {
+  const { data, error } = await db.functions.invoke("operator-send-whatsapp-message", {
     body: payload,
   });
   if (error) return { ok: false, status: "server_error", message: error.message };
@@ -674,10 +674,7 @@ function mapOperatorDetailError(status?: string, message?: string, invokeError?:
 }
 
 /**
- * Loads operator booking detail via Edge Function `operator-booking-detail`.
- *
- * Deploy before production/staging release:
- *   supabase functions deploy operator-booking-detail
+ * Loads operator booking detail via the `operator-booking-detail` backend function.
  */
 export async function fetchOperatorBookingDetail(bookingId: string): Promise<{
   booking: OperatorBooking | null;
@@ -695,7 +692,7 @@ export async function fetchOperatorBookingDetail(bookingId: string): Promise<{
     };
   }
 
-  const { data, error } = await supabase.functions.invoke("operator-booking-detail", {
+  const { data, error } = await db.functions.invoke("operator-booking-detail", {
     body: { booking_id: id },
   });
 

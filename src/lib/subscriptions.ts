@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export const SUBSCRIPTION_STATUSES = ["active", "paused", "cancelled"] as const;
 export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
@@ -90,7 +90,7 @@ export async function countUsagesForPeriod(
   periodStart: string,
   periodEnd: string,
 ): Promise<number> {
-  const { count, error } = await supabase
+  const { count, error } = await db
     .from("subscription_usages")
     .select("id", { count: "exact", head: true })
     .eq("customer_subscription_id", subscriptionId)
@@ -101,7 +101,7 @@ export async function countUsagesForPeriod(
 }
 
 export async function fetchActiveSubscriptionForCustomer(customerId: string) {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("customer_subscriptions")
     .select(
       `

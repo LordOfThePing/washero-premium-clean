@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, UserCog } from "lucide-react";
 import { toast } from "sonner";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -82,7 +82,7 @@ export function OperatorAssignmentFields({ booking }: { booking: Booking }) {
   const staffQuery = useQuery({
     queryKey: ["admin", "operator-staff"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("admin_users")
         .select("id, email, role")
         .eq("active", true)
@@ -98,7 +98,7 @@ export function OperatorAssignmentFields({ booking }: { booking: Booking }) {
       const previousOperatorId = booking.assigned_operator_id ?? null;
       const newOperatorId = operatorId || null;
 
-      const { error } = await supabase
+      const { error } = await db
         .from("bookings")
         .update({
           assigned_operator_id: newOperatorId,
@@ -190,7 +190,7 @@ export function OperatorAssignmentFields({ booking }: { booking: Booking }) {
   const logsQuery = useQuery({
     queryKey: ["admin", "booking-operator-logs", booking.id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("communication_logs")
         .select("id,created_at,provider,channel,direction,message_text")
         .eq("booking_id", booking.id)

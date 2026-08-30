@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Claims and runs whatsapp_agent_jobs. Used both by the webhook's EdgeRuntime.waitUntil() fast
 // path and by the periodic worker sweep (whatsapp-agent-worker) — same code, same guarantees,
 // regardless of which one actually ends up doing the work for a given job.

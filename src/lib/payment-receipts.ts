@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export type PaymentReceiptStatus =
   | "pending_review"
@@ -45,7 +45,7 @@ export const paymentReceiptStatusLabels: Record<PaymentReceiptStatus, string> = 
 };
 
 export async function fetchPaymentReceipts(): Promise<PaymentReceiptRow[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("payment_receipts")
     .select(
       "*, bookings(id, customer_name, scheduled_date, scheduled_time, price, payment_method, booking_status, payment_status)",
@@ -62,7 +62,7 @@ export async function invokeApprovePaymentReceipt(body: {
   notes?: string | null;
   booking_id?: string | null;
 }) {
-  const { data, error } = await supabase.functions.invoke("approve-payment-receipt", { body });
+  const { data, error } = await db.functions.invoke("approve-payment-receipt", { body });
   if (error) throw new Error(error.message);
   return data as {
     ok: boolean;
@@ -74,7 +74,7 @@ export async function invokeApprovePaymentReceipt(body: {
 }
 
 export async function fetchPaymentReceiptSignedUrl(receiptId: string) {
-  const { data, error } = await supabase.functions.invoke("get-payment-receipt-signed-url", {
+  const { data, error } = await db.functions.invoke("get-payment-receipt-signed-url", {
     body: { receipt_id: receiptId },
   });
   if (error) throw new Error(error.message);

@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 /**
  * Sync Google Forms responses (Sheet tab Respuestas_Form) into finance_expenses.
  *
@@ -22,15 +22,15 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const ANON_KEY = process.env.SUPABASE_ANON_KEY ?? process.env.SUPABASE_PUBLISHABLE_KEY!;
+const API_URL = process.env.API_URL!;
+const SERVICE_ROLE = process.env.SERVICE_ROLE_KEY!;
+const ANON_KEY = process.env.ANON_KEY!;
 const FINANCE_SYNC_SECRET = process.env.FINANCE_SYNC_SECRET ?? "";
 const SPREADSHEET_ID =
   process.env.GOOGLE_SHEETS_SPREADSHEET_ID ?? "1OqtH84vsW9MM1ZcNtExJn-nZwE0Mif95t7y9n6zBE-E";
 const SHEET_RANGE = process.env.GOOGLE_SHEETS_RANGE ?? "Respuestas_Form";
 
-const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+const admin = createClient(API_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 
 type ExpensePayer = "salva" | "moru" | "washero";
 
@@ -286,7 +286,7 @@ async function authorize(req: Request): Promise<"admin" | "cron" | null> {
   }
 
   const identity = await requireActiveAdmin(admin, {
-    supabaseUrl: SUPABASE_URL,
+    supabaseUrl: API_URL,
     anonKey: ANON_KEY,
     authHeader: req.headers.get("authorization"),
   });

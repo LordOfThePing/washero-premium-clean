@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Logistic slot scoring (haversine, zone clustering). MVP heuristics only.
 
 import { timeToMinutes, type BookingOverlapRow, type SlotRow } from "./slot-capacity.ts";

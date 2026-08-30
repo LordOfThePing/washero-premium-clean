@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 const VAPID_STORAGE_KEY = "washero_push_vapid_public_key";
 
@@ -47,7 +47,7 @@ export type PushDiagnostics = {
   notificationPermission: NotificationPermission | "unsupported";
   serviceWorkerRegistered: boolean;
   browserSubscription: boolean;
-  supabaseSubscription: boolean;
+  dbSubscription: boolean;
   publicKeyConfigured: boolean;
 };
 
@@ -86,13 +86,13 @@ export async function collectPushDiagnostics(userId: string): Promise<PushDiagno
       ? Notification.permission
       : "unsupported";
 
-  let supabaseSubscription = false;
+  let dbSubscription = false;
   if (userId) {
     try {
       const rows = await fetchUserPushSubscriptions(userId);
-      supabaseSubscription = rows.length > 0;
+      dbSubscription = rows.length > 0;
     } catch {
-      supabaseSubscription = false;
+      dbSubscription = false;
     }
   }
 
@@ -102,7 +102,7 @@ export async function collectPushDiagnostics(userId: string): Promise<PushDiagno
     notificationPermission: permission,
     serviceWorkerRegistered: await isServiceWorkerRegistered(),
     browserSubscription: await hasBrowserPushSubscription(),
-    supabaseSubscription,
+    dbSubscription,
     publicKeyConfigured: !!getWebPushPublicKey(),
   };
 }
@@ -123,7 +123,7 @@ export async function ensureOperatorServiceWorkerRegistration(): Promise<Service
 }
 
 export async function fetchUserPushSubscriptions(userId: string): Promise<PushSubscriptionRow[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("notification_subscriptions")
     .select("id, endpoint")
     .eq("user_id", userId);
@@ -132,7 +132,7 @@ export async function fetchUserPushSubscriptions(userId: string): Promise<PushSu
 }
 
 async function invokeSendOperatorPush(body: Record<string, unknown>): Promise<PushFunctionResponse> {
-  const { data, error } = await supabase.functions.invoke("send-operator-push", { body });
+  const { data, error } = await db.functions.invoke("send-operator-push", { body });
   const response = (data ?? {}) as PushFunctionResponse;
 
   if (response.ok) {
@@ -183,7 +183,7 @@ export async function subscribeOperatorPush(userId: string): Promise<void> {
     throw new Error("invalid_subscription");
   }
 
-  const { error } = await supabase.from("notification_subscriptions").upsert(
+  const { error } = await db.from("notification_subscriptions").upsert(
     {
       user_id: userId,
       endpoint: json.endpoint,

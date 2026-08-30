@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Bridge between an external WhatsApp AI agent and the Washero database.
 // Auth: send header `x-washi-agent-secret` matching env `WASHI_AGENT_SECRET`.
 // Configure with: supabase secrets set WASHI_AGENT_SECRET="valor-seguro"
@@ -11,10 +11,10 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const API_URL = process.env.API_URL!;
+const SERVICE_ROLE = process.env.SERVICE_ROLE_KEY!;
 const WASHI_AGENT_SECRET = process.env.WASHI_AGENT_SECRET ?? "";
-const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+const admin = createClient(API_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 
 type Payload = {
   action?: string;

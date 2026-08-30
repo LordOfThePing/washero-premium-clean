@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export const WHATSAPP_NUMBER = "5491176247835";
 export const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUMBER}`;
@@ -342,7 +342,7 @@ export function filterTooSoonSlots<T extends { date: string; start_time: string 
 }
 
 export async function fetchPrivateNeighborhoods(): Promise<PrivateNeighborhood[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("private_neighborhoods")
     .select(
       "id,name,aliases,formatted_address,canonical_address,lat,lng,coverage_zone_id,coverage_zone_name,place_id,display_order",
@@ -367,7 +367,7 @@ export async function fetchPrivateNeighborhoods(): Promise<PrivateNeighborhood[]
 }
 
 export async function fetchServices(): Promise<Service[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("services")
     .select("id,name,description,base_price,duration_minutes")
     .eq("active", true)
@@ -377,7 +377,7 @@ export async function fetchServices(): Promise<Service[]> {
 }
 
 export async function fetchPricing(): Promise<PricingItem[]> {
-  const withDuration = await supabase
+  const withDuration = await db
     .from("pricing_items")
     .select("id,code,name,description,type,amount,duration_minutes,display_order")
     .eq("active", true)
@@ -387,7 +387,7 @@ export async function fetchPricing(): Promise<PricingItem[]> {
   if (!withDuration.error) {
     rows = (withDuration.data ?? []) as Array<Record<string, unknown>>;
   } else {
-    const fallback = await supabase
+    const fallback = await db
       .from("pricing_items")
       .select("id,code,name,description,type,amount,display_order")
       .eq("active", true)
@@ -414,7 +414,7 @@ export async function fetchPricing(): Promise<PricingItem[]> {
 }
 
 export async function fetchAvailability(): Promise<PublicSlot[]> {
-  const { data, error } = await supabase.functions.invoke("get-public-availability");
+  const { data, error } = await db.functions.invoke("get-public-availability");
   if (error) throw error;
   const body = data as { ok: boolean; slots?: PublicSlot[] } | null;
   if (!body?.ok) throw new Error("availability_failed");
@@ -450,7 +450,7 @@ export async function fetchLogisticAvailability(input: {
   } else if (typeof input.duration_minutes === "number" && input.duration_minutes > 0) {
     body.duration_minutes = input.duration_minutes;
   }
-  const { data, error } = await supabase.functions.invoke("get-logistic-availability", {
+  const { data, error } = await db.functions.invoke("get-logistic-availability", {
     body,
   });
   if (error) throw error;

@@ -1,4 +1,4 @@
-import type { Database } from "@/integrations/supabase/types";
+import type { Database } from "@/integrations/db/types";
 
 export type FinanceBooking = Pick<
   Database["public"]["Tables"]["bookings"]["Row"],

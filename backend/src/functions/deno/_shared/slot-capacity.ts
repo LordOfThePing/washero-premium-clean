@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Shared slot capacity counting (same rules as get-public-availability / booking-core).
 
 export function timeToMinutes(t: string): number {

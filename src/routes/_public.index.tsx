@@ -23,7 +23,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Skeleton } from "@/components/ui/skeleton";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { formatPrice } from "@/lib/booking-badges";
 
 const WA_URL = "https://wa.me/5491176247835";
@@ -223,7 +223,7 @@ function Services() {
   const q = useQuery({
     queryKey: ["public", "services"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("services")
         .select("id,name,description,base_price,duration_minutes")
         .eq("active", true)
@@ -299,7 +299,7 @@ function Coverage() {
   const q = useQuery({
     queryKey: ["public", "coverage_zones"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("coverage_zones")
         .select("id,name,display_order")
         .eq("active", true)

@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // The Claude tool-use loop. This is the only place that talks to the Anthropic API — everything
 // it can do is limited to the deterministic tools in tools.ts; it never touches Supabase directly.
 //

@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export type CreateSubscriptionBookingPayload = {
   customer_subscription_id: string;
@@ -27,7 +27,7 @@ export type CreateSubscriptionBookingResponse = {
 export async function invokeCreateSubscriptionBooking(
   payload: CreateSubscriptionBookingPayload,
 ): Promise<CreateSubscriptionBookingResponse> {
-  const { data, error } = await supabase.functions.invoke("create-subscription-booking", {
+  const { data, error } = await db.functions.invoke("create-subscription-booking", {
     body: payload,
   });
   if (error) {

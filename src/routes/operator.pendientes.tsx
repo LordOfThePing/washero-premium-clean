@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { OperatorBookingCard } from "@/components/operator/OperatorBookingCard";
 import { OPERATOR_BOOKING_SELECT, todayIso, type OperatorBooking } from "@/lib/operator";
 import { useOperatorAuth } from "@/hooks/use-operator-auth";
@@ -20,7 +20,7 @@ function OperatorPendientesPage() {
     queryKey: ["operator", "pendientes", today, myStaffId, isStrictOperator],
     enabled: auth.status === "operator",
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("bookings")
         .select(OPERATOR_BOOKING_SELECT)
         .gte("scheduled_date", today)

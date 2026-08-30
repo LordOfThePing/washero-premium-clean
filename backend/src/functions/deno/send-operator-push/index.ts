@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 import { createClient } from "@supabase/supabase-js";
 import webpush from "web-push";
 import { getOperatorGate } from "../_shared/operator-auth.ts";
@@ -9,15 +9,15 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const ANON_KEY = process.env.SUPABASE_ANON_KEY ?? process.env.SUPABASE_PUBLISHABLE_KEY!;
+const API_URL = process.env.API_URL!;
+const SERVICE_ROLE = process.env.SERVICE_ROLE_KEY!;
+const ANON_KEY = process.env.ANON_KEY!;
 const PUSH_INTERNAL_SECRET = process.env.PUSH_INTERNAL_SECRET ?? "";
 const VAPID_PUBLIC_KEY = process.env.WEB_PUSH_VAPID_PUBLIC_KEY ?? "";
 const VAPID_PRIVATE_KEY = process.env.WEB_PUSH_VAPID_PRIVATE_KEY ?? "";
 const VAPID_SUBJECT = process.env.WEB_PUSH_VAPID_SUBJECT ?? "mailto:ops@washero.ar";
 
-const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+const admin = createClient(API_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 
 type Payload = {
   test?: boolean;
@@ -151,7 +151,7 @@ async function sendToSubscriptions(
 async function sendTestSelfPush(body: Payload, authHeader: string | null) {
   const gate = await getOperatorGate({
     authHeader,
-    supabaseUrl: SUPABASE_URL,
+    supabaseUrl: API_URL,
     anonKey: ANON_KEY,
     admin,
   });
@@ -200,7 +200,7 @@ Deno.serve(async (req) => {
     // Operator self-test: authenticated operator only.
     const gate = await getOperatorGate({
       authHeader,
-      supabaseUrl: SUPABASE_URL,
+      supabaseUrl: API_URL,
       anonKey: ANON_KEY,
       admin,
     });
@@ -210,7 +210,7 @@ Deno.serve(async (req) => {
   } else if (!internalAllowed && !isTestSelf) {
     const gate = await getOperatorGate({
       authHeader,
-      supabaseUrl: SUPABASE_URL,
+      supabaseUrl: API_URL,
       anonKey: ANON_KEY,
       admin,
     });

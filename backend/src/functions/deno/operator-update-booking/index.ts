@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Operator-safe booking status updates (no price/customer/date changes).
 import { createClient } from "@supabase/supabase-js";
 import { schedulePaymentConfirmedWhatsApp } from "../_shared/whatsapp-automation.ts";
@@ -9,11 +9,11 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const ANON_KEY = process.env.SUPABASE_ANON_KEY ?? process.env.SUPABASE_PUBLISHABLE_KEY!;
+const API_URL = process.env.API_URL!;
+const SERVICE_ROLE = process.env.SERVICE_ROLE_KEY!;
+const ANON_KEY = process.env.ANON_KEY!;
 
-const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+const admin = createClient(API_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 
 type Action = "start" | "complete" | "mark_paid" | "report_issue";
 
@@ -37,7 +37,7 @@ async function isActiveOperator(authHeader: string | null): Promise<{
   role: string | null;
 }> {
   if (!authHeader) return { ok: false, staffId: null, role: null };
-  const userClient = createClient(SUPABASE_URL, ANON_KEY, {
+  const userClient = createClient(API_URL, ANON_KEY, {
     global: { headers: { Authorization: authHeader } },
     auth: { persistSession: false },
   });

@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2, Pencil, Plus, Power, Tag, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -193,7 +193,7 @@ function ServicesTab() {
   const services = useQuery({
     queryKey: ["admin", "precios", "services"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("services")
         .select("*")
         .order("name", { ascending: true });
@@ -210,7 +210,7 @@ function ServicesTab() {
 
   const toggleActive = useMutation({
     mutationFn: async (service: ServiceRow) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("services")
         .update({ active: !service.active })
         .eq("id", service.id);
@@ -224,7 +224,7 @@ function ServicesTab() {
   });
 
   const askDelete = async (service: ServiceRow) => {
-    const { count, error } = await supabase
+    const { count, error } = await db
       .from("bookings")
       .select("id", { count: "exact", head: true })
       .eq("service_id", service.id);
@@ -240,7 +240,7 @@ function ServicesTab() {
 
   const deleteService = useMutation({
     mutationFn: async (service: ServiceRow) => {
-      const { error } = await supabase.from("services").delete().eq("id", service.id);
+      const { error } = await db.from("services").delete().eq("id", service.id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -312,7 +312,7 @@ function PricingItemsTab({ type }: { type: PricingType }) {
   const query = useQuery({
     queryKey: ["admin", "precios", "pricing_items", type],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("pricing_items")
         .select("*")
         .eq("type", type)
@@ -330,7 +330,7 @@ function PricingItemsTab({ type }: { type: PricingType }) {
 
   const toggleActive = useMutation({
     mutationFn: async (item: PricingItemRow) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("pricing_items")
         .update({ active: !item.active })
         .eq("id", item.id);
@@ -344,7 +344,7 @@ function PricingItemsTab({ type }: { type: PricingType }) {
   });
 
   const askDelete = async (item: PricingItemRow) => {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("bookings")
       .select("id,service_id,service_name,vehicle_type,selected_extras,price_breakdown")
       .limit(5000);
@@ -363,7 +363,7 @@ function PricingItemsTab({ type }: { type: PricingType }) {
 
   const deleteItem = useMutation({
     mutationFn: async (item: PricingItemRow) => {
-      const { error } = await supabase.from("pricing_items").delete().eq("id", item.id);
+      const { error } = await db.from("pricing_items").delete().eq("id", item.id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -755,11 +755,11 @@ function ServiceForm({
       };
 
       if (initial) {
-        const { error } = await supabase.from("services").update(payload).eq("id", initial.id);
+        const { error } = await db.from("services").update(payload).eq("id", initial.id);
         if (error) throw error;
         return "updated";
       }
-      const { error } = await supabase.from("services").insert(payload);
+      const { error } = await db.from("services").insert(payload);
       if (error) throw error;
       return "created";
     },
@@ -896,11 +896,11 @@ function PricingItemForm({
       };
 
       if (initial) {
-        const { error } = await supabase.from("pricing_items").update(payload).eq("id", initial.id);
+        const { error } = await db.from("pricing_items").update(payload).eq("id", initial.id);
         if (error) throw error;
         return "updated";
       }
-      const { error } = await supabase.from("pricing_items").insert(payload);
+      const { error } = await db.from("pricing_items").insert(payload);
       if (error) throw error;
       return "created";
     },

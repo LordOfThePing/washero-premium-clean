@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export const Route = createFileRoute("/admin/")({
   component: AdminDashboard,
@@ -26,16 +26,16 @@ function todayIso() {
 async function fetchMetrics() {
   const today = todayIso();
   const [todayCount, upcoming, needsReview, pendingPay, completed, requestsReview] = await Promise.all([
-    supabase.from("bookings").select("id", { count: "exact", head: true }).eq("scheduled_date", today),
-    supabase
+    db.from("bookings").select("id", { count: "exact", head: true }).eq("scheduled_date", today),
+    db
       .from("bookings")
       .select("id", { count: "exact", head: true })
       .gte("scheduled_date", today)
       .in("booking_status", ["pending", "confirmed", "needs_review"]),
-    supabase.from("bookings").select("id", { count: "exact", head: true }).eq("booking_status", "needs_review"),
-    supabase.from("bookings").select("id", { count: "exact", head: true }).eq("payment_status", "pending"),
-    supabase.from("bookings").select("id", { count: "exact", head: true }).eq("booking_status", "completed"),
-    supabase.from("booking_requests").select("id", { count: "exact", head: true }).eq("status", "needs_review"),
+    db.from("bookings").select("id", { count: "exact", head: true }).eq("booking_status", "needs_review"),
+    db.from("bookings").select("id", { count: "exact", head: true }).eq("payment_status", "pending"),
+    db.from("bookings").select("id", { count: "exact", head: true }).eq("booking_status", "completed"),
+    db.from("booking_requests").select("id", { count: "exact", head: true }).eq("status", "needs_review"),
   ]);
 
   return {
@@ -59,7 +59,7 @@ type LatestBooking = {
 };
 
 async function fetchLatest(): Promise<LatestBooking[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("bookings")
     .select("id,customer_name,service_name,scheduled_date,scheduled_time,booking_status,payment_status,created_at")
     .order("created_at", { ascending: false })

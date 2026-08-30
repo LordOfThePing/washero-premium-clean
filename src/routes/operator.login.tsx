@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Logo } from "@/components/brand/Logo";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useOperatorAuth } from "@/hooks/use-operator-auth";
 
 export const Route = createFileRoute("/operator/login")({
@@ -29,7 +29,7 @@ function OperatorLogin() {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
-    const { error: signInErr } = await supabase.auth.signInWithPassword({
+    const { error: signInErr } = await db.auth.signInWithPassword({
       email: email.trim(),
       password,
     });

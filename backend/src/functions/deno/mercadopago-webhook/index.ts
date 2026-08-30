@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Supabase Edge Function: mercadopago-webhook
 // Receives Mercado Pago notifications and updates payments + bookings.
 import { createClient } from "@supabase/supabase-js";
@@ -40,10 +40,10 @@ function mapMpStatus(s: string | undefined | null): string {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  const SUPABASE_URL = process.env.SUPABASE_URL!;
-  const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  const API_URL = process.env.API_URL!;
+  const SERVICE_ROLE = process.env.SERVICE_ROLE_KEY!;
   const MP_TOKEN = process.env.MERCADOPAGO_ACCESS_TOKEN;
-  const admin = createClient(SUPABASE_URL, SERVICE_ROLE, {
+  const admin = createClient(API_URL, SERVICE_ROLE, {
     auth: { persistSession: false },
   });
 

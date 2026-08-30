@@ -1,5 +1,5 @@
-import { supabase } from "@/integrations/supabase/client";
-import type { Database } from "@/integrations/supabase/types";
+import { db } from "@/integrations/db/client";
+import type { Database } from "@/integrations/db/types";
 
 export type Invoice = Database["public"]["Tables"]["invoices"]["Row"];
 
@@ -31,7 +31,7 @@ export function fmtInvoiceDate(iso: string | null | undefined) {
 }
 
 export async function fetchInvoiceForBooking(bookingId: string): Promise<Invoice | null> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("invoices")
     .select("*")
     .eq("booking_id", bookingId)
@@ -41,7 +41,7 @@ export async function fetchInvoiceForBooking(bookingId: string): Promise<Invoice
 }
 
 export async function fetchInvoiceById(invoiceId: string): Promise<Invoice | null> {
-  const { data, error } = await supabase.from("invoices").select("*").eq("id", invoiceId).maybeSingle();
+  const { data, error } = await db.from("invoices").select("*").eq("id", invoiceId).maybeSingle();
   if (error) throw error;
   return data;
 }
@@ -49,7 +49,7 @@ export async function fetchInvoiceById(invoiceId: string): Promise<Invoice | nul
 export async function fetchPublicInvoiceByToken(publicToken: string): Promise<Invoice | null> {
   const token = publicToken.trim();
   if (!token) return null;
-  const { data, error } = await supabase.rpc("get_public_invoice_by_token", {
+  const { data, error } = await db.rpc("get_public_invoice_by_token", {
     _public_token: token,
   });
   if (error) throw error;
@@ -69,13 +69,13 @@ export type GenerateInvoiceResult =
 
 /** Idempotent: RPC returns existing invoice id if already present. */
 export async function generateInvoiceForBooking(bookingId: string): Promise<GenerateInvoiceResult> {
-  const { data: existingBefore } = await supabase
+  const { data: existingBefore } = await db
     .from("invoices")
     .select("id")
     .eq("booking_id", bookingId)
     .maybeSingle();
 
-  const { data: invoiceId, error } = await supabase.rpc("generate_invoice_for_booking", {
+  const { data: invoiceId, error } = await db.rpc("generate_invoice_for_booking", {
     _booking_id: bookingId,
   });
 

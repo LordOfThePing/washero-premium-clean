@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, MessageSquare, Phone, RefreshCw } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { ConversationDetail, InvalidEventsPanel } from "@/components/admin/mensajes-detail";
 import {
   badgeLabel,
@@ -53,7 +53,7 @@ function MensajesPage() {
   const inbox = useQuery({
     queryKey: ["whatsapp", "conversations"],
     queryFn: async () => {
-      const nested = await supabase
+      const nested = await db
         .from("whatsapp_conversations")
         .select("*, conversation_assignments(*)")
         .order("last_message_at", { ascending: false, nullsFirst: false })
@@ -67,12 +67,12 @@ function MensajesPage() {
       }
 
       const [convRes, assignRes] = await Promise.all([
-        supabase
+        db
           .from("whatsapp_conversations")
           .select("*")
           .order("last_message_at", { ascending: false, nullsFirst: false })
           .limit(250),
-        supabase.from("conversation_assignments").select("*"),
+        db.from("conversation_assignments").select("*"),
       ]);
       if (convRes.error) throw convRes.error;
       if (assignRes.error) throw assignRes.error;
@@ -112,7 +112,7 @@ function MensajesPage() {
         ),
       ];
       if (ids.length === 0) return {} as Record<string, BookingRequestRow>;
-      const { data, error } = await supabase.from("booking_requests").select("*").in("id", ids);
+      const { data, error } = await db.from("booking_requests").select("*").in("id", ids);
       if (error) throw error;
       const map: Record<string, BookingRequestRow> = {};
       for (const row of data ?? []) {
@@ -134,8 +134,8 @@ function MensajesPage() {
     queryKey: ["whatsapp", "event-stats"],
     queryFn: async () => {
       const [invalid, lastInvalid] = await Promise.all([
-        supabase.from("whatsapp_events").select("id", { count: "exact", head: true }).eq("auth_valid", false),
-        supabase
+        db.from("whatsapp_events").select("id", { count: "exact", head: true }).eq("auth_valid", false),
+        db
           .from("whatsapp_events")
           .select("created_at")
           .eq("auth_valid", false)
@@ -154,7 +154,7 @@ function MensajesPage() {
     queryKey: ["whatsapp", "invalid-events"],
     enabled: filter === "invalid_token",
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("whatsapp_events")
         .select("id, event_type, customer_phone, customer_name, message_text, created_at, auth_valid")
         .eq("auth_valid", false)

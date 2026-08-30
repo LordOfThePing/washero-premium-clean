@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Coverage matching helpers shared by website + WhatsApp booking paths.
 import type { SupabaseClient } from "@supabase/supabase-js";
 

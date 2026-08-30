@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Supabase Edge Function: mp-diagnostics
 // Returns Mercado Pago configuration status without exposing token values.
 const corsHeaders = {
@@ -12,7 +12,7 @@ Deno.serve((req) => {
 
   const mpToken = process.env.MERCADOPAGO_ACCESS_TOKEN ?? "";
   const siteUrl = process.env.PUBLIC_SITE_URL ?? "";
-  const supabaseUrl = process.env.SUPABASE_URL ?? "";
+  const supabaseUrl = process.env.API_URL ?? "";
 
   const body = {
     ok: true,

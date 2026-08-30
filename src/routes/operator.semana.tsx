@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { OperatorBookingCard } from "@/components/operator/OperatorBookingCard";
 import {
   OPERATOR_BOOKING_SELECT,
@@ -35,7 +35,7 @@ function OperatorSemanaPage() {
   const bookings = useQuery({
     queryKey: ["operator", "bookings", "week", from, to],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("bookings")
         .select(OPERATOR_BOOKING_SELECT)
         .gte("scheduled_date", from)

@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // The one shared WhatsApp transport module: sending (via the n8n "WhatsApp Outbound Gateway"
 // webhook), duplicate-send guarding, phone normalization, and log redaction. No other file
 // sends a WhatsApp message directly -- whatsapp-automation.ts (booking lifecycle notifications)

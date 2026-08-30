@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -45,7 +45,7 @@ function OperatorMensajesPage() {
   const conversations = useQuery({
     queryKey: ["operator", "messages", "list"],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("operator-messages", {
+      const { data, error } = await db.functions.invoke("operator-messages", {
         body: { action: "list" },
       });
       if (error) throw error;
@@ -63,7 +63,7 @@ function OperatorMensajesPage() {
     queryKey: ["operator", "messages", "bookings-context", bookingIds.join(",")],
     enabled: bookingIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("bookings")
         .select(OPERATOR_BOOKING_SELECT)
         .in("id", bookingIds);
@@ -98,7 +98,7 @@ function OperatorMensajesPage() {
     queryKey: ["operator", "messages", "timeline", selected?.conversation_id],
     enabled: !!selected?.conversation_id,
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("operator-messages", {
+      const { data, error } = await db.functions.invoke("operator-messages", {
         body: { action: "timeline", conversation_id: selected!.conversation_id },
       });
       if (error) throw error;

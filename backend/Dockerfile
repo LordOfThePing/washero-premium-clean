@@ -1,5 +1,5 @@
 # Build from the repo root: `docker build -t washero-backend -f backend/Dockerfile .`
-# (needs supabase/migrations from outside backend/, which Docker can only COPY in if the
+# (needs db/migrations from outside backend/, which Docker can only COPY in if the
 # build context is the repo root).
 FROM node:20-alpine
 
@@ -9,7 +9,7 @@ COPY backend/package.json backend/package-lock.json* ./
 RUN npm install --omit=dev
 
 COPY backend/. .
-COPY supabase/migrations ./supabase/migrations
+COPY db/migrations ./db/migrations
 
 ENV NODE_ENV=production
 EXPOSE 8000

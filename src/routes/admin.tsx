@@ -4,7 +4,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { Button } from "@/components/ui/button";
 import { useAdminAuth } from "@/hooks/use-admin-auth";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useEffect } from "react";
 
 export const Route = createFileRoute("/admin")({
@@ -62,7 +62,7 @@ function AdminGuarded() {
                 variant="ghost"
                 size="sm"
                 onClick={async () => {
-                  await supabase.auth.signOut();
+                  await db.auth.signOut();
                   navigate({ to: "/admin/login" });
                 }}
               >
@@ -118,7 +118,7 @@ where email = '${userEmail}';`;
       <div className="w-full max-w-2xl rounded-lg border border-border/60 bg-card p-6 shadow-sm">
         <h1 className="text-xl font-semibold text-center">Acceso no autorizado</h1>
         <p className="mt-2 text-center text-sm text-muted-foreground">
-          Tu usuario existe en Supabase Auth, pero no tiene una fila activa en{" "}
+          Tu usuario existe en auth.users, pero no tiene una fila activa en{" "}
           <code>public.admin_users</code>.
         </p>
 
@@ -141,7 +141,7 @@ where email = '${userEmail}';`;
         </div>
 
         <div className="mt-4 rounded-md border border-border/60 bg-muted/40 p-4">
-          <h2 className="text-sm font-semibold">Pegá esto en Supabase SQL Editor</h2>
+          <h2 className="text-sm font-semibold">Pegá esto en un cliente SQL de Postgres</h2>
           <p className="mt-1 text-xs text-muted-foreground">
             Si ya existe una fila con ese email, este UPSERT la corrige:
           </p>
@@ -159,7 +159,7 @@ where email = '${userEmail}';`;
         <div className="mt-6 flex flex-col gap-2">
           <Button
             onClick={async () => {
-              await supabase.auth.signOut();
+              await db.auth.signOut();
               navigate({ to: "/admin/login" });
             }}
           >

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export type AdminProfile = {
   user_id: string;
@@ -16,7 +16,7 @@ export type AdminAuthState =
   | { status: "admin"; session: Session; isAdmin: true; profile: AdminProfile; rpcError: null };
 
 export async function fetchMyAdminProfile(): Promise<{ profile: AdminProfile | null; error: string | null }> {
-  const { data, error } = await (supabase as unknown as {
+  const { data, error } = await (db as unknown as {
     rpc: (fn: string) => Promise<{ data: AdminProfile[] | AdminProfile | null; error: { message: string } | null }>;
   }).rpc("get_my_admin_profile");
   if (error) return { profile: null, error: error.message };
@@ -52,11 +52,11 @@ export function useAdminAuth(): AdminAuthState {
       }
     }
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: sub } = db.auth.onAuthStateChange((_event, session) => {
       setTimeout(() => checkAdmin(session), 0);
     });
 
-    supabase.auth.getSession().then(({ data }) => checkAdmin(data.session));
+    db.auth.getSession().then(({ data }) => checkAdmin(data.session));
 
     return () => {
       active = false;

@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { OperatorDaySections } from "@/components/operator/OperatorDaySections";
 import { OperatorNextWashHero } from "@/components/operator/OperatorNextWashHero";
 import {
@@ -48,7 +48,7 @@ function OperatorHoyPage() {
     queryKey: ["operator", "bookings", today, myStaffId, isStrictOperator],
     enabled: auth.status === "operator",
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("bookings")
         .select(OPERATOR_BOOKING_SELECT)
         .eq("scheduled_date", today)

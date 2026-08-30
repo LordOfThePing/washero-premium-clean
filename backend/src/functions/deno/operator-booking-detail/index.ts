@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Read-only operator booking detail (bookings + booking_units). No writes.
 import { createClient } from "@supabase/supabase-js";
 import { getOperatorGate, isStrictOperatorRole } from "../_shared/operator-auth.ts";
@@ -9,12 +9,12 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const ANON_KEY = process.env.SUPABASE_ANON_KEY ?? process.env.SUPABASE_PUBLISHABLE_KEY!;
+const API_URL = process.env.API_URL!;
+const SERVICE_ROLE = process.env.SERVICE_ROLE_KEY!;
+const ANON_KEY = process.env.ANON_KEY!;
 const ALLOW_UNASSIGNED_TODAY = String(process.env.OPERATOR_ALLOW_UNASSIGNED_TODAY ?? "false").toLowerCase() === "true";
 
-const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+const admin = createClient(API_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 
 const BOOKING_SELECT =
   "id,customer_name,customer_phone,customer_email,service_id,service_name,vehicle_type,scheduled_date,scheduled_time,duration_minutes,booking_status,payment_status,payment_method,price,address,address_type,formatted_address,neighborhood,coverage_zone_name,private_neighborhood_id,private_neighborhood_name,private_lot,private_extra_details,vehicle_count,subtotal_before_discounts,discount_total,extras_total,vehicle_surcharge,notes,operator_notes,selected_extras,price_breakdown,assigned_operator_id,assigned_vehicle_label";
@@ -128,7 +128,7 @@ Deno.serve(async (req) => {
 
   const gate = await getOperatorGate({
     authHeader,
-    supabaseUrl: SUPABASE_URL,
+    supabaseUrl: API_URL,
     anonKey: ANON_KEY,
     admin,
   });

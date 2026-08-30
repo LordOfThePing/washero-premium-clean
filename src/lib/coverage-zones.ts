@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export const ACTIVE_COVERAGE_ZONES_QUERY_KEY = ["coverage_zones", "active"] as const;
 export const ADMIN_COVERAGE_ZONES_QUERY_KEY = ["admin", "coverage_zones"] as const;
@@ -232,7 +232,7 @@ export function sortCoverageZoneNames(
 }
 
 export async function fetchActiveCoverageZones(): Promise<ActiveCoverageZone[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("coverage_zones")
     .select("id,name,aliases,display_order")
     .eq("active", true)

@@ -1,4 +1,4 @@
-// @ts-nocheck -- ported verbatim from supabase/functions; not our source of truth for types
+// @ts-nocheck -- ported verbatim from functions/; not our source of truth for types
 // Edge Function: validate-address-location
 // Verifies a Google place_id (server-side via Google Places API New) and returns
 // whether the resulting lat/lng falls inside an active coverage zone.
@@ -46,10 +46,10 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "invalid_json" }, 400);
   }
 
-  const SUPABASE_URL = process.env.SUPABASE_URL!;
-  const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  const API_URL = process.env.API_URL!;
+  const SERVICE_ROLE = process.env.SERVICE_ROLE_KEY!;
   const GOOGLE_KEY = process.env.GOOGLE_MAPS_SERVER_KEY ?? "";
-  const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+  const admin = createClient(API_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 
   if (body.address_type === "private_neighborhood") {
     const privateNeighborhoodId = (body.private_neighborhood_id ?? "").trim();
