@@ -24,9 +24,11 @@ services:
     volumes:
       - washero_pgdata:/var/lib/postgresql/data
     ports:
-      # Loopback-only -- not reachable outside this host. Remove entirely once you no longer
-      # need direct psql access from the host.
-      - "127.0.0.1:5432:5432"
+      # Loopback-only -- not reachable outside this host. Host port bumped to 5434 since
+      # 5432/5433 are already taken by other apps sharing this VPS (vuelto-postgres,
+      # wappfinancebotdev-postgres). Remove entirely once you no longer need direct psql
+      # access from the host.
+      - "127.0.0.1:5434:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U supabase_admin -d washero"]
       interval: 5s
