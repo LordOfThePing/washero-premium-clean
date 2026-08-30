@@ -15,7 +15,7 @@ SHELL := bash
         deploy migration-new clean \
         selfhost-up selfhost-down selfhost-status selfhost-logs selfhost-reset \
         selfhost-migrate selfhost-functions \
-        deploy-env
+        deploy-env vps-up vps-logs vps-status deploy-vps
 
 # Override on the command line, e.g. `make sb-link REF=abcdefgh`
 REF ?=
@@ -193,4 +193,20 @@ REMOTE_DIR ?= ~/washero-premium-clean
 .PHONY: deploy-env
 deploy-env: ## Print the scp commands to copy all .env files to the VPS
 	@echo scp .env .env.docker $(SSH_HOST):$(REMOTE_DIR)/ ^&^& scp backend/.env $(SSH_HOST):$(REMOTE_DIR)/backend/.env
+
+.PHONY: vps-up
+vps-up: ## Run on the VPS itself: build + start db/backend/cloudflared via docker-compose.yml
+	docker compose -p washero --env-file .env.docker up -d --build
+
+.PHONY: vps-logs
+vps-logs: ## Run on the VPS itself: tail the backend container logs
+	docker compose -p washero logs -f backend
+
+.PHONY: vps-status
+vps-status: ## Run on the VPS itself: show container status
+	docker compose -p washero ps
+
+.PHONY: deploy-vps
+deploy-vps: ## Print the ssh command to pull latest + (re)start the stack on the VPS
+	@echo ssh $(SSH_HOST) "cd $(REMOTE_DIR) ^&^& git pull ^&^& make vps-up"
 
