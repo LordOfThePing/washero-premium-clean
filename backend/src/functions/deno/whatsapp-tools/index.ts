@@ -7,8 +7,9 @@
 // coverage.ts, pricing, or capacity/concurrency safety changes. This file is only HTTP plumbing:
 // shared-secret auth, strict JSON parsing, dispatch to the right tool, structured JSON back.
 //
-// Auth: a dedicated shared secret (x-whatsapp-tools-secret), not a Supabase JWT — n8n's HTTP
-// Request node can't mint one, same reasoning and same constant-time check as
+// Auth: a dedicated shared secret sent under a configurable header (WHATSAPP_TOOLS_SECRET /
+// WHATSAPP_TOOLS_SECRET_HEADER, default x-whatsapp-tools-secret), not a Supabase JWT — n8n's
+// HTTP Request node can't mint one, same reasoning and same constant-time check as
 // whatsapp-agent-worker's x-internal-secret (see _shared/whatsapp-agent/worker-auth.ts). Never
 // trust prices/availability the caller might echo back — every tool recomputes them from the
 // database; create_booking revalidates capacity atomically inside create_booking_atomic()
@@ -19,9 +20,11 @@ import type { AgentToolContext } from "../_shared/whatsapp-agent/tools.ts";
 import { isValidWorkerSecret } from "../_shared/whatsapp-agent/worker-auth.ts";
 import { normalizeArgentinaWhatsAppPhone } from "../_shared/whatsapp-outbound.ts";
 
+const TOOLS_SECRET_HEADER = (process.env.WHATSAPP_TOOLS_SECRET_HEADER ?? "x-whatsapp-tools-secret").trim().toLowerCase();
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "content-type, x-whatsapp-tools-secret",
+  "Access-Control-Allow-Headers": `content-type, ${TOOLS_SECRET_HEADER}`,
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -121,7 +124,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ ok: false, error: "method_not_allowed" }, 405);
 
-  if (!(await isValidWorkerSecret(req.headers.get("x-whatsapp-tools-secret"), TOOLS_SECRET))) {
+  if (!(await isValidWorkerSecret(req.headers.get(TOOLS_SECRET_HEADER), TOOLS_SECRET))) {
     return json({ ok: false, error: "Unauthorized" }, 401);
   }
 

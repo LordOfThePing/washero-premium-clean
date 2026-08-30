@@ -14,7 +14,8 @@ SHELL := bash
         sb-login sb-link db-push deploy-functions secrets-push deploy-backend \
         deploy migration-new clean \
         selfhost-up selfhost-down selfhost-status selfhost-logs selfhost-reset \
-        selfhost-migrate selfhost-functions
+        selfhost-migrate selfhost-functions \
+        deploy-env
 
 # Override on the command line, e.g. `make sb-link REF=abcdefgh`
 REF ?=
@@ -178,4 +179,18 @@ selfhost-functions: ## Bundle Edge Functions into the self-hosted edge-runtime (
 
 selfhost-up-tunnel: selfhost-check-env ## Start stack + cloudflared tunnel sidecar
 	docker compose -f $(SELFHOST_COMPOSE) -f $(SELFHOST_COMPOSE_TUNNEL) up -d
+
+# ===========================================================================
+# VPS deploy (docker-compose.yml at repo root: db + backend + cloudflared)
+# ===========================================================================
+# Copies the .env files docker-compose.yml needs (root .env.docker, backend/.env)
+# to a checkout of this repo on the VPS. Override on the command line, e.g.
+#   make deploy-env SSH_HOST=hetzner REMOTE_DIR=~/washero-premium-clean
+
+SSH_HOST ?= hetzner
+REMOTE_DIR ?= ~/washero-premium-clean
+
+.PHONY: deploy-env
+deploy-env: ## Print the scp commands to copy all .env files to the VPS
+	@echo scp .env .env.docker $(SSH_HOST):$(REMOTE_DIR)/ ^&^& scp backend/.env $(SSH_HOST):$(REMOTE_DIR)/backend/.env
 
