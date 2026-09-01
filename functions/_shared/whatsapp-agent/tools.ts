@@ -18,7 +18,12 @@ import {
   tryCreateBooking,
   type CoreBookingUnitInput,
 } from "../booking-core.ts";
-import { loadActiveZones, matchZone } from "../coverage.ts";
+import {
+  extractLocalityCandidates,
+  loadActiveZones,
+  matchZone,
+  type CoverageAddressComponent,
+} from "../coverage.ts";
 import { calculateBookingQuote } from "../pricing-items.ts";
 import {
   maxOperatingDayEndMinutes,
@@ -231,17 +236,56 @@ const getServiceDetails: ToolDefinition = {
 // ---------------------------------------------------------------------------
 // validate_service_area
 // ---------------------------------------------------------------------------
+/** Geocodes a free-text address via Google's classic Geocoding API (no place_id available from
+ * a WhatsApp chat, unlike the website's Places-autocomplete flow in validate-address-location).
+ * Best-effort: returns null on any failure so callers fall back to alias/name text-matching. */
+async function geocodeAddress(
+  address: string,
+): Promise<{ lat: number; lng: number; components: CoverageAddressComponent[] } | null> {
+  const key = Deno.env.get("GOOGLE_MAPS_SERVER_KEY") ?? "";
+  if (!key || !address) return null;
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
+      `${address}, Zona Norte, Buenos Aires, Argentina`,
+    )}&key=${key}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      status?: string;
+      results?: Array<{
+        geometry?: { location?: { lat: number; lng: number } };
+        address_components?: Array<{ long_name: string; short_name: string; types: string[] }>;
+      }>;
+    };
+    const top = data.results?.[0];
+    if (data.status !== "OK" || !top?.geometry?.location) return null;
+    return {
+      lat: top.geometry.location.lat,
+      lng: top.geometry.location.lng,
+      components: (top.address_components ?? []) as CoverageAddressComponent[],
+    };
+  } catch (e) {
+    console.warn("[validate_service_area] geocode failed", e);
+    return null;
+  }
+}
+
 const validateServiceArea: ToolDefinition = {
   name: "validate_service_area",
   kind: "read_only",
   description:
-    "Valida si una dirección/barrio está dentro de la zona de cobertura de Washero. Llamalo apenas el cliente diga su dirección o zona, ANTES de ofrecer horarios. Si inside_coverage es false, no asumas que se puede reservar igual: avisá al cliente y pedí hablar con una persona (request_human_handoff) en vez de inventar una respuesta.",
+    "Valida si una dirección/barrio está dentro de la zona de cobertura de Washero. Llamalo apenas el cliente diga su dirección o zona, ANTES de ofrecer horarios. Si inside_coverage es false, no asumas que se puede reservar igual: avisá al cliente y pedí hablar con una persona (request_human_handoff) en vez de inventar una respuesta. Preguntá SIEMPRE primero si es una calle o un barrio privado/country, antes de llamar a este tool.",
   input_schema: {
     type: "object",
     properties: {
+      address: {
+        type: "string",
+        description:
+          "Dirección completa en texto libre (calle, altura, barrio) si address_type es 'street'. Cuanto más completa, más precisa la validación.",
+      },
       neighborhood: {
         type: "string",
-        description: "Barrio o zona indicada por el cliente (texto libre).",
+        description: "Barrio o zona indicada por el cliente (texto libre). Usalo aunque también mandes address.",
       },
       address_type: { type: "string", enum: ["street", "private_neighborhood"] },
       private_neighborhood_name: {
@@ -252,6 +296,7 @@ const validateServiceArea: ToolDefinition = {
   },
   execute: async (admin, args) => {
     const neighborhood = str(args.neighborhood);
+    const address = str(args.address);
     const addressType =
       str(args.address_type) === "private_neighborhood" ? "private_neighborhood" : "street";
 
@@ -281,13 +326,21 @@ const validateServiceArea: ToolDefinition = {
       };
     }
 
-    if (!neighborhood) return badArgs("Falta neighborhood.");
+    if (!neighborhood && !address) return badArgs("Falta neighborhood o address.");
+    const geo = address ? await geocodeAddress(address) : null;
+    const localityCandidates = geo ? extractLocalityCandidates(geo.components, [neighborhood]) : [];
     const zones = await loadActiveZones(admin);
-    const match = matchZone(zones, { neighborhood });
+    const match = matchZone(zones, {
+      lat: geo?.lat,
+      lng: geo?.lng,
+      neighborhood,
+      localityCandidates,
+    });
     return {
       ok: true,
       inside_coverage: !!match.zone,
       match_type: match.match_type,
+      geocoded: !!geo,
       coverage_zone_id: match.zone?.id ?? null,
       coverage_zone_name: match.zone?.name ?? null,
     };
