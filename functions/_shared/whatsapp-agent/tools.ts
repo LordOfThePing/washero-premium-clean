@@ -1153,6 +1153,62 @@ function inboundPreviewLabel(messageText: string, messageType: string): string {
   return labels[messageType] ?? `[${messageType || "mensaje"}]`;
 }
 
+// ---------------------------------------------------------------------------
+// get_conversation_state / set_conversation_state
+// ---------------------------------------------------------------------------
+// USO INTERNO DEL WORKFLOW DE N8N. Backing store for the deterministic (button-driven) new-
+// booking flow: n8n reads the current state, matches the tapped button/expected input against
+// it, writes the next state + accumulated data, and sends the next step's message -- no LLM
+// involved for that path. `data` is a free-form bag (service_id, vehicle_type, address, etc.)
+// so nothing already collected needs to be re-asked mid-flow.
+const getConversationState: ToolDefinition = {
+  name: "get_conversation_state",
+  kind: "read_only",
+  description:
+    "USO INTERNO DEL WORKFLOW DE N8N. Trae el estado actual del flujo de reserva por botones para el telefono de esta conversacion.",
+  input_schema: { type: "object", properties: {} },
+  execute: async (admin, _args, ctx) => {
+    const { data, error } = await admin
+      .from("whatsapp_conversation_state")
+      .select("state,data")
+      .eq("customer_phone", ctx.customerPhone)
+      .maybeSingle();
+    if (error) return { ok: false, error: "server_error" };
+    return { ok: true, state: data?.state ?? "none", data: data?.data ?? {} };
+  },
+};
+
+const setConversationState: ToolDefinition = {
+  name: "set_conversation_state",
+  kind: "mutation",
+  description:
+    "USO INTERNO DEL WORKFLOW DE N8N. Guarda el estado actual del flujo de reserva por botones para el telefono de esta conversacion. `data` reemplaza por completo el bag anterior -- mandalo completo (lo que ya tenias + lo nuevo), no solo el campo que cambio.",
+  input_schema: {
+    type: "object",
+    properties: {
+      state: { type: "string" },
+      data: { type: "object" },
+    },
+    required: ["state"],
+  },
+  execute: async (admin, args, ctx) => {
+    const state = str(args.state);
+    if (!state) return badArgs("Falta state.");
+    const data = args.data && typeof args.data === "object" ? args.data : {};
+    const { error } = await admin.from("whatsapp_conversation_state").upsert(
+      {
+        customer_phone: ctx.customerPhone,
+        state,
+        data,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "customer_phone" },
+    );
+    if (error) return { ok: false, error: "server_error" };
+    return { ok: true, state, data };
+  },
+};
+
 const ingestMessage: ToolDefinition = {
   name: "ingest_message",
   kind: "mutation",
@@ -1365,6 +1421,8 @@ export const AGENT_TOOLS: ToolDefinition[] = [
   rescheduleBooking,
   updateBooking,
   getPaymentLink,
+  getConversationState,
+  setConversationState,
   ingestMessage,
   ingestReceipt,
   requestHumanHandoff,
