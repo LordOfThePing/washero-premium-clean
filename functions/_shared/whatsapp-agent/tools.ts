@@ -1192,6 +1192,19 @@ const ingestMessage: ToolDefinition = {
       .eq("id", ctx.conversationId)
       .maybeSingle();
 
+    // Checked BEFORE inserting this message, so a fresh phone's very first inbound message
+    // reports is_first_inbound:true — n8n uses this to send a deterministic welcome menu
+    // instead of routing that turn through the LLM.
+    let isFirstInbound = false;
+    if (direction === "inbound") {
+      const { count } = await admin
+        .from("whatsapp_messages")
+        .select("id", { count: "exact", head: true })
+        .eq("conversation_id", ctx.conversationId)
+        .eq("direction", "inbound");
+      isFirstInbound = (count ?? 0) === 0;
+    }
+
     const { data: inserted, error } = await admin
       .from("whatsapp_messages")
       .insert({
@@ -1243,7 +1256,13 @@ const ingestMessage: ToolDefinition = {
       }
     }
 
-    return { ok: true, message_id: inserted?.id ?? null, duplicate: false, should_bot_reply: replyAllowed };
+    return {
+      ok: true,
+      message_id: inserted?.id ?? null,
+      duplicate: false,
+      should_bot_reply: replyAllowed,
+      is_first_inbound: isFirstInbound,
+    };
   },
 };
 
