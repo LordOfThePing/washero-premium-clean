@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   ClipboardList,
   Loader2,
+  RotateCcw,
   Sparkles,
   UserRound,
 } from "lucide-react";
@@ -147,6 +148,7 @@ export function ConversationDetail({
   onBack?: () => void;
 }) {
   const [approveOpen, setApproveOpen] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState(() => assignment?.notes ?? "");
   const qc = useQueryClient();
 
@@ -258,6 +260,52 @@ export function ConversationDetail({
     onError: (e: Error) => toast.error(e.message ?? "Error al guardar"),
   });
 
+  /** Wipes the deterministic WhatsApp flow's memory for this phone, so the next inbound
+   * message starts over at the welcome menu. `whatsapp_conversation_state` is keyed by the
+   * same normalized phone the tools endpoint writes, and it isn't in the generated types yet
+   * — hence the cast, same shape as fetchMyAdminProfile's. Clearing an open handoff is part
+   * of the reset because ingest_message reports should_bot_reply:false while an assignment
+   * is open or in_progress, which would keep the bot silent no matter what the state says. */
+  const resetBotState = useMutation({
+    mutationFn: async () => {
+      const phone = (conversation.customer_phone ?? "").trim();
+      if (!phone) throw new Error("La conversación no tiene teléfono");
+
+      const { error: stateError } = await (
+        db as unknown as {
+          from: (table: string) => {
+            delete: () => {
+              eq: (col: string, val: string) => Promise<{ error: { message: string } | null }>;
+            };
+          };
+        }
+      )
+        .from("whatsapp_conversation_state")
+        .delete()
+        .eq("customer_phone", phone);
+      if (stateError) throw new Error(stateError.message);
+
+      if (assignment && assignment.status !== "resolved") {
+        const { error } = await db.from("conversation_assignments").upsert(
+          {
+            conversation_id: conversation.id,
+            status: "resolved",
+            notes: assignment.notes ?? null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "conversation_id" },
+        );
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      setResetOpen(false);
+      toast.success("Bot reiniciado — el próximo mensaje arranca en el menú");
+      qc.invalidateQueries({ queryKey: ["whatsapp", "conversations"] });
+    },
+    onError: (e: Error) => toast.error(e.message ?? "No se pudo reiniciar el bot"),
+  });
+
   const badges = getConversationBadges(conversation, assignment, bookingRequest);
   const br = bookingRequest;
   const rawBr = (br?.raw_payload ?? {}) as Record<string, unknown>;
@@ -301,6 +349,8 @@ export function ConversationDetail({
           onMarkResolved={() => saveAssignment.mutate({ status: "resolved", notes: noteDraft })}
           onSaveNote={() => saveAssignment.mutate({ notes: noteDraft })}
           isPending={saveAssignment.isPending}
+          onResetBot={() => setResetOpen(true)}
+          isResetting={resetBotState.isPending}
         />
 
         {(br || conversation.linked_booking_request_id) && (
@@ -389,6 +439,41 @@ export function ConversationDetail({
           conversationId={conversation.id}
         />
       )}
+
+      <Dialog open={resetOpen} onOpenChange={(v) => !v && setResetOpen(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>¿Reiniciar el bot para este teléfono?</DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                <p>
+                  El próximo mensaje de {conversation.customer_phone || "este número"} vuelve a
+                  arrancar en el menú de bienvenida, como si nunca hubiera escrito.
+                </p>
+                {assignment && assignment.status !== "resolved" && (
+                  <p className="text-amber-600 dark:text-amber-500">
+                    Esta conversación está marcada como <strong>{assignment.status}</strong>. Para
+                    que el bot pueda volver a responder también se va a marcar como resuelta, así
+                    que si hay alguien esperando atención humana, revisalo antes.
+                  </p>
+                )}
+                <p className="text-muted-foreground">
+                  No se borra el historial de mensajes ni ninguna reserva.
+                </p>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={() => resetBotState.mutate()} disabled={resetBotState.isPending}>
+              {resetBotState.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+              Reiniciar bot
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
@@ -402,6 +487,8 @@ function HandoffPanel({
   onMarkResolved,
   onSaveNote,
   isPending,
+  onResetBot,
+  isResetting,
 }: {
   assignment?: ConversationAssignment;
   noteDraft: string;
@@ -411,6 +498,8 @@ function HandoffPanel({
   onMarkResolved: () => void;
   onSaveNote: () => void;
   isPending: boolean;
+  onResetBot: () => void;
+  isResetting: boolean;
 }) {
   const status = assignment?.status;
   const statusLabel =
@@ -472,6 +561,26 @@ function HandoffPanel({
       <Button size="sm" variant="secondary" disabled={isPending} onClick={onSaveNote}>
         Guardar nota
       </Button>
+      <div className="border-t border-border/60 pt-2 space-y-1">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={isResetting}
+          onClick={onResetBot}
+          className="text-muted-foreground"
+        >
+          {isResetting ? (
+            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+          ) : (
+            <RotateCcw className="mr-1 h-4 w-4" />
+          )}
+          Reiniciar bot
+        </Button>
+        <p className="text-[11px] text-muted-foreground">
+          Borra el estado del flujo por botones para este teléfono: el próximo mensaje vuelve a
+          arrancar en el menú de bienvenida. No borra el historial de mensajes.
+        </p>
+      </div>
     </div>
   );
 }
