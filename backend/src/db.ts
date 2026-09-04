@@ -1,6 +1,20 @@
 import pg from "pg";
 import { config } from "./config.js";
 
+// node-postgres parses a Postgres `date` (OID 1082) into a JS Date at local midnight, which
+// JSON.stringify then renders as a full UTC instant ("2026-09-05T00:00:00.000Z"). Hosted
+// PostgREST returns the plain "2026-09-05" string, and every caller here expects that shape:
+// the admin UI does `new Date(iso + "T00:00:00")` (an instant + "T00:00:00" is an Invalid
+// Date) and availability filtering parses the day in America/Argentina/Buenos_Aires before
+// comparing against slot times (an unparseable day makes isSlotTooSoonForPublic drop every
+// slot, so the booking flow reports zero availability). Hand back the raw text instead.
+// Applies to every date column: availability_slots.date, bookings.scheduled_date,
+// expenses.expense_date, subscription period bounds, etc.
+// `time` (1083) already comes back as a string, and every timestamp column here is timestamptz,
+// which both PostgREST and JSON.stringify render as a parseable ISO instant — so only the
+// date type needs correcting.
+pg.types.setTypeParser(pg.types.builtins.DATE, (value) => value);
+
 export const pool = new pg.Pool({ connectionString: config.databaseUrl });
 
 export type PgRole = "anon" | "authenticated" | "service_role";
