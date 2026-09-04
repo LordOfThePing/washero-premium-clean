@@ -19,7 +19,12 @@ import {
   tryCreateBooking,
   type CoreBookingUnitInput,
 } from "../booking-core.ts";
-import { loadActiveZones, matchZone } from "../coverage.ts";
+import {
+  extractLocalityCandidates,
+  loadActiveZones,
+  matchZone,
+  type CoverageAddressComponent,
+} from "../coverage.ts";
 import { calculateBookingQuote } from "../pricing-items.ts";
 import {
   maxOperatingDayEndMinutes,
@@ -232,17 +237,56 @@ const getServiceDetails: ToolDefinition = {
 // ---------------------------------------------------------------------------
 // validate_service_area
 // ---------------------------------------------------------------------------
+/** Geocodes a free-text address via Google's classic Geocoding API (no place_id available from
+ * a WhatsApp chat, unlike the website's Places-autocomplete flow in validate-address-location).
+ * Best-effort: returns null on any failure so callers fall back to alias/name text-matching. */
+async function geocodeAddress(
+  address: string,
+): Promise<{ lat: number; lng: number; components: CoverageAddressComponent[] } | null> {
+  const key = process.env.GOOGLE_MAPS_SERVER_KEY ?? "";
+  if (!key || !address) return null;
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
+      `${address}, Zona Norte, Buenos Aires, Argentina`,
+    )}&key=${key}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      status?: string;
+      results?: Array<{
+        geometry?: { location?: { lat: number; lng: number } };
+        address_components?: Array<{ long_name: string; short_name: string; types: string[] }>;
+      }>;
+    };
+    const top = data.results?.[0];
+    if (data.status !== "OK" || !top?.geometry?.location) return null;
+    return {
+      lat: top.geometry.location.lat,
+      lng: top.geometry.location.lng,
+      components: (top.address_components ?? []) as CoverageAddressComponent[],
+    };
+  } catch (e) {
+    console.warn("[validate_service_area] geocode failed", e);
+    return null;
+  }
+}
+
 const validateServiceArea: ToolDefinition = {
   name: "validate_service_area",
   kind: "read_only",
   description:
-    "Valida si una dirección/barrio está dentro de la zona de cobertura de Washero. Llamalo apenas el cliente diga su dirección o zona, ANTES de ofrecer horarios. Si inside_coverage es false, no asumas que se puede reservar igual: avisá al cliente y pedí hablar con una persona (request_human_handoff) en vez de inventar una respuesta.",
+    "Valida si una dirección/barrio está dentro de la zona de cobertura de Washero. Llamalo apenas el cliente diga su dirección o zona, ANTES de ofrecer horarios. Si inside_coverage es false, no asumas que se puede reservar igual: avisá al cliente y pedí hablar con una persona (request_human_handoff) en vez de inventar una respuesta. Preguntá SIEMPRE primero si es una calle o un barrio privado/country, antes de llamar a este tool.",
   input_schema: {
     type: "object",
     properties: {
+      address: {
+        type: "string",
+        description:
+          "Dirección completa en texto libre (calle, altura, barrio) si address_type es 'street'. Cuanto más completa, más precisa la validación.",
+      },
       neighborhood: {
         type: "string",
-        description: "Barrio o zona indicada por el cliente (texto libre).",
+        description: "Barrio o zona indicada por el cliente (texto libre). Usalo aunque también mandes address.",
       },
       address_type: { type: "string", enum: ["street", "private_neighborhood"] },
       private_neighborhood_name: {
@@ -253,6 +297,7 @@ const validateServiceArea: ToolDefinition = {
   },
   execute: async (admin, args) => {
     const neighborhood = str(args.neighborhood);
+    const address = str(args.address);
     const addressType =
       str(args.address_type) === "private_neighborhood" ? "private_neighborhood" : "street";
 
@@ -282,13 +327,21 @@ const validateServiceArea: ToolDefinition = {
       };
     }
 
-    if (!neighborhood) return badArgs("Falta neighborhood.");
+    if (!neighborhood && !address) return badArgs("Falta neighborhood o address.");
+    const geo = address ? await geocodeAddress(address) : null;
+    const localityCandidates = geo ? extractLocalityCandidates(geo.components, [neighborhood]) : [];
     const zones = await loadActiveZones(admin);
-    const match = matchZone(zones, { neighborhood });
+    const match = matchZone(zones, {
+      lat: geo?.lat,
+      lng: geo?.lng,
+      neighborhood,
+      localityCandidates,
+    });
     return {
       ok: true,
       inside_coverage: !!match.zone,
       match_type: match.match_type,
+      geocoded: !!geo,
       coverage_zone_id: match.zone?.id ?? null,
       coverage_zone_name: match.zone?.name ?? null,
     };
@@ -787,6 +840,234 @@ const rescheduleBooking: ToolDefinition = {
 };
 
 // ---------------------------------------------------------------------------
+// list_coverage_zones
+// ---------------------------------------------------------------------------
+const listCoverageZones: ToolDefinition = {
+  name: "list_coverage_zones",
+  kind: "read_only",
+  description:
+    "Lista los barrios/zonas y barrios privados que Washero cubre actualmente. Usalo cuando el cliente pregunta en general qué zonas cubrís, en vez de validar una dirección puntual (para eso usá validate_service_area).",
+  input_schema: { type: "object", properties: {} },
+  execute: async (admin) => {
+    const zones = await loadActiveZones(admin);
+    const { data: privateNeighborhoods } = await admin
+      .from("private_neighborhoods")
+      .select("name")
+      .eq("active", true)
+      .order("name");
+    return {
+      ok: true,
+      zones: zones
+        .slice()
+        .sort((a, b) => a.display_order - b.display_order)
+        .map((z) => z.name),
+      private_neighborhoods: (privateNeighborhoods ?? []).map((r) => (r as { name: string }).name),
+    };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// update_booking
+// ---------------------------------------------------------------------------
+const updateBooking: ToolDefinition = {
+  name: "update_booking",
+  kind: "mutation",
+  description:
+    "Cambia el servicio, tipo de vehículo y/o dirección de una reserva existente del cliente (NO la fecha/horario — para eso usá reschedule_booking). Recalcula el precio automáticamente. Confirmá el nuevo resumen (y el nuevo precio) con el cliente antes de llamarlo. Solo funciona sobre reservas propias, no completadas ni canceladas.",
+  input_schema: {
+    type: "object",
+    properties: {
+      booking_id: { type: "string" },
+      service_id: { type: "string" },
+      service_name: { type: "string" },
+      vehicle_type: { type: "string", enum: VEHICLE_TYPES as unknown as string[] },
+      address: { type: "string" },
+      neighborhood: { type: "string", description: "Requerido si cambiás address." },
+    },
+    required: ["booking_id"],
+  },
+  execute: async (admin, args, ctx) => {
+    const booking_id = str(args.booking_id);
+    if (!booking_id) return badArgs("Falta booking_id.");
+
+    const { data: booking, error: fetchErr } = await admin
+      .from("bookings")
+      .select("id,customer_phone,service_name,vehicle_type,address,neighborhood,booking_status")
+      .eq("id", booking_id)
+      .eq("customer_phone", ctx.customerPhone)
+      .maybeSingle();
+    if (fetchErr) return { ok: false, error: "server_error" };
+    if (!booking) return { ok: false, error: "not_found" };
+    if (["completed", "cancelled"].includes(String(booking.booking_status))) {
+      return { ok: false, error: "invalid_status", booking_status: booking.booking_status };
+    }
+
+    const newAddress = str(args.address) || undefined;
+    const newNeighborhood = str(args.neighborhood) || undefined;
+    if (newAddress && !newNeighborhood && !booking.neighborhood) {
+      return badArgs("Falta neighborhood para validar la nueva dirección.");
+    }
+
+    const update: Record<string, unknown> = {};
+
+    if (newNeighborhood) {
+      const zones = await loadActiveZones(admin);
+      const match = matchZone(zones, { neighborhood: newNeighborhood });
+      if (!match.zone) {
+        return { ok: false, error: "out_of_coverage", neighborhood: newNeighborhood };
+      }
+      update.neighborhood = newNeighborhood;
+    }
+    if (newAddress) update.address = newAddress;
+
+    const serviceId = str(args.service_id);
+    const serviceName = str(args.service_name);
+    const vehicleType = str(args.vehicle_type) || booking.vehicle_type;
+    if (args.vehicle_type && !(VEHICLE_TYPES as readonly string[]).includes(vehicleType)) {
+      return badArgs("vehicle_type inválido.");
+    }
+
+    let newPrice: number | undefined;
+    let resolvedServiceName: string | undefined;
+    if (serviceId || serviceName || args.vehicle_type) {
+      const lookup = await resolveActiveServiceLookup(
+        admin,
+        { service_id: serviceId, service_name: serviceName || booking.service_name },
+        { includeAvailable: true },
+      );
+      if (!lookup.service) {
+        return { ok: false, error: "service_not_found", available_services: lookup.available_services };
+      }
+      const quote = await calculateBookingQuote(admin, {
+        service_id: lookup.service.id,
+        vehicle_type: vehicleType,
+        selected_extras: [],
+      });
+      if ("ok" in quote && quote.ok === false) {
+        return { ok: false, error: "invalid_extra", missing: quote.missing };
+      }
+      newPrice = (quote as Exclude<typeof quote, { ok: false }>).total_amount;
+      resolvedServiceName = lookup.service.name;
+      update.service_name = resolvedServiceName;
+      update.vehicle_type = vehicleType;
+      update.price = newPrice;
+    }
+
+    if (Object.keys(update).length === 0) {
+      return badArgs("No enviaste ningún cambio (service_id/service_name/vehicle_type/address).");
+    }
+
+    if (ctx.dryRun) return { ok: true, dry_run: true, would_update: update };
+
+    update.updated_at = new Date().toISOString();
+    const { data: updated, error: updErr } = await admin
+      .from("bookings")
+      .update(update)
+      .eq("id", booking_id)
+      .eq("customer_phone", ctx.customerPhone)
+      .select(BOOKING_SELECT)
+      .maybeSingle();
+    if (updErr || !updated) return { ok: false, error: "server_error" };
+    return { ok: true, booking: updated };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// get_payment_link
+// ---------------------------------------------------------------------------
+const getPaymentLink: ToolDefinition = {
+  name: "get_payment_link",
+  kind: "read_only",
+  description:
+    "Genera (o reutiliza) un link de pago de Mercado Pago para una reserva del cliente cuyo payment_method sea MercadoPago. Usalo después de create_booking cuando el cliente eligió pagar con Mercado Pago, para mandarle el link de pago real.",
+  input_schema: {
+    type: "object",
+    properties: { booking_id: { type: "string" } },
+    required: ["booking_id"],
+  },
+  execute: async (admin, args, ctx) => {
+    const booking_id = str(args.booking_id);
+    if (!booking_id) return badArgs("Falta booking_id.");
+
+    const { data: booking, error: fetchErr } = await admin
+      .from("bookings")
+      .select("id,customer_phone,customer_name,customer_email,service_name,price,payment_method,payment_status")
+      .eq("id", booking_id)
+      .eq("customer_phone", ctx.customerPhone)
+      .maybeSingle();
+    if (fetchErr) return { ok: false, error: "server_error" };
+    if (!booking) return { ok: false, error: "not_found" };
+    if (booking.payment_method !== "MercadoPago") {
+      return { ok: false, error: "wrong_payment_method", payment_method: booking.payment_method };
+    }
+    if (booking.payment_status === "paid") {
+      return { ok: true, already_paid: true };
+    }
+
+    if (ctx.dryRun) return { ok: true, dry_run: true, would_generate_link_for: booking_id };
+
+    const MP_TOKEN = process.env.MERCADOPAGO_ACCESS_TOKEN;
+    if (!MP_TOKEN) {
+      return { ok: false, error: "mercadopago_not_configured" };
+    }
+
+    const SITE_ORIGIN = process.env.PUBLIC_SITE_URL ?? "https://washero.ar";
+    const API_URL_ROOT = process.env.API_URL ?? "";
+    const preferenceBody = {
+      items: [
+        {
+          title: `Washero - ${booking.service_name}`,
+          quantity: 1,
+          currency_id: "ARS",
+          unit_price: booking.price,
+        },
+      ],
+      payer: { name: booking.customer_name, email: booking.customer_email ?? undefined },
+      external_reference: booking.id,
+      metadata: { booking_id: booking.id, customer_phone: booking.customer_phone },
+      back_urls: {
+        success: `${SITE_ORIGIN}/gracias?payment=success`,
+        pending: `${SITE_ORIGIN}/gracias?payment=pending`,
+        failure: `${SITE_ORIGIN}/gracias?payment=failure`,
+      },
+      auto_return: "approved",
+      notification_url: `${API_URL_ROOT}/functions/v1/mercadopago-webhook`,
+      statement_descriptor: "WASHERO",
+    };
+
+    let preference: Record<string, unknown> | null = null;
+    try {
+      const res = await fetch("https://api.mercadopago.com/checkout/preferences", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${MP_TOKEN}`, "Content-Type": "application/json" },
+        body: JSON.stringify(preferenceBody),
+      });
+      if (res.ok) preference = await res.json();
+      else console.error("[get_payment_link] MP preference failed", res.status, await res.text());
+    } catch (e) {
+      console.error("[get_payment_link] MP preference exception", e);
+    }
+    if (!preference) return { ok: false, error: "payment_link_failed" };
+
+    await admin.from("payments").insert({
+      booking_id: booking.id,
+      provider: "mercadopago",
+      provider_payment_id: (preference.id as string | undefined) ?? null,
+      amount: booking.price,
+      status: "pending",
+      raw_payload: preference,
+    });
+
+    const checkoutUrl =
+      (preference.init_point as string | undefined) ??
+      (preference.sandbox_init_point as string | undefined) ??
+      null;
+    if (!checkoutUrl) return { ok: false, error: "payment_link_failed" };
+    return { ok: true, checkout_url: checkoutUrl };
+  },
+};
+
+// ---------------------------------------------------------------------------
 // ingest_message / ingest_receipt
 // ---------------------------------------------------------------------------
 // n8n calls these on every inbound (and outbound) WhatsApp event: persist the message, keep the
@@ -873,6 +1154,62 @@ function inboundPreviewLabel(messageText: string, messageType: string): string {
   return labels[messageType] ?? `[${messageType || "mensaje"}]`;
 }
 
+// ---------------------------------------------------------------------------
+// get_conversation_state / set_conversation_state
+// ---------------------------------------------------------------------------
+// USO INTERNO DEL WORKFLOW DE N8N. Backing store for the deterministic (button-driven) new-
+// booking flow: n8n reads the current state, matches the tapped button/expected input against
+// it, writes the next state + accumulated data, and sends the next step's message -- no LLM
+// involved for that path. `data` is a free-form bag (service_id, vehicle_type, address, etc.)
+// so nothing already collected needs to be re-asked mid-flow.
+const getConversationState: ToolDefinition = {
+  name: "get_conversation_state",
+  kind: "read_only",
+  description:
+    "USO INTERNO DEL WORKFLOW DE N8N. Trae el estado actual del flujo de reserva por botones para el telefono de esta conversacion.",
+  input_schema: { type: "object", properties: {} },
+  execute: async (admin, _args, ctx) => {
+    const { data, error } = await admin
+      .from("whatsapp_conversation_state")
+      .select("state,data")
+      .eq("customer_phone", ctx.customerPhone)
+      .maybeSingle();
+    if (error) return { ok: false, error: "server_error" };
+    return { ok: true, state: data?.state ?? "none", data: data?.data ?? {} };
+  },
+};
+
+const setConversationState: ToolDefinition = {
+  name: "set_conversation_state",
+  kind: "mutation",
+  description:
+    "USO INTERNO DEL WORKFLOW DE N8N. Guarda el estado actual del flujo de reserva por botones para el telefono de esta conversacion. `data` reemplaza por completo el bag anterior -- mandalo completo (lo que ya tenias + lo nuevo), no solo el campo que cambio.",
+  input_schema: {
+    type: "object",
+    properties: {
+      state: { type: "string" },
+      data: { type: "object" },
+    },
+    required: ["state"],
+  },
+  execute: async (admin, args, ctx) => {
+    const state = str(args.state);
+    if (!state) return badArgs("Falta state.");
+    const data = args.data && typeof args.data === "object" ? args.data : {};
+    const { error } = await admin.from("whatsapp_conversation_state").upsert(
+      {
+        customer_phone: ctx.customerPhone,
+        state,
+        data,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "customer_phone" },
+    );
+    if (error) return { ok: false, error: "server_error" };
+    return { ok: true, state, data };
+  },
+};
+
 const ingestMessage: ToolDefinition = {
   name: "ingest_message",
   kind: "mutation",
@@ -911,6 +1248,19 @@ const ingestMessage: ToolDefinition = {
       .select("customer_name,channel")
       .eq("id", ctx.conversationId)
       .maybeSingle();
+
+    // Checked BEFORE inserting this message, so a fresh phone's very first inbound message
+    // reports is_first_inbound:true — n8n uses this to send a deterministic welcome menu
+    // instead of routing that turn through the LLM.
+    let isFirstInbound = false;
+    if (direction === "inbound") {
+      const { count } = await admin
+        .from("whatsapp_messages")
+        .select("id", { count: "exact", head: true })
+        .eq("conversation_id", ctx.conversationId)
+        .eq("direction", "inbound");
+      isFirstInbound = (count ?? 0) === 0;
+    }
 
     const { data: inserted, error } = await admin
       .from("whatsapp_messages")
@@ -963,7 +1313,13 @@ const ingestMessage: ToolDefinition = {
       }
     }
 
-    return { ok: true, message_id: inserted?.id ?? null, duplicate: false, should_bot_reply: replyAllowed };
+    return {
+      ok: true,
+      message_id: inserted?.id ?? null,
+      duplicate: false,
+      should_bot_reply: replyAllowed,
+      is_first_inbound: isFirstInbound,
+    };
   },
 };
 
@@ -1055,6 +1411,7 @@ export const AGENT_TOOLS: ToolDefinition[] = [
   getServices,
   getServiceDetails,
   validateServiceArea,
+  listCoverageZones,
   getAvailableDates,
   getAvailableSlots,
   calculateBookingPrice,
@@ -1063,6 +1420,10 @@ export const AGENT_TOOLS: ToolDefinition[] = [
   listCustomerBookings,
   cancelBooking,
   rescheduleBooking,
+  updateBooking,
+  getPaymentLink,
+  getConversationState,
+  setConversationState,
   ingestMessage,
   ingestReceipt,
   requestHumanHandoff,
